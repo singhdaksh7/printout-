@@ -3,11 +3,26 @@
   "private": true,
   "version": "0.0.0",
   "packageManager": "pnpm@9.15.0",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
-    "build": "pnpm -r --if-present build",
-    "check": "pnpm -r --if-present check",
-    "test": "pnpm -r --if-present test",
-    "dev": "pnpm --parallel -r --if-present dev"
+    "build": "corepack pnpm -r --if-present build",
+    "check": "corepack pnpm -r --if-present check",
+    "test": "corepack pnpm -r --if-present test",
+    "db:up": "docker compose up -d postgres",
+    "db:generate": "corepack pnpm --filter @printout/api db:generate",
+    "db:migrate": "corepack pnpm --filter @printout/api db:migrate:deploy",
+    "db:seed": "corepack pnpm --filter @printout/api db:seed",
+    "dev": "concurrently -n api,worker,web -c blue,magenta,green \"corepack pnpm --filter @printout/api dev\" \"corepack pnpm --filter @printout/api worker\" \"corepack pnpm --filter @printout/web dev\"",
+    "dev:api": "corepack pnpm --filter @printout/api dev",
+    "dev:web": "corepack pnpm --filter @printout/web dev",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "dev:worker": "corepack pnpm --filter @printout/api worker"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "concurrently": "^9.1.0",
+    "pdf-lib": "^1.17.1"
   }
 }

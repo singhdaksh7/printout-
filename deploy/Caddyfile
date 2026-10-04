@@ -1,0 +1,57 @@
+# Single-domain reverse proxy with automatic HTTPS (Let's Encrypt via Caddy).
+# DOMAIN and ACME_EMAIL come from the environment (see docker-compose.prod.yml).
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# Uploads are streamed to the API (not buffered by Caddy). 50 MiB file cap + headroom.
+	request_body {
+		max_size 55MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# API + SSE. NO `encode` here: compression would buffer text/event-stream.
+	# flush_interval -1 flushes every write immediately (SSE, streamed downloads).
+	@api path /api/* /health /ready
+	handle @api {
+		reverse_proxy api:3000 {
+			flush_interval -1
+			# Caddy sets/overwrites X-Forwarded-For/-Proto/-Host (no untrusted upstream proxies),
+			# matching TRUST_PROXY=true in the API.
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 5m # slow uploads: API only answers after the body is stored
+				read_timeout 0             # never cut idle SSE streams (API heartbeats every ~25s)
+				write_timeout 5m
+			}
+		}
+	}
+
+	# Everything else: the static SPA container (compressed, cache headers set by nginx there).
+	handle {
+		encode zstd gzip
+		reverse_proxy web:8080
+	}
+
+	log {
+		output stdout
+		# Never log capability tokens / signatures carried in query strings or cookies.
+		format filter {
+			wrap json
+			request>uri query {
+				replace token REDACTED
+				replace sig REDACTED
+				replace exp REDACTED
+			}
+			request>headers>Cookie delete
+			request>headers>Authorization delete
+			request>headers>X-Csrf-Token delete
+		}
+	}
+}

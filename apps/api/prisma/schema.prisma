@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum Role {
+ SHOP_OWNER
+ PLATFORM_ADMIN
+}
+enum ShopStatus {
+ ACTIVE
+ SUSPENDED
+}
+enum OrderStatus {
+ NEW
+ ACCEPTED
+ PRINTING
+ PRINTED
+ READY
+ COLLECTED
+ CANCELLED
+ EXPIRED
+}
+enum DocumentStatus {
+ UPLOADING
+ AVAILABLE
+ PRINTED_RETENTION
+ DELETED
+ FAILED
+}
+enum ColourMode {
+ bw
+ colour
+}
+enum PrintSides {
+ single
+ duplex
+}
+enum SubscriptionStatus {
+ ACTIVE
+ SUSPENDED
+ CANCELLED
+}
+
+model Shop {
+  id String @id @default(cuid())
+  slug String @unique
+  displayName String
+  address String?
+  status ShopStatus @default(ACTIVE)
+  acceptsOrders Boolean @default(true)
+  orderCounter Int @default(0)
+  users User[]
+  settings ShopSettings?
+  pricingRules PricingRule[]
+  orders Order[]
+  documents Document[]
+  auditLogs AuditLog[]
+  subscription Subscription?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model User {
+  id String @id @default(cuid())
+  shopId String?
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  email String @unique
+  displayName String
+  passwordHash String
+  role Role
+  sessions Session[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model Session {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  invalidatedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId])
+}
+model ShopSettings {
+  id String @id @default(cuid())
+  shopId String @unique
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  publicContact String?
+  brandColor String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model PricingRule {
+  id String @id @default(cuid())
+  shopId String
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  paperSize String @default("A4")
+  colourMode ColourMode
+  sides PrintSides
+  pricePerSheetPaise Int
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([shopId, paperSize, colourMode, sides])
+}
+model Document {
+  id String @id @default(cuid())
+  shopId String
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  order Order?
+  objectKey String @unique
+  originalFilename String
+  detectedMimeType String?
+  byteSize BigInt?
+  pageCount Int?
+  checksum String?
+  status DocumentStatus @default(UPLOADING)
+  uploadedAt DateTime?
+  expiresAt DateTime?
+  printedAt DateTime?
+  deleteAfter DateTime?
+  deletedAt DateTime?
+  deletionError String?
+  deletionAttempts Int @default(0)
+  lastDeletionAttemptAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([shopId, status])
+  @@index([status, deleteAfter])
+  @@index([status, expiresAt])
+  @@index([status, createdAt])
+}
+model Order {
+  id String @id @default(cuid())
+  shopId String
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  documentId String @unique
+  document Document @relation(fields: [documentId], references: [id])
+  orderNumber String
+  clientRequestId String?
+  trackingToken String @unique
+  customerDisplayNameOrReference String?
+  status OrderStatus @default(NEW)
+  totalPaise Int
+  currency String @default("INR")
+  priceSnapshot Json
+  printOptionsSnapshot Json
+  histories OrderStatusHistory[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([shopId, orderNumber])
+  @@unique([shopId, clientRequestId])
+  @@index([shopId, status, createdAt])
+  @@index([shopId, createdAt])
+}
+model OrderStatusHistory {
+  id String @id @default(cuid())
+  orderId String
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus OrderStatus?
+  toStatus OrderStatus
+  reason String?
+  actorUserId String?
+  createdAt DateTime @default(now())
+  @@index([orderId, createdAt])
+}
+model Plan {
+ id String @id @default(cuid())
+ name String @unique
+ pricePaise Int
+ active Boolean @default(true)
+ subscriptions Subscription[]
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+model Subscription {
+ id String @id @default(cuid())
+ shopId String @unique
+ shop Shop @relation(fields:[shopId], references:[id], onDelete:Cascade)
+ planId String
+ plan Plan @relation(fields:[planId], references:[id])
+ status SubscriptionStatus @default(ACTIVE)
+ renewsAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+model AuditLog {
+ id String @id @default(cuid())
+ shopId String?
+ shop Shop? @relation(fields:[shopId], references:[id], onDelete:SetNull)
+ actorUserId String?
+ action String
+ targetType String?
+ targetId String?
+ metadata Json?
+ createdAt DateTime @default(now())
+ @@index([shopId, createdAt])
+ @@index([createdAt])
+}

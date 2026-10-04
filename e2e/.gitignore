@@ -1,0 +1,5 @@
+artifacts/
+test-results/
+playwright-report/
+.state.json
+.data/
