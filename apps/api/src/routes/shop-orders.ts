@@ -1,8 +1,10 @@
 import { DocumentStatus, OrderStatus, type Document, type Order, type Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { documentAccessWindow } from '../domain/access.js';
 import { assertRequestedTransition, retentionDates, TERMINAL_STATUSES } from '../domain/lifecycle.js';
 import { AppError, orderNotFound } from '../errors.js';
+import { getLimiters } from '../rate-limits.js';
 import {
   audit,
   authOf,
@@ -69,9 +71,11 @@ const toStatusEvent = (o: Order) => ({ id: o.id, orderNumber: o.orderNumber, sta
 
 export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const { prisma, config, storage, events } = ctx;
+  const limits = getLimiters(app, config);
+  app.addHook('onRequest', limits.ipCeiling(config.RATE_LIMIT_SHOP_READ_MAX * 5));
   app.addHook('preHandler', shopGuard(ctx));
 
-  app.get('/shop/orders', async (request) => {
+  app.get('/shop/orders', { preHandler: limits.shopRead }, async (request) => {
     const shopId = shopIdOf(request);
     const q = listQuery.parse(request.query);
     const statuses = parseStatuses(q.status);
@@ -109,7 +113,7 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     });
   });
 
-  app.get('/shop/orders/:id', async (request) => {
+  app.get('/shop/orders/:id', { preHandler: limits.shopRead }, async (request) => {
     const shopId = shopIdOf(request);
     const { id } = idParam.parse(request.params);
     const order = await prisma.order.findFirst({
@@ -150,7 +154,7 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     });
   });
 
-  app.post('/shop/orders/:id/transitions', async (request) => {
+  app.post('/shop/orders/:id/transitions', { preHandler: limits.status }, async (request) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
@@ -206,7 +210,7 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     return json({ order: orderCore(result.order) });
   });
 
-  app.post('/shop/orders/:id/print-confirmation', async (request) => {
+  app.post('/shop/orders/:id/print-confirmation', { preHandler: limits.printConfirm }, async (request) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
@@ -285,32 +289,23 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     });
   });
 
-  app.post('/shop/orders/:id/document-access', async (request) => {
+  app.post('/shop/orders/:id/document-access', { preHandler: limits.documentAccess }, async (request) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
     const order = await prisma.order.findFirst({ where: { id, shopId }, include: { document: true } });
     if (!order) throw orderNotFound();
     const doc = order.document;
-    const now = Date.now();
     // The earliest applicable deadline bounds access, independent of whether the cleanup worker has run.
-    let deadline: Date | null = null;
-    let usable = false;
-    if (doc.status === DocumentStatus.PRINTED_RETENTION) {
-      deadline = doc.deleteAfter;
-      usable = !!deadline;
-    } else if (doc.status === DocumentStatus.AVAILABLE) {
-      deadline = doc.expiresAt;
-      usable = !!deadline && !doc.printedAt;
-    }
-    if (doc.deleteAfter && doc.deleteAfter.getTime() <= now) usable = false;
-    if (order.status === OrderStatus.CANCELLED || order.status === OrderStatus.EXPIRED) usable = false;
-    if (!usable || !deadline || !doc.detectedMimeType) {
+    const window = documentAccessWindow(doc, order.status, Date.now());
+    if (!window || !doc.detectedMimeType) {
       throw new AppError(410, 'DOCUMENT_UNAVAILABLE', 'The document is no longer available');
     }
-    const secondsLeft = Math.floor((deadline.getTime() - now) / 1000);
-    if (secondsLeft <= 0) throw new AppError(410, 'DOCUMENT_UNAVAILABLE', 'The document is no longer available');
-    const access = await storage.temporaryReadUrl(doc.objectKey, Math.min(300, secondsLeft));
+    const deadline = window.deadline;
+    const access = await storage.temporaryReadUrl(doc.objectKey, window.ttlSeconds, {
+      contentType: doc.detectedMimeType,
+      filename: doc.originalFilename
+    });
     await audit(ctx.prisma, { shopId, actorUserId: auth.userId, action: 'document.access', targetType: 'order', targetId: id });
     return json({
       url: access.url,

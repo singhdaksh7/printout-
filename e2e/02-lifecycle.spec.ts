@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { API } from './env';
+import { API, RETENTION_MINUTES } from './env';
 import { VIEWPORTS, createOrderViaApi, dbQuery, expectNoOverflow, newMobileContext, shot, uiLogin, writeState } from './support';
 
 test('shop + customer lifecycle across two browser contexts (SSE, print confirmation, 1-minute retention, deletion)', async ({ browser }) => {
@@ -71,7 +71,7 @@ test('shop + customer lifecycle across two browser contexts (SSE, print confirma
   // ---- confirm printed (explicit) ----
   await shop.getByRole('button', { name: 'Confirm printed successfully' }).click();
   const dialog = shop.getByRole('dialog');
-  await expect(dialog).toContainText('30-minute countdown');
+  await expect(dialog).toContainText(`${RETENTION_MINUTES}-minute countdown`);
   await shot(shop, '13-shop-confirm-modal');
   await expectNoOverflow(shop, 'confirm modal');
   await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();

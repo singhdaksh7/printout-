@@ -69,7 +69,7 @@ export function renderAt(path: string) {
   );
 }
 
-export const shopOk = { slug: 'demo-shop', displayName: 'Demo Copy Centre', address: '12 Main Road', acceptsOrders: true };
+export const shopOk = { slug: 'demo-shop', displayName: 'Demo Copy Centre', address: '12 Main Road', acceptsOrders: true, retentionMinutes: 30 };
 export const initiateOk = { uploadId: 'up-12345678', uploadUrl: '/api/v1/public/uploads/up-12345678/content?token=t', requiredHeaders: { 'content-type': 'application/pdf' }, expiresAt: '2030-01-01T00:00:00Z', limits: { acceptedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxBytes: 52428800, maxPdfPages: 200, imagePageCount: 1 } };
 export const completeOk = { documentId: 'doc-12345678', detectedMimeType: 'application/pdf', byteSize: 2048, pageCount: 12, documentStatus: 'AVAILABLE', expiresAt: '2030-01-02T00:00:00Z' };
 export const quoteOk = { quoteId: 'q1', selectedPageCount: 12, sheetsPerCopy: 12, totalSheets: 12, unitPricePaise: 200, totalPaise: 2400, currency: 'INR', expiresAt: new Date(Date.now() + 600000).toISOString() };

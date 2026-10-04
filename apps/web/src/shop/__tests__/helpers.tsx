@@ -30,6 +30,7 @@ export const session = (over: Partial<SessionData> = {}): SessionData => ({
   user: { id: 'u1', displayName: 'Owner', role: 'SHOP_OWNER' },
   shop: { id: 's1', slug: 'central', displayName: 'Central Print' },
   csrfToken: 'csrf-1',
+  retentionMinutes: 30,
   ...over
 });
 

@@ -84,7 +84,7 @@ describe('S3 driver (stubbed client, no network)', () => {
     expect(u.searchParams.get('response-content-disposition')).toMatch(/^inline; filename="my _doc_\.pdf"$/);
     expect(expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(60_000);
     const long = new URL((await storage.temporaryReadUrl(key, 99_999_999)).url);
-    expect(Number(long.searchParams.get('X-Amz-Expires'))).toBeLessThanOrEqual(604_800);
+    expect(Number(long.searchParams.get('X-Amz-Expires'))).toBe(300);
   });
 
   it('createStorage selects the s3 driver and requires a bucket', () => {

@@ -9,13 +9,22 @@ const base = {
   SESSION_SECRET: 'a'.repeat(40),
   CSRF_SECRET: 'b'.repeat(40)
 };
+const prod = {
+  ...base,
+  NODE_ENV: 'production',
+  WEB_ORIGIN: 'https://x.test',
+  QUOTE_SECRET: 'c'.repeat(40),
+  STORAGE_URL_SECRET: 'd'.repeat(40),
+  TRUST_PROXY: 'false',
+  ALLOW_LOCAL_STORAGE_IN_PRODUCTION: 'true'
+};
 
 describe('config', () => {
   it('refuses placeholder or short secrets in production', () => {
-    expect(() => loadConfig({ ...base, NODE_ENV: 'production', WEB_ORIGIN: 'https://x.test' })).not.toThrow();
-    expect(() => loadConfig({ ...base, NODE_ENV: 'production', WEB_ORIGIN: 'https://x.test', SESSION_SECRET: 'replace-with-a-long-random-local-secret' })).toThrow();
-    expect(() => loadConfig({ ...base, NODE_ENV: 'production', WEB_ORIGIN: 'http://x.test' })).toThrow();
-    expect(() => loadConfig({ ...base, NODE_ENV: 'production', WEB_ORIGIN: 'https://x.test', CSRF_SECRET: 'a'.repeat(40) })).toThrow();
+    expect(() => loadConfig(prod)).not.toThrow();
+    expect(() => loadConfig({ ...prod, SESSION_SECRET: 'replace-with-a-long-random-local-secret' })).toThrow();
+    expect(() => loadConfig({ ...prod, WEB_ORIGIN: 'http://x.test' })).toThrow();
+    expect(() => loadConfig({ ...prod, CSRF_SECRET: 'a'.repeat(40) })).toThrow();
     expect(() => loadConfig({ ...base, SESSION_SECRET: 'short' })).toThrow();
   });
 

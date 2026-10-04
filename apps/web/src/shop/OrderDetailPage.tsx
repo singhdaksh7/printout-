@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import {
-  RETENTION_MINUTES_COPY, confirmPrinted, describeError, errorCode, getOrder, newRequestId, requestDocumentAccess, transitionOrder,
+  confirmPrinted, describeError, errorCode, getOrder, newRequestId, requestDocumentAccess, transitionOrder,
   type OrderDetail, type OrderStatus, type PrintOptionsSnapshot
 } from '../lib/shop-api';
 import { ApiError } from '../lib/api';
 import { Banner, Modal, Skeleton, StatusChip, useToast } from './components';
+import { retentionHyphen, resolveRetentionMinutes } from '../lib/retention';
+import { useAuth } from './auth';
 import { useAutoRefresh, useDebounced, useTick } from './hooks';
 import { useRealtimeRefresh } from './realtime';
 
@@ -317,8 +319,11 @@ function BackLink() {
 }
 
 function ConfirmPrintModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (clientRequestId: string) => Promise<void> }) {
+  const { state } = useAuth();
+  const retentionMinutes = state.status === 'authed' ? state.session.retentionMinutes : undefined;
   const [requestId] = useState(newRequestId);
-  const [deleteAt] = useState(() => fmtTime(new Date(Date.now() + RETENTION_MINUTES_COPY * 60_000)));
+  // Display-only estimate; the authoritative deletion time comes from the server after confirmation.
+  const [deleteAt] = useState(() => fmtTime(new Date(Date.now() + resolveRetentionMinutes(retentionMinutes) * 60_000)));
   const [submitting, setSubmitting] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const submitted = useRef(false);
@@ -330,7 +335,7 @@ function ConfirmPrintModal({ onClose, onConfirm }: { onClose: () => void; onConf
   }
   return (
     <Modal title="Confirm printed successfully?" onClose={onClose} initialFocusRef={cancelRef} busy={submitting}>
-      <p>{`Confirming starts a ${RETENTION_MINUTES_COPY}-minute countdown. The customer's file will be permanently deleted at ${deleteAt}. Only confirm after the paper has actually printed.`}</p>
+      <p>{`Confirming starts a ${retentionHyphen(retentionMinutes)} countdown. The customer's file will be permanently deleted at ${deleteAt}. Only confirm after the paper has actually printed.`}</p>
       <div className="sh-actions">
         <button ref={cancelRef} className="sh-btn" onClick={onClose} disabled={submitting}>Cancel</button>
         <button className="sh-btn sh-btn-primary" onClick={go} disabled={submitting}>{submitting ? 'Confirming…' : 'Confirm'}</button>

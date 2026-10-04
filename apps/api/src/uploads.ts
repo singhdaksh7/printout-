@@ -3,6 +3,7 @@ import type { Readable } from 'node:stream';
 import { DocumentStatus, type Document, type PrismaClient } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { publicIntakeWhere } from './domain/eligibility.js';
 import { AppError } from './errors.js';
 import { inspectStoredObject } from './pdf/index.js';
 import { deriveSecret, generateObjectKey, hmacHex, safeEqualHex, StorageError, type Storage } from './storage/index.js';
@@ -86,7 +87,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesOptions> = async (app,
     async (request) => {
       const slug = slugParam.parse(request.params.slug);
       const body = initiateBody.parse(request.body);
-      const shop = await prisma.shop.findFirst({ where: { slug, status: 'ACTIVE', acceptsOrders: true }, select: { id: true } });
+      const shop = await prisma.shop.findFirst({ where: { slug, acceptsOrders: true, AND: [publicIntakeWhere] }, select: { id: true } });
       if (!shop) throw new AppError(404, 'SHOP_UNAVAILABLE', 'This shop is not accepting orders');
       if (body.byteSize === 0) throw new AppError(422, 'EMPTY_FILE', 'The file is empty');
       if (body.byteSize > config.UPLOAD_MAX_BYTES) {
@@ -157,6 +158,8 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesOptions> = async (app,
       if (length === 0) throw new AppError(422, 'EMPTY_FILE', 'The file is empty');
       if (length !== undefined && length > cap) {
         await failDocument(doc, false);
+        // The (lying) client may keep streaming: answer, then close the socket instead of waiting for the body.
+        reply.header('connection', 'close');
         throw new AppError(413, 'FILE_TOO_LARGE', 'File exceeds the declared or maximum size', { maxBytes: cap });
       }
       const body = request.body as Readable | undefined;
@@ -202,7 +205,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesOptions> = async (app,
       const slug = slugParam.parse(request.params.slug);
       const uploadId = idParam.safeParse(request.params.uploadId);
       if (!uploadId.success) throw new AppError(404, 'NOT_FOUND', 'Upload not found');
-      const doc = await prisma.document.findFirst({ where: { id: uploadId.data, shop: { slug, status: 'ACTIVE' } } });
+      const doc = await prisma.document.findFirst({ where: { id: uploadId.data, shop: { slug, ...publicIntakeWhere } } });
       if (!doc) throw new AppError(404, 'NOT_FOUND', 'Upload not found');
       if (doc.status === DocumentStatus.AVAILABLE) return { data: completionPayload(doc) };
       if (doc.status !== DocumentStatus.UPLOADING) throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'This upload is no longer available; start a new upload');

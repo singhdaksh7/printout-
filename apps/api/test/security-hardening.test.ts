@@ -133,6 +133,11 @@ describe('SEC: production behaviour (regression probes)', () => {
       NODE_ENV: 'production',
       SESSION_SECRET: 'p'.repeat(20) + 'Zq8vK2mXw9LrT4bN7cYd',
       CSRF_SECRET: 'c'.repeat(20) + 'Hj3sF6gUe1PaV5oRt0Ik',
+      QUOTE_SECRET: 'q'.repeat(20) + 'Bd4nM7xLc2WqE9rYh5Tz',
+      STORAGE_URL_SECRET: 's'.repeat(20) + 'Kf8aG1vXj6NpU3yDo2Rb',
+      TRUST_PROXY: 'false',
+      SSE_HEARTBEAT_MS: '25000',
+      ALLOW_LOCAL_STORAGE_IN_PRODUCTION: 'true',
       WEB_ORIGIN: 'https://print.example.org',
       DATABASE_URL: 'postgresql://printout:s3cure-pw@localhost:55433/printout_test_sec'
     });

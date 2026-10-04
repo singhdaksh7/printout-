@@ -1,39 +1,54 @@
-# Single-domain reverse proxy with automatic HTTPS (Let's Encrypt via Caddy).
-# DOMAIN and ACME_EMAIL come from the environment (see docker-compose.prod.yml).
+# Single-domain reverse proxy with automatic HTTPS (Let's Encrypt via Caddy; DOMAIN=localhost uses Caddy's internal CA).
+# DOMAIN, ACME_EMAIL and MAX_REQUEST_BODY come from the environment (see docker-compose.prod.yml).
+# HTTP -> HTTPS redirect (308) and certificate issuance/renewal are automatic for {$DOMAIN}.
 {
 	email {$ACME_EMAIL}
+
+	servers {
+		timeouts {
+			read_header 30s  # slowloris protection
+			read_body   10m  # slow phones uploading a 50 MiB PDF; the body is streamed, not buffered
+			idle        2m   # between requests on a keep-alive connection (an open SSE stream is an active request)
+			# NO `write` timeout on purpose: it would cut long-lived SSE streams.
+		}
+	}
 }
 
 {$DOMAIN} {
-	# Uploads are streamed to the API (not buffered by Caddy). 50 MiB file cap + headroom.
+	# Uploads are streamed to the API (never buffered by Caddy). Must be >= UPLOAD_MAX_BYTES + 1 MiB:
+	# 52428800 (50 MiB) + 1048576 = 53477376. Larger bodies get a clean 413 from Caddy (Content-Length known)
+	# or an aborted stream (chunked). The API enforces the exact per-upload cap itself.
 	request_body {
-		max_size 55MB
+		max_size {$MAX_REQUEST_BODY:53477376}
 	}
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		-Server
+		-X-Powered-By
 	}
 
-	# API + SSE. NO `encode` here: compression would buffer text/event-stream.
-	# flush_interval -1 flushes every write immediately (SSE, streamed downloads).
+	# API + SSE + liveness/readiness. NO `encode` here: compression would buffer text/event-stream.
 	@api path /api/* /health /ready
 	handle @api {
 		reverse_proxy api:3000 {
+			# Flush every write immediately: SSE events, heartbeats, streamed downloads. No request buffering either
+			# (request_buffers is unset), so a PUT body streams straight through to the API.
 			flush_interval -1
-			# Caddy sets/overwrites X-Forwarded-For/-Proto/-Host (no untrusted upstream proxies),
-			# matching TRUST_PROXY=true in the API.
+			# Never trust a client-supplied X-Forwarded-For: always replace it with the real peer address.
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
 			transport http {
 				dial_timeout 5s
-				response_header_timeout 5m # slow uploads: API only answers after the body is stored
+				response_header_timeout 5m # slow uploads: the API only answers after the body is stored
 				read_timeout 0             # never cut idle SSE streams (API heartbeats every ~25s)
-				write_timeout 5m
+				write_timeout 5m           # sending the request body upstream
 			}
 		}
 	}
 
-	# Everything else: the static SPA container (compressed, cache headers set by nginx there).
+	# Everything else: the static SPA container (compressed; cache and CSP headers are set by nginx there).
 	handle {
 		encode zstd gzip
 		reverse_proxy web:8080

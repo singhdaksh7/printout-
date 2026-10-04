@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockApi, renderAt } from './testutils';
 
 const TOKEN = 'k'.repeat(40);
-const order = (over: Record<string, unknown> = {}) => ({ orderNumber: 'DEMO-9', shopName: 'Demo Copy Centre', status: 'NEW', totalPaise: 2400, currency: 'INR', updatedAt: '2030-01-01T10:00:00.000Z', ...over });
+const order = (over: Record<string, unknown> = {}) => ({ orderNumber: 'DEMO-9', shopName: 'Demo Copy Centre', status: 'NEW', totalPaise: 2400, currency: 'INR', retentionMinutes: 30, updatedAt: '2030-01-01T10:00:00.000Z', ...over });
 
 beforeEach(() => { localStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -97,6 +97,17 @@ describe('countdown and polling (fake timers)', () => {
     expect(screen.getByRole('heading', { name: 'Your file has been deleted' })).toBeInTheDocument();
     expect(screen.queryByTestId('countdown')).toBeNull();
     expect(get(m)).toBeGreaterThan(before);
+  });
+
+  it.each([[1, '1 minute'], [45, '45 minutes']])('retention wording follows the server retentionMinutes=%s', async (n, phrase) => {
+    await setup(() => order({ status: 'PRINTED', retentionMinutes: n, documentDeleteAfter: '2030-01-01T09:00:30.000Z' }));
+    expect(screen.getByText(`Printed files are removed ${phrase} after printing.`)).toBeInTheDocument();
+  });
+
+  it('falls back to 30 minutes wording (display only) when the server omits retentionMinutes', async () => {
+    await setup(() => { const { retentionMinutes: _omit, ...o } = order({ status: 'PRINTED', documentDeleteAfter: '2030-01-01T09:00:30.000Z' }); return o; });
+    expect(screen.getByText('Printed files are removed 30 minutes after printing.')).toBeInTheDocument();
+    expect(screen.getByTestId('countdown')).toHaveTextContent('0:30');
   });
 
   it('corrects for server clock skew using serverTime', async () => {

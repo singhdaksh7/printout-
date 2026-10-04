@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { hashPassword } from '../auth.js';
 import { startOfIstDay, endOfIstDay } from '../domain/time.js';
 import { AppError, notFound } from '../errors.js';
+import { getLimiters } from '../rate-limits.js';
 import {
   adminGuard,
   audit,
@@ -113,10 +114,12 @@ const subscriptionView = (
  * and usage counters.
  */
 export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
-  const { prisma } = ctx;
+  const { prisma, config } = ctx;
+  const limits = getLimiters(app, config);
+  app.addHook('onRequest', limits.ipCeiling(config.RATE_LIMIT_ADMIN_READ_MAX * 5));
   app.addHook('preHandler', adminGuard(ctx));
 
-  app.get('/admin/dashboard', async () => {
+  app.get('/admin/dashboard', { preHandler: limits.adminRead }, async () => {
     const todayStart = startOfIstDay();
     const [shopGroups, subGroups, ordersToday, totalShops] = await Promise.all([
       prisma.shop.groupBy({ by: ['status'], _count: { _all: true } }),
@@ -138,7 +141,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     });
   });
 
-  app.get('/admin/shops', async (request) => {
+  app.get('/admin/shops', { preHandler: limits.adminRead }, async (request) => {
     const q = pageQuery
       .extend({ status: z.nativeEnum(ShopStatus).optional(), q: z.string().trim().max(100).optional() })
       .strict()
@@ -165,7 +168,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     });
   });
 
-  app.post('/admin/shops', async (request, reply) => {
+  app.post('/admin/shops', { preHandler: limits.adminMutation }, async (request, reply) => {
     const auth = authOf(request);
     const body = createShopBody.parse(request.body);
     if (body.planId) {
@@ -204,7 +207,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     }
   });
 
-  app.get('/admin/shops/:id', async (request) => {
+  app.get('/admin/shops/:id', { preHandler: limits.adminRead }, async (request) => {
     const { id } = idParam.parse(request.params);
     const shop = await prisma.shop.findUnique({
       where: { id },
@@ -226,7 +229,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     });
   });
 
-  app.put('/admin/shops/:id', async (request) => {
+  app.put('/admin/shops/:id', { preHandler: limits.adminMutation }, async (request) => {
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
     const body = updateShopBody.parse(request.body);
@@ -251,12 +254,12 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     return json({ shop: shopView(shop) });
   });
 
-  app.get('/admin/plans', async () => {
+  app.get('/admin/plans', { preHandler: limits.adminRead }, async () => {
     const plans = await prisma.plan.findMany({ orderBy: { createdAt: 'asc' } });
     return json(plans.map((p) => ({ id: p.id, name: p.name, pricePaise: p.pricePaise, active: p.active, updatedAt: p.updatedAt })));
   });
 
-  app.post('/admin/plans', async (request, reply) => {
+  app.post('/admin/plans', { preHandler: limits.adminMutation }, async (request, reply) => {
     const auth = authOf(request);
     const body = createPlanBody.parse(request.body);
     try {
@@ -273,7 +276,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     }
   });
 
-  app.put('/admin/plans/:id', async (request) => {
+  app.put('/admin/plans/:id', { preHandler: limits.adminMutation }, async (request) => {
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
     const body = updatePlanBody.parse(request.body);
@@ -291,7 +294,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     }
   });
 
-  app.get('/admin/subscriptions', async (request) => {
+  app.get('/admin/subscriptions', { preHandler: limits.adminRead }, async (request) => {
     const q = pageQuery.extend({ status: z.nativeEnum(SubscriptionStatus).optional() }).strict().parse(request.query);
     const rows = await prisma.subscription.findMany({
       where: { status: q.status, ...cursorWhere(decodeCursor(q.cursor)) },
@@ -308,7 +311,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
   });
 
   /** `:id` is the SHOP id: one subscription per shop. Creates the subscription if absent (planId required then). */
-  app.put('/admin/subscriptions/:id', async (request) => {
+  app.put('/admin/subscriptions/:id', { preHandler: limits.adminMutation }, async (request) => {
     const auth = authOf(request);
     const { id: shopId } = idParam.parse(request.params);
     const body = subscriptionBody.parse(request.body);
@@ -342,7 +345,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     return json(subscriptionView(sub));
   });
 
-  app.get('/admin/audit-logs', async (request) => {
+  app.get('/admin/audit-logs', { preHandler: limits.adminRead }, async (request) => {
     const q = pageQuery
       .extend({ shopId: z.string().min(8).max(64).optional(), action: z.string().max(100).optional() })
       .strict()

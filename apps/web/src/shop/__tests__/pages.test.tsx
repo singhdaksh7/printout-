@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeES, authedSession, emptyList, mockFetch, renderShop, type Handler } from './helpers';
+import { FakeES, authedSession, emptyList, mockFetch, renderShop, session, type Handler } from './helpers';
 import { setCsrfToken } from '../../lib/api';
 import type { PricingRule } from '../../lib/shop-api';
 
@@ -104,6 +104,14 @@ describe('pricing editor', () => {
 });
 
 describe('QR page', () => {
+  it.each([[1, '1 minute'], [45, '45 minutes']])('poster note follows the session retentionMinutes=%s', async (n, phrase) => {
+    const sess: Handler = ({ method, path }) => (method === 'GET' && path === '/auth/session' ? { data: session({ retentionMinutes: n }) } : undefined);
+    mockFetch(sess, emptyList, ({ path }) => (path === '/shop/qr' ? { data: { publicUrl: 'https://printout.test/p/central', slug: 'central' } } : undefined));
+    renderShop('/shop/qr');
+    const poster = await screen.findByTestId('qr-poster');
+    expect(within(poster).getByText(`Documents are automatically deleted ${phrase} after printing.`)).toBeInTheDocument();
+  });
+
   it('renders the QR, copy/download actions and a single-page poster', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => {});

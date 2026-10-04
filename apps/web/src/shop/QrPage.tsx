@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { describeError, getQr, type QrInfo } from '../lib/shop-api';
 import { useAuth } from './auth';
+import { retentionPhrase } from '../lib/retention';
 import { Banner, Skeleton, useToast } from './components';
 
 function download(href: string, name: string) {
@@ -14,6 +15,7 @@ function download(href: string, name: string) {
 export default function QrPage() {
   const { state } = useAuth();
   const sessionName = state.status === 'authed' ? (state.session.shop?.displayName ?? '') : '';
+  const retentionMinutes = state.status === 'authed' ? state.session.retentionMinutes : undefined;
   const [params, setParams] = useSearchParams();
   const posterMode = params.get('poster') === '1';
   const [info, setInfo] = useState<QrInfo | null>(null);
@@ -93,7 +95,7 @@ export default function QrPage() {
           </ol>
           {shopName && <div className="qr-poster-shop">{shopName}</div>}
           <div className="qr-poster-url">{info.publicUrl}</div>
-          <p className="qr-poster-note">Documents are automatically deleted 30 minutes after printing.</p>
+          <p className="qr-poster-note">Documents are automatically deleted {retentionPhrase(retentionMinutes)} after printing.</p>
         </div>
       </div>
       {toast}

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { endOfIstDay, startOfIstDay } from '../domain/time.js';
 import { AppError, notFound } from '../errors.js';
+import { getLimiters } from '../rate-limits.js';
 import { audit, authOf, idParam, isUniqueViolation, json, shopGuard, shopIdOf, type AppContext } from './context.js';
 
 const settingsBody = z
@@ -60,6 +61,8 @@ const duplicateRule = () =>
 
 export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const { prisma, config } = ctx;
+  const limits = getLimiters(app, config);
+  app.addHook('onRequest', limits.ipCeiling(config.RATE_LIMIT_SHOP_READ_MAX * 5));
   app.addHook('preHandler', shopGuard(ctx));
 
   async function settingsView(shopId: string) {
@@ -74,9 +77,9 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     };
   }
 
-  app.get('/shop/settings', async (request) => json(await settingsView(shopIdOf(request))));
+  app.get('/shop/settings', { preHandler: limits.shopRead }, async (request) => json(await settingsView(shopIdOf(request))));
 
-  app.put('/shop/settings', async (request) => {
+  app.put('/shop/settings', { preHandler: limits.shopMutation }, async (request) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const body = settingsBody.parse(request.body);
@@ -102,7 +105,7 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     return json(await settingsView(shopId));
   });
 
-  app.get('/shop/pricing-rules', async (request) => {
+  app.get('/shop/pricing-rules', { preHandler: limits.shopRead }, async (request) => {
     const rules = await prisma.pricingRule.findMany({
       where: { shopId: shopIdOf(request) },
       orderBy: [{ colourMode: 'asc' }, { sides: 'asc' }]
@@ -110,7 +113,7 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     return json(rules.map(ruleView));
   });
 
-  app.post('/shop/pricing-rules', async (request, reply) => {
+  app.post('/shop/pricing-rules', { preHandler: limits.shopMutation }, async (request, reply) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const body = createRuleBody.parse(request.body);
@@ -135,7 +138,7 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     }
   });
 
-  app.put('/shop/pricing-rules/:id', async (request) => {
+  app.put('/shop/pricing-rules/:id', { preHandler: limits.shopMutation }, async (request) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
@@ -161,7 +164,7 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     }
   });
 
-  app.delete('/shop/pricing-rules/:id', async (request, reply) => {
+  app.delete('/shop/pricing-rules/:id', { preHandler: limits.shopMutation }, async (request, reply) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
@@ -173,7 +176,7 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     return reply.code(204).send();
   });
 
-  app.get('/shop/qr', async (request) => {
+  app.get('/shop/qr', { preHandler: limits.shopRead }, async (request) => {
     const shop = await prisma.shop.findUniqueOrThrow({ where: { id: shopIdOf(request) } });
     return json({
       publicUrl: `${config.WEB_ORIGIN.replace(/\/$/, '')}/p/${shop.slug}`,
@@ -182,7 +185,7 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     });
   });
 
-  app.get('/shop/analytics', async (request) => {
+  app.get('/shop/analytics', { preHandler: limits.shopRead }, async (request) => {
     const shopId = shopIdOf(request);
     const q = analyticsQuery.parse(request.query);
     const from = q.from ?? startOfIstDay();

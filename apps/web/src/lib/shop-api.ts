@@ -2,12 +2,13 @@ import { api, ApiError, setCsrfToken } from './api';
 
 export type OrderStatus = 'NEW' | 'ACCEPTED' | 'PRINTING' | 'PRINTED' | 'READY' | 'COLLECTED' | 'CANCELLED' | 'EXPIRED';
 export const ALL_STATUSES: OrderStatus[] = ['NEW', 'ACCEPTED', 'PRINTING', 'PRINTED', 'READY', 'COLLECTED', 'CANCELLED', 'EXPIRED'];
-export const RETENTION_MINUTES_COPY = 30; // copy only; the server decides deleteAfter
 
 export interface SessionData {
   user: { id: string; displayName: string; role: 'SHOP_OWNER' | 'PLATFORM_ADMIN' };
   shop?: { id: string; slug: string; displayName: string } | null;
   csrfToken: string;
+  /** Server retention policy in minutes (display wording only). Absent on older APIs. */
+  retentionMinutes?: number;
 }
 export interface OrderSummary {
   id: string; orderNumber: string; status: OrderStatus; totalPaise: number; createdAt: string; updatedAt?: string;

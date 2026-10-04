@@ -5,6 +5,7 @@ import { newToken } from '../auth.js';
 import { quoteSecret } from '../config.js';
 import { normalisePrintOptions, printOptionsSchema, quote, type QuoteResult } from '../domain/pricing.js';
 import { signQuote, verifyQuote } from '../domain/quote-token.js';
+import { subscriptionAllowsIntake } from '../domain/eligibility.js';
 import { AppError, notFound } from '../errors.js';
 import { isUniqueViolation, json, type AppContext } from './context.js';
 
@@ -33,24 +34,24 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
 
   /** Active (not suspended) shop by slug, or a constant 404. */
   async function activeShop(slug: string) {
-    const shop = await prisma.shop.findFirst({ where: { slug, status: 'ACTIVE' }, include: { settings: true } });
+    const shop = await prisma.shop.findFirst({ where: { slug, status: 'ACTIVE' }, include: { settings: true, subscription: { select: { status: true } } } });
     if (!shop) throw notFound('Shop not found');
     return shop;
   }
 
   async function orderingShop(slug: string) {
     const shop = await activeShop(slug);
-    if (!shop.acceptsOrders) throw new AppError(409, 'SHOP_UNAVAILABLE', 'This shop is not accepting orders right now');
+    if (!shop.acceptsOrders || !subscriptionAllowsIntake(shop.subscription)) throw new AppError(409, 'SHOP_UNAVAILABLE', 'This shop is not accepting orders right now');
     return shop;
   }
 
   app.get('/public/shops/:slug', { config: limit }, async (request) => {
     const { slug } = slugParam.parse(request.params);
-    const found = await prisma.shop.findUnique({ where: { slug }, include: { settings: true } });
+    const found = await prisma.shop.findUnique({ where: { slug }, include: { settings: true, subscription: { select: { status: true } } } });
     if (!found) throw notFound('Shop not found');
     if (found.status !== 'ACTIVE') {
       // No private data for suspended shops; the customer UI can show a clear "unavailable" state.
-      return json({ slug: found.slug, displayName: found.displayName, status: found.status, acceptsOrders: false });
+      return json({ slug: found.slug, displayName: found.displayName, status: found.status, acceptsOrders: false, retentionMinutes: config.PRINT_RETENTION_MINUTES });
     }
     const shop = found;
     return json({
@@ -59,7 +60,8 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
       displayName: shop.displayName,
       address: shop.address,
       publicContact: shop.settings?.publicContact ?? null,
-      acceptsOrders: shop.acceptsOrders,
+      acceptsOrders: shop.acceptsOrders && subscriptionAllowsIntake(shop.subscription),
+      retentionMinutes: config.PRINT_RETENTION_MINUTES,
       branding: shop.settings ? { brandColor: shop.settings.brandColor } : undefined,
       printCapabilities: { paperSizes: ['A4'], colourModes: ['bw', 'colour'], sides: ['single', 'duplex'] }
     });
@@ -204,6 +206,7 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
     const price = order.priceSnapshot as { selectedPageCount?: number };
     return json({
       serverTime: new Date(),
+      retentionMinutes: config.PRINT_RETENTION_MINUTES,
       shopSlug: order.shop.slug,
       orderNumber: order.orderNumber,
       shopName: order.shop.displayName,

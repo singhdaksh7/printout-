@@ -1,7 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeES, authedSession, mockFetch, order, renderShop, type Handler } from './helpers';
+import { FakeES, authedSession, session, mockFetch, order, renderShop, type Handler } from './helpers';
 import { setCsrfToken } from '../../lib/api';
 import type { OrderDetail, OrderStatus } from '../../lib/shop-api';
 
@@ -81,6 +81,15 @@ describe('order detail', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel order' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel order' }));
     await waitFor(() => expect(calls.find((c) => c.path.endsWith('/transitions'))?.body.toStatus).toBe('CANCELLED'));
+  });
+
+  it.each([[1, '1-minute'], [45, '45-minute']])('confirm modal wording follows the session retentionMinutes=%s', async (n, word) => {
+    const user = userEvent.setup();
+    const sess: Handler = ({ method, path }) => (method === 'GET' && path === '/auth/session' ? { data: session({ retentionMinutes: n }) } : undefined);
+    mockFetch(sess, getDetail({ d: detail('PRINTING') }));
+    renderShop('/shop/orders/o1');
+    await user.click(await screen.findByRole('button', { name: 'Confirm printed successfully' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(`Confirming starts a ${word} countdown.`);
   });
 
   it('opening the document never marks printed; confirmation needs an explicit click in a modal with the privacy copy', async () => {

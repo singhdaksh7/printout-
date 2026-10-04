@@ -1,3 +1,6 @@
+/** Upper bound for any temporary read URL (both drivers). Routes pass min(this, time until deleteAfter/expiresAt). */
+export const MAX_PRESIGN_SECONDS = 300;
+
 export interface Storage {
   /** Streams `body` into private storage under a server-generated key. Never buffers the whole file; enforces maxBytes while streaming. */
   put(key: string, body: NodeJS.ReadableStream, opts: { maxBytes: number; contentType?: string }): Promise<{ size: number; sha256: string }>;

@@ -7,7 +7,7 @@ export type PrintOptions = { paperSize: 'A4'; colourMode: 'bw' | 'colour'; sides
 export type UploadLimits = { acceptedMimeTypes: string[]; maxBytes: number; maxPdfPages: number; imagePageCount: number };
 export const DEFAULT_LIMITS: UploadLimits = { acceptedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxBytes: 52428800, maxPdfPages: 200, imagePageCount: 1 };
 
-export type PublicShop = { slug: string; displayName: string; address?: string | null; acceptsOrders: boolean; status?: string };
+export type PublicShop = { slug: string; displayName: string; address?: string | null; acceptsOrders: boolean; status?: string; retentionMinutes?: number };
 export type InitiateResult = { uploadId: string; uploadUrl: string; requiredHeaders?: Record<string, string>; expiresAt: string; limits?: Partial<UploadLimits> };
 export type CompleteResult = { documentId: string; detectedMimeType: string; byteSize: number; pageCount: number | null; expiresAt: string; documentStatus?: string };
 export type Quote = { quoteId: string; selectedPageCount: number; sheetsPerCopy: number; totalSheets: number; unitPricePaise: number; totalPaise: number; currency: string; expiresAt: string; printOptions?: PrintOptions };
@@ -23,6 +23,7 @@ export type TrackedOrder = {
   documentDeletedAt?: string | null;
   serverTime?: string;
   shopSlug?: string;
+  retentionMinutes?: number;
   printOptions?: Partial<PrintOptions> | null;
   selectedPageCount?: number | null;
   totalSheets?: number | null;

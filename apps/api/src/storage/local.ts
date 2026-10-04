@@ -3,7 +3,7 @@ import { createReadStream, createWriteStream, mkdirSync, promises as fs } from '
 import path from 'node:path';
 import { pumpLimited } from './pump.js';
 import { assertKey, hmacHex, safeEqualHex } from './keys.js';
-import { StorageError, type Storage } from './types.js';
+import { MAX_PRESIGN_SECONDS, StorageError, type Storage } from './types.js';
 
 export class LocalStorage implements Storage {
   private readonly root: string;
@@ -92,7 +92,7 @@ export class LocalStorage implements Storage {
 
   async temporaryReadUrl(key: string, expiresSeconds: number) {
     assertKey(key);
-    const seconds = Math.max(1, Math.floor(expiresSeconds));
+    const seconds = Math.min(MAX_PRESIGN_SECONDS, Math.max(1, Math.floor(expiresSeconds)));
     const exp = Math.floor(Date.now() / 1000) + seconds;
     return { url: `${this.urlPrefix}/internal/documents/${key}?exp=${exp}&sig=${this.signRead(key, exp)}`, expiresAt: new Date(exp * 1000) };
   }

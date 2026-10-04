@@ -20,6 +20,19 @@ async function finishUpload() {
 }
 
 describe('shop landing', () => {
+  it.each([[1, '1 minute'], [45, '45 minutes']])('privacy copy follows the server retentionMinutes=%s', async (n, phrase) => {
+    mockApi({ [`GET ${base}`]: { data: { ...shopOk, retentionMinutes: n } } });
+    renderAt('/p/demo-shop');
+    expect(await screen.findByText(`Deleted ${phrase} after printing.`)).toBeInTheDocument();
+  });
+
+  it('privacy copy falls back to 30 minutes when the server omits retentionMinutes', async () => {
+    const { retentionMinutes: _omit, ...legacy } = shopOk;
+    mockApi({ [`GET ${base}`]: { data: legacy } });
+    renderAt('/p/demo-shop');
+    expect(await screen.findByText('Deleted 30 minutes after printing.')).toBeInTheDocument();
+  });
+
   it('shows shop details, privacy line and the choose-file CTA', async () => {
     mockApi({ [`GET ${base.replace('/public/shops/demo-shop', '/public/shops/demo-shop')}`]: { data: shopOk } });
     renderAt('/p/demo-shop');

@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import Fastify from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { LoginThrottle } from './auth.js';
-import { loadConfig, type Config } from './config.js';
+import { configWarnings, loadConfig, type Config } from './config.js';
 import { AppError, registerErrorHandlers } from './errors.js';
 import { ShopEvents } from './events.js';
 import { adminRoutes } from './routes/admin.js';
@@ -27,6 +27,10 @@ export interface AppDeps {
   events?: ShopEvents;
   /** Test hook: destination for the request logger. */
   logStream?: NodeJS.WritableStream;
+  /** Test hook: Node http server timeouts (e.g. to prove SSE streams outlive requestTimeout). */
+  http?: { requestTimeout?: number; keepAliveTimeout?: number; connectionsCheckingInterval?: number };
+  /** Test hook: how long /ready waits for the database before answering 503 (default 2000 ms). */
+  readyTimeoutMs?: number;
 }
 
 /** URL for logs: no query string, and bearer-token path segments replaced. */
@@ -48,7 +52,17 @@ export function createApp(deps: AppDeps = {}) {
   const app = Fastify({
     logger: {
       level: config.NODE_ENV === 'test' ? 'silent' : 'info',
-      redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]'],
+      redact: [
+        'req.headers.cookie',
+        'req.headers.authorization',
+        'req.headers["x-csrf-token"]',
+        'res.headers["set-cookie"]',
+        'headers.cookie',
+        'headers.authorization',
+        'headers["x-csrf-token"]',
+        'password',
+        '*.password'
+      ],
       serializers: {
         // Default serializer logs the full URL: query strings carry signed-URL signatures and upload tokens, and
         // some paths carry bearer tokens (tracking token, storage key).
@@ -65,7 +79,10 @@ export function createApp(deps: AppDeps = {}) {
     trustProxy: config.TRUST_PROXY_CIDRS ?? config.TRUST_PROXY,
     bodyLimit: config.JSON_BODY_LIMIT_BYTES,
     // Node's default is "no timeout" under Fastify; bound slow-body (slowloris-style) requests. Matches the upload token TTL.
-    requestTimeout: 15 * 60_000,
+    // Only bounds receiving the request; open SSE responses are unaffected (see routes/shop-events.ts + test).
+    requestTimeout: deps.http?.requestTimeout ?? 15 * 60_000,
+    ...(deps.http?.keepAliveTimeout !== undefined ? { keepAliveTimeout: deps.http.keepAliveTimeout } : {}),
+    ...(deps.http?.connectionsCheckingInterval !== undefined ? { http: { connectionsCheckingInterval: deps.http.connectionsCheckingInterval } } : {}),
     genReqId: () => randomUUID()
   });
 
@@ -92,12 +109,24 @@ export function createApp(deps: AppDeps = {}) {
     events.closeAll();
   });
 
+  if (config.NODE_ENV !== 'test') for (const warning of configWarnings(config)) app.log.warn(warning);
+
+  // Liveness: the process answers. Never touches the database (a DB outage must not restart-loop the container).
   app.get('/health', async () => json({ status: 'ok' }));
-  app.get('/ready', async (_request, reply) => {
+  // Readiness: the database answers SELECT 1 within a short timeout. Storage reachability is deliberately NOT required.
+  app.get('/ready', async (request, reply) => {
+    let timer: NodeJS.Timeout | undefined;
     try {
-      await prisma.$queryRaw`SELECT 1`;
+      await Promise.race([
+        prisma.$queryRaw`SELECT 1`,
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('readiness timeout')), deps.readyTimeoutMs ?? 2000);
+        })
+      ]);
     } catch {
-      return reply.code(503).send({ error: { code: 'INTERNAL_ERROR', message: 'Database unavailable', requestId: _request.id } });
+      return reply.code(503).send({ error: { code: 'INTERNAL_ERROR', message: 'Database unavailable', requestId: request.id } });
+    } finally {
+      clearTimeout(timer);
     }
     return json({ status: 'ready' });
   });

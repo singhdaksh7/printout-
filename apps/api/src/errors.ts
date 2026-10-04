@@ -61,6 +61,28 @@ const STATUS_CODES: Record<number, ErrorCode> = {
   429: 'RATE_LIMITED'
 };
 
+/**
+ * Zod's flattened issues, with any echoed input removed: enum/literal messages read "..., received 'x'", which would
+ * reflect submitted values (passwords, tokens) into the response and into logs. Messages are also length-capped.
+ */
+export function safeFlatten(error: ZodError): { formErrors: string[]; fieldErrors: Record<string, string[]> } {
+  const clean = (message: string) => message.replace(/,?\s*received[ ].*$/is, '').trim().slice(0, 200);
+  const flat = error.flatten();
+  return {
+    formErrors: flat.formErrors.map(clean),
+    fieldErrors: Object.fromEntries(Object.entries(flat.fieldErrors).map(([key, msgs]) => [key, (msgs ?? []).map(clean)]))
+  };
+}
+
+/** Loggable error summary: never the message of ORM errors (they embed query arguments) and never a stack with values. */
+export function safeError(error: unknown): { name: string; code?: string; message?: string } {
+  const e = error as { name?: string; code?: string; message?: string } | null;
+  const name = typeof e?.name === 'string' ? e.name : 'Error';
+  const code = typeof e?.code === 'string' ? e.code : undefined;
+  if (/^(PrismaClient|Prisma)/.test(name)) return { name, ...(code ? { code } : {}) };
+  return { name, ...(code ? { code } : {}), message: typeof e?.message === 'string' ? e.message.slice(0, 200) : undefined };
+}
+
 export function toEnvelope(error: unknown, requestId: string): { statusCode: number; body: ErrorEnvelope } {
   if (error instanceof AppError) {
     const inner: ErrorEnvelope['error'] = { code: error.code, message: error.message, requestId };
@@ -70,7 +92,7 @@ export function toEnvelope(error: unknown, requestId: string): { statusCode: num
   if (error instanceof ZodError) {
     return {
       statusCode: 400,
-      body: { error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', requestId, details: error.flatten() } }
+      body: { error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', requestId, details: safeFlatten(error) } }
     };
   }
   const status = (error as FastifyError | undefined)?.statusCode;
@@ -89,7 +111,7 @@ export function toEnvelope(error: unknown, requestId: string): { statusCode: num
 export function registerErrorHandlers(app: FastifyInstance): void {
   app.setErrorHandler((error: unknown, request: FastifyRequest, reply: FastifyReply) => {
     const { statusCode, body } = toEnvelope(error, request.id);
-    if (statusCode >= 500) request.log.error({ err: error, requestId: request.id }, 'request failed');
+    if (statusCode >= 500) request.log.error({ err: safeError(error), requestId: request.id }, 'request failed');
     else request.log.info({ code: body.error.code, requestId: request.id, statusCode }, 'request rejected');
     if (reply.sent) return;
     void reply.status(statusCode).send(body);

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { retentionPhrase } from '../lib/retention';
 import { Link, useParams } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import type { HistoryEntry, OrderStatus, TrackedOrder } from '../lib/customer-api';
@@ -113,7 +114,7 @@ export function TrackingPage() {
           {deleted
             ? <><h2 className="cx-h2">Your file has been deleted</h2><p className="cx-muted">Your order is still tracked here. No copy of your document is kept.</p></>
             : <><h2 className="cx-h2">Your file will be deleted in <span className="cx-tnum" data-testid="countdown">{formatCountdown(Math.ceil((deleteAt - now) / 1000) * 1000)}</span></h2>
-              <p className="cx-muted">Printed files are removed 30 minutes after printing.</p></>}
+              <p className="cx-muted">Printed files are removed {retentionPhrase(order.retentionMinutes)} after printing.</p></>}
         </section>
       )}
 

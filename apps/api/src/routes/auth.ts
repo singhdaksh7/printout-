@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { burnPasswordCheck, csrfToken, newToken, tokenHash, verifyPassword } from '../auth.js';
 import { AppError } from '../errors.js';
+import { getLimiters } from '../rate-limits.js';
 import {
   assertCsrf,
   audit,
@@ -33,14 +34,17 @@ interface UserWithShop {
   shop: { id: string; slug: string; displayName: string } | null;
 }
 
-const sessionPayload = (user: UserWithShop, csrf: string) => ({
+const sessionPayload = (user: UserWithShop, csrf: string, retentionMinutes: number) => ({
   user: { id: user.id, displayName: user.displayName, role: user.role },
   shop: user.shop ? { id: user.shop.id, slug: user.shop.slug, displayName: user.shop.displayName } : null,
-  csrfToken: csrf
+  csrfToken: csrf,
+  /** Server-authoritative post-print retention window; the UI displays it and never hard-codes it. */
+  retentionMinutes
 });
 
 export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const { prisma, config } = ctx;
+  const limits = getLimiters(app, config);
 
   app.post(
     '/auth/login',
@@ -79,11 +83,11 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
       const session = await prisma.session.create({ data: { userId: user.id, tokenHash: tokenHash(raw), expiresAt } });
       setSessionCookie(ctx, reply, raw, expiresAt);
       await audit(prisma, { shopId: user.shopId, actorUserId: user.id, action: 'auth.login', targetType: 'user', targetId: user.id });
-      return json(sessionPayload(user, csrfToken(config.CSRF_SECRET, session.id)));
+      return json(sessionPayload(user, csrfToken(config.CSRF_SECRET, session.id), config.PRINT_RETENTION_MINUTES));
     }
   );
 
-  app.post('/auth/logout', async (request, reply) => {
+  app.post('/auth/logout', { preHandler: limits.shopMutation }, async (request, reply) => {
     const auth = await authenticate(ctx, request);
     assertCsrf(ctx, request, auth);
     await prisma.session.updateMany({ where: { id: auth.sessionId }, data: { invalidatedAt: new Date() } });
@@ -91,10 +95,10 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
     return reply.code(204).send();
   });
 
-  app.get('/auth/session', async (request) => {
+  app.get('/auth/session', { preHandler: limits.shopRead }, async (request) => {
     await authenticate(ctx, request);
     const auth = authOf(request);
     const user = await prisma.user.findUniqueOrThrow({ where: { id: auth.userId }, include: { shop: true } });
-    return json(sessionPayload(user, csrfToken(config.CSRF_SECRET, auth.sessionId)));
+    return json(sessionPayload(user, csrfToken(config.CSRF_SECRET, auth.sessionId), config.PRINT_RETENTION_MINUTES));
   });
 }

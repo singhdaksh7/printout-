@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import { loadConfig } from './config.js';
+import { ConfigError, loadConfig } from './config.js';
 import { cleanupExpiredDocuments, type CleanupLogger, type CleanupResult, type CleanupStorage } from './cleanup.js';
 import { createStorage, type StorageConfig } from './storage/index.js';
 
@@ -121,6 +121,13 @@ function createWorkerStorage(env: NodeJS.ProcessEnv): CleanupStorage {
 
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
+  // Same validation as the API (production fails closed): print every problem, never secret values, and exit non-zero.
+  try {
+    loadConfig();
+  } catch (error) {
+    console.error(error instanceof ConfigError ? error.message : 'Invalid configuration');
+    process.exit(1);
+  }
   const handle = startWorker();
   const shutdown = () => {
     void handle.stop().then(() => process.exit(0));

@@ -37,6 +37,29 @@ Run against a private DB (`printout_test_sec`).
 - A document URL issued by `document-access` stays valid up to 5 minutes (bounded by the retention deadline) even if the order is cancelled meanwhile.
 - Upload PUT storage failure path deletes the object before checking for `KEY_EXISTS`; in a multi-process deployment two simultaneous PUTs with the same single-use token could discard the winner's file (self-inflicted by the token holder; no cross-tenant impact).
 - Concurrent `/complete` calls each parse the PDF in a worker (up to 768 MB heap); bounded only by the per-IP rate limit (60/min). Consider a global concurrency cap.
-- Authenticated shop routes are not rate limited; SSE connections per session are unbounded.
 - Admin shop search combined with a cursor drops the search filter (`OR` key collision in `admin.ts`): functional, not a security issue; reported to ADMIN/lead.
 - The in-memory login throttle and SSE bus are per process (documented limitation).
+
+## Production hardening pass (HARDEN-API)
+
+| # | Item | Status | Evidence |
+| - | --- | --- | --- |
+| C | Authenticated surfaces had no rate limits; SSE connections unbounded | Fixed | Per-session (IP fallback) limiters per category + per-IP scope ceiling, `RATE_LIMITED` envelope with `Retry-After`; SSE connect limit and max concurrent streams per shop with slot release. `test/hardening-api.test.ts`, `test/hardening-sse.test.ts`. Limits are in memory (single instance). |
+| D | Proxy trust | Fixed | Production must set `TRUST_PROXY` or `TRUST_PROXY_CIDRS`; `loopback,linklocal,uniquelocal` recommended behind Caddy; `TRUST_PROXY=true` warns. Tests prove an untrusted client cannot change its rate-limit/login key with `X-Forwarded-For` and a trusted hop's client IP is honoured. |
+| E | S3/R2 adapter | Fixed | Presigned TTL = min(300s, seconds to deleteAfter/expiresAt) via `domain/access.ts`; route refuses with 410 when < 1s remains; both drivers hard-cap at 300s (was 7 days for S3). `NoSuchBucket` no longer counts as "object missing" (previously `delete()` would have reported success and retention would have marked documents DELETED). 3 attempts, 5s connect / 60s idle timeouts. Bucket must be private (documented). |
+| F | Upload size layers | Verified + hardened | Proxy cap >= UPLOAD_MAX_BYTES + 1 MiB (50 MiB -> >= 53,477,376 B; shipped 55MB is fine), `bodyLimit` = max+1, streamed pump cap, declared size cap all agree; lying Content-Length -> immediate 413 + connection close; chunked past the cap -> 413. `UPLOAD_MAX_BYTES` > 100 MiB refused at startup. |
+| K | SSE production review | Fixed/verified | Headers, 25s heartbeat (enforced <= 25s in production), cleanup on close/error/abort/shutdown, tenant + role re-check on connect and session/shop re-check each heartbeat, replay per shop. `requestTimeout`/`keepAliveTimeout` do not terminate open streams (real-socket test with 300ms timeouts). **The API must remain ONE realtime-producing instance** (in-memory bus; the worker cannot push events). |
+| L | bootstrap-admin | Fixed | `bootstrapAdmin(prisma, env)` exported; env or hidden TTY prompt, min 12 + weak list, Argon2id, idempotent (reset only with `ADMIN_RESET_PASSWORD=1`), audit-logged, exit codes 0/1/2, refuses production without `DATABASE_URL`, never prints the password. |
+| M | Subscription eligibility | Fixed | Public intake requires shop ACTIVE and (no subscription or ACTIVE). Subscription suspension did nothing before. Owners of subscription-suspended shops keep login/reads; shop suspension still blocks login. Retention unaffected. Admin suspend/activate/subscription changes audit-logged. |
+| N | Logging/privacy re-audit | Fixed | Zod `details` echoed submitted input (`received '...'` for enums); now stripped. 5xx logging no longer logs ORM error messages (they embed query arguments). Added redaction paths. A production-config test exercises every route class and asserts logs/error bodies contain no passwords, cookies, CSRF/upload/tracking tokens, `sig`/`token`/`exp`, object keys, secrets or document bytes. |
+| O | Cache-Control | Verified | Global `no-store` default (incl. errors, 404, health); SSE sends `no-store, no-cache, no-transform`; internal documents `private, no-store`. |
+| Q | Production env contract | Fixed | Fail-closed list of problems (names/reasons only) for API and worker (`ConfigError`, exit 1); distinct >= 32-char secrets, QUOTE_SECRET required, https origins, explicit proxy/storage choices. |
+| R | Health/readiness | Fixed | `/health` no DB; `/ready` SELECT 1 with 2s timeout, 503 envelope, no driver text. Use `/health` for Docker healthchecks. |
+| S | Migrations | Verified | Clean DB: `prisma migrate deploy` + `generate` + `migrate diff --from-url ... --to-schema-datamodel --exit-code` => no drift. Production command: `prisma migrate deploy`. |
+
+Accepted / remaining: counters, login throttle and SSE bus are per process (run one API instance); a document URL issued just before `deleteAfter` is bounded by it, but a cancelled order's URL stays valid until its (<= 5 min) TTL; HEAD against a missing bucket is indistinguishable from a missing object in S3 (`NotFound`), but deletes use DeleteObject whose `NoSuchBucket` now surfaces.
+
+
+## Dependency advisories
+
+See [DEPENDENCIES.md](DEPENDENCIES.md): 3 production advisories (deepmerge-ts via the Prisma CLI, react-router x2) are unreachable in this app and need major upgrades; dev-only tooling advisories are listed there too. Deployment hardening evidence (containers, Caddy, backups) is in [DEPLOYMENT.md](DEPLOYMENT.md) and [PROD_SMOKE.md](PROD_SMOKE.md).
