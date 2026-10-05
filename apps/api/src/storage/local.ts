@@ -80,20 +80,23 @@ export class LocalStorage implements Storage {
     }
   }
 
-  private signRead(key: string, exp: number): string {
-    return hmacHex(this.secret, `doc:${key}:${exp}`);
+  /** The signature also covers the disposition: an inline link cannot be turned into a download link (or vice versa). */
+  private signRead(key: string, exp: number, disposition: 'inline' | 'attachment' = 'inline'): string {
+    return hmacHex(this.secret, disposition === 'attachment' ? `doc:${key}:${exp}:attachment` : `doc:${key}:${exp}`);
   }
 
   /** Constant-time signature check plus expiry check (exp is unix seconds). */
-  verifyRead(key: string, exp: number, sig: string, nowMs = Date.now()): boolean {
+  verifyRead(key: string, exp: number, sig: string, nowMs = Date.now(), disposition: 'inline' | 'attachment' = 'inline'): boolean {
     if (!Number.isSafeInteger(exp) || exp * 1000 <= nowMs) return false;
-    return safeEqualHex(sig, this.signRead(key, exp));
+    return safeEqualHex(sig, this.signRead(key, exp, disposition));
   }
 
-  async temporaryReadUrl(key: string, expiresSeconds: number) {
+  async temporaryReadUrl(key: string, expiresSeconds: number, opts?: { disposition?: 'inline' | 'attachment' }) {
     assertKey(key);
     const seconds = Math.min(MAX_PRESIGN_SECONDS, Math.max(1, Math.floor(expiresSeconds)));
     const exp = Math.floor(Date.now() / 1000) + seconds;
-    return { url: `${this.urlPrefix}/internal/documents/${key}?exp=${exp}&sig=${this.signRead(key, exp)}`, expiresAt: new Date(exp * 1000) };
+    const disposition = opts?.disposition ?? 'inline';
+    const dl = disposition === 'attachment' ? '&dl=1' : '';
+    return { url: `${this.urlPrefix}/internal/documents/${key}?exp=${exp}${dl}&sig=${this.signRead(key, exp, disposition)}`, expiresAt: new Date(exp * 1000) };
   }
 }

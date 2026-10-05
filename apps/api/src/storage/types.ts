@@ -6,7 +6,7 @@ export interface Storage {
   put(key: string, body: NodeJS.ReadableStream, opts: { maxBytes: number; contentType?: string }): Promise<{ size: number; sha256: string }>;
   head(key: string): Promise<{ size: number } | null>;
   openRead(key: string, range?: { start: number; end: number }): Promise<NodeJS.ReadableStream>;
-  temporaryReadUrl(key: string, expiresSeconds: number, opts?: { contentType?: string; filename?: string }): Promise<{ url: string; expiresAt: Date }>;
+  temporaryReadUrl(key: string, expiresSeconds: number, opts?: { contentType?: string; filename?: string; disposition?: 'inline' | 'attachment' }): Promise<{ url: string; expiresAt: Date }>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
 }

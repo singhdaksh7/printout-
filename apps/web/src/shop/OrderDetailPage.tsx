@@ -9,6 +9,7 @@ import { ApiError } from '../lib/api';
 import { Banner, Modal, Skeleton, StatusChip, useToast } from './components';
 import { retentionHyphen, resolveRetentionMinutes } from '../lib/retention';
 import { useAuth } from './auth';
+import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useAutoRefresh, useDebounced, useTick } from './hooks';
 import { useRealtimeRefresh } from './realtime';
 
@@ -20,7 +21,7 @@ function pageSelectionText(sel: PrintOptionsSnapshot['pageSelection']): string {
   return `Pages ${sel.ranges.map((r) => (r.from === r.to ? `${r.from}` : `${r.from}–${r.to}`)).join(', ')}`;
 }
 
-type Action = 'accept' | 'start' | 'cancel' | 'ready' | 'collect' | 'open' | 'confirm';
+type Action = 'accept' | 'start' | 'cancel' | 'ready' | 'collect' | 'open' | 'confirm' | 'printnow' | 'save';
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams();
@@ -125,6 +126,25 @@ export default function OrderDetailPage() {
     } finally { setActing(null); }
   }
 
+  /** Print Now: NEW/ACCEPTED -> PRINTING (server-side, one transaction) and open the viewer. Never marks printed. */
+  async function printNowAction() {
+    if (acting) return;
+    setActing('printnow'); setError(null);
+    try {
+      const r = await printNowAndOpen(id);
+      setAccess({ url: r.access.url, expiresAt: r.access.expiresAt });
+      await load();
+      show(r.transitioned ? 'Order moved to printing. Print it, then confirm once the paper has printed.' : 'Document opened again');
+    } catch (e) { await handleError(e); } finally { setActing(null); }
+  }
+
+  /** Save file: an explicit download of the original document; changes no state and no retention timer. */
+  async function saveFileAction() {
+    if (acting) return;
+    setActing('save'); setError(null);
+    try { await saveFileToDevice(id); show('Download started'); } catch (e) { await handleError(e); } finally { setActing(null); }
+  }
+
   if (loading) return <div><BackLink /><Skeleton lines={6} label="Loading order" /></div>;
   if (notFound || !data || !order || !doc) {
     return (
@@ -164,24 +184,26 @@ export default function OrderDetailPage() {
 
       {/* ---- status-specific actions: only what the API allows ---- */}
       <section className="sh-card od-actions" aria-label="Actions">
-        {status === 'NEW' && (
-          <div className="sh-actions">
-            <button className="sh-btn sh-btn-primary" disabled={busy} onClick={() => transition('accept', 'ACCEPTED', 'Order accepted')}>{acting === 'accept' ? 'Accepting…' : 'Accept order'}</button>
-            <button className="sh-btn sh-btn-danger" disabled={busy} onClick={() => setCancelOpen(true)}>Cancel order</button>
-          </div>
-        )}
-        {status === 'ACCEPTED' && (
-          <div className="sh-actions">
-            <button className="sh-btn sh-btn-primary" disabled={busy} onClick={() => transition('start', 'PRINTING', 'Marked as printing')}>{acting === 'start' ? 'Starting…' : 'Start printing'}</button>
-            <button className="sh-btn sh-btn-danger" disabled={busy} onClick={() => setCancelOpen(true)}>Cancel order</button>
-          </div>
+        {(status === 'NEW' || status === 'ACCEPTED') && (
+          <>
+            <div className="sh-actions">
+              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy || !canPrintDoc} onClick={printNowAction}>{acting === 'printnow' ? 'Opening…' : 'Print now'}</button>
+              <button className="sh-btn" disabled={busy || !canPrintDoc} onClick={saveFileAction}>{acting === 'save' ? 'Saving…' : 'Save file'}</button>
+              {status === 'NEW' && (
+                <button className="sh-btn sh-btn-sm" disabled={busy} onClick={() => transition('accept', 'ACCEPTED', 'Order accepted')}>{acting === 'accept' ? 'Accepting…' : 'Accept only'}</button>
+              )}
+              <button className="sh-btn sh-btn-sm sh-btn-danger" disabled={busy} onClick={() => setCancelOpen(true)}>Cancel order</button>
+            </div>
+            <p className="sh-muted">Print now moves the order to printing and opens the document in a secure viewer. It does not mark the order as printed. {SAVE_FILE_NOTE}</p>
+          </>
         )}
         {status === 'PRINTING' && (
           <>
-            <p className="sh-muted">Click Print document: the file opens in a secure viewer tab, use its Print button (or Ctrl+P) and your normal print dialog. You never need to download or save the file. Printing does not mark the order as printed: confirm below once the paper has actually printed.</p>
+            <p className="sh-muted">The document opens in a secure viewer tab: use its Print button (or Ctrl+P) and your normal print dialog. You never need to download or save the file. Printing does not mark the order as printed: confirm below once the paper has actually printed. {SAVE_FILE_NOTE}</p>
             <div className="sh-actions">
-              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy || !canPrintDoc} onClick={openDocument}>{acting === 'open' ? 'Opening…' : 'Print document'}</button>
+              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy || !canPrintDoc} onClick={printNowAction}>{acting === 'printnow' ? 'Opening…' : 'Reopen document'}</button>
               <button className="sh-btn sh-btn-lg" disabled={busy || deleted} onClick={() => setConfirmOpen(true)}>Confirm printed successfully</button>
+              <button className="sh-btn" disabled={busy || !canPrintDoc} onClick={saveFileAction}>{acting === 'save' ? 'Saving…' : 'Save file'}</button>
             </div>
           </>
         )}
@@ -189,9 +211,10 @@ export default function OrderDetailPage() {
           <>
             <div className="sh-actions">
               <button className="sh-btn" disabled={busy || docGone} onClick={openDocument}>{acting === 'open' ? 'Opening…' : 'Reprint'}</button>
+              <button className="sh-btn" disabled={busy || docGone} onClick={saveFileAction}>{acting === 'save' ? 'Saving…' : 'Save file'}</button>
               <button className="sh-btn sh-btn-primary" disabled={busy} onClick={() => transition('ready', 'READY', 'Marked ready for collection')}>{acting === 'ready' ? 'Saving…' : 'Mark ready'}</button>
             </div>
-            <p className="sh-muted">Reprinting does not extend the deletion timer.</p>
+            <p className="sh-muted">Reprinting or saving does not extend the deletion timer. {SAVE_FILE_NOTE}</p>
           </>
         )}
         {status === 'READY' && (

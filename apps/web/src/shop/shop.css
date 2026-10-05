@@ -172,3 +172,7 @@
   .qr-poster-title { font-size: 64pt; } .qr-poster-steps { font-size: 28pt; } .qr-poster-shop { font-size: 30pt; } .qr-poster-url { font-size: 16pt; } .qr-poster-note { font-size: 14pt; }
   .qr-poster-code { width: 120mm; }
 }
+
+/* Print Now / Save file actions on queue cards */
+.order-actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.75rem}
+.order-actions .sh-btn-lg{flex:1 1 9rem}

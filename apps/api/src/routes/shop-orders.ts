@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { documentAccessWindow } from '../domain/access.js';
 import { assertRequestedTransition, retentionDates, TERMINAL_STATUSES } from '../domain/lifecycle.js';
 import { AppError, orderNotFound } from '../errors.js';
+import { sanitizeFilename } from '../storage/filename.js';
 import { getLimiters } from '../rate-limits.js';
 import {
   audit,
@@ -27,6 +28,11 @@ const transitionBody = z
   .strict();
 
 const confirmBody = z.object({ clientRequestId: z.string().uuid() }).strict();
+const printNowBody = z.object({ clientRequestId: z.string().uuid() }).strict();
+
+/** Statuses from which "Print Now" is meaningful: it ends in PRINTING and never goes further. */
+const PRINT_NOW_FROM: ReadonlySet<OrderStatus> = new Set([OrderStatus.NEW, OrderStatus.ACCEPTED, OrderStatus.PRINTING]);
+const PRINT_NOW_RACE = 'PRINT_NOW_RACE';
 
 const listQuery = z
   .object({
@@ -210,6 +216,115 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     return json({ order: orderCore(result.order) });
   });
 
+  /**
+   * "Print Now": one shop action = NEW -> ACCEPTED -> PRINTING (or ACCEPTED -> PRINTING, or just re-open when already
+   * PRINTING) plus short-lived document access. It uses the same guarded transitions, history and audit as the manual steps.
+   *  - Everything that can fail (tenant, status, document availability, URL generation) is checked/produced BEFORE any
+   *    state change, and the state changes happen in ONE transaction: either the order ends in PRINTING or it is untouched.
+   *  - It never marks the order PRINTED and never touches printedAt/deleteAfter (only print-confirmation does).
+   *  - Retry/double-click safe: an order already past the steps just returns fresh access; a concurrent loser re-evaluates once.
+   */
+  app.post('/shop/orders/:id/print-now', { preHandler: limits.status }, async (request) => {
+    const shopId = shopIdOf(request);
+    const auth = authOf(request);
+    const { id } = idParam.parse(request.params);
+    printNowBody.parse(request.body);
+
+    const attempt = async () => {
+      const order0 = await prisma.order.findFirst({ where: { id, shopId }, include: { document: true } });
+      if (!order0) throw orderNotFound();
+      if (!PRINT_NOW_FROM.has(order0.status)) {
+        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Print Now is only available for NEW, ACCEPTED or PRINTING orders', {
+          from: order0.status,
+          to: OrderStatus.PRINTING
+        });
+      }
+      const doc0 = order0.document;
+      const window = documentAccessWindow(doc0, order0.status, Date.now());
+      if (!window || !doc0.detectedMimeType) {
+        throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'The document for this order is no longer available');
+      }
+      // Produce the access URL first: if this throws, nothing has changed.
+      const access = await storage.temporaryReadUrl(doc0.objectKey, window.ttlSeconds, {
+        contentType: doc0.detectedMimeType,
+        filename: doc0.originalFilename
+      });
+
+      const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findFirst({ where: { id, shopId }, include: { document: true } });
+        if (!order) throw orderNotFound();
+        if (!PRINT_NOW_FROM.has(order.status)) {
+          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Print Now is only available for NEW, ACCEPTED or PRINTING orders', {
+            from: order.status,
+            to: OrderStatus.PRINTING
+          });
+        }
+        const now = new Date();
+        const d = order.document;
+        if (!(d.status === DocumentStatus.AVAILABLE && !d.printedAt && !!d.expiresAt && d.expiresAt > now)) {
+          throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'The document for this order is no longer available');
+        }
+        const start = order.status;
+        const path: OrderStatus[] =
+          start === OrderStatus.NEW ? [OrderStatus.ACCEPTED, OrderStatus.PRINTING] : start === OrderStatus.ACCEPTED ? [OrderStatus.PRINTING] : [];
+        let current: OrderStatus = start;
+        for (const to of path) {
+          assertRequestedTransition(current, to);
+          const moved = await tx.order.updateMany({ where: { id, shopId, status: current }, data: { status: to } });
+          if (moved.count !== 1) throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order status changed concurrently', { race: PRINT_NOW_RACE });
+          await tx.orderStatusHistory.create({
+            data: { orderId: id, fromStatus: current, toStatus: to, reason: 'Print Now', actorUserId: auth.userId }
+          });
+          await audit(tx, {
+            shopId,
+            actorUserId: auth.userId,
+            action: 'order.transition',
+            targetType: 'order',
+            targetId: id,
+            metadata: { from: current, to, via: 'print-now' }
+          });
+          current = to;
+        }
+        await audit(tx, {
+          shopId,
+          actorUserId: auth.userId,
+          action: 'order.printNow',
+          targetType: 'order',
+          targetId: id,
+          metadata: { from: start, to: current, transitioned: path.length > 0 }
+        });
+        const fresh = await tx.order.findFirstOrThrow({ where: { id, shopId } });
+        return { order: fresh, changed: path.length > 0 };
+      });
+      return { result, access, deadline: window.deadline, mimeType: doc0.detectedMimeType };
+    };
+
+    let out: Awaited<ReturnType<typeof attempt>>;
+    try {
+      out = await attempt();
+    } catch (e) {
+      const raced = e instanceof AppError && (e.details as { race?: string } | undefined)?.race === PRINT_NOW_RACE;
+      if (!raced) throw e;
+      out = await attempt(); // a concurrent request moved the order: re-evaluate once (now typically PRINTING -> just access)
+    }
+
+    if (out.result.changed) {
+      events.emit(shopId, 'order.statusChanged', toStatusEvent(out.result.order));
+      events.emit(shopId, 'order.updated', toStatusEvent(out.result.order));
+    }
+    await audit(ctx.prisma, { shopId, actorUserId: auth.userId, action: 'document.access', targetType: 'order', targetId: id });
+    return json({
+      order: { id: out.result.order.id, orderNumber: out.result.order.orderNumber, status: out.result.order.status },
+      transitioned: out.result.changed,
+      access: {
+        url: out.access.url,
+        expiresAt: new Date(Math.min(out.access.expiresAt.getTime(), out.deadline.getTime())),
+        contentDisposition: 'inline',
+        mimeType: out.mimeType
+      }
+    });
+  });
+
   app.post('/shop/orders/:id/print-confirmation', { preHandler: limits.printConfirm }, async (request) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
@@ -289,7 +404,11 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     });
   });
 
-  app.post('/shop/orders/:id/document-access', { preHandler: limits.documentAccess }, async (request) => {
+  /**
+   * Shared by document-access (inline, for printing) and document-download (attachment, explicit "Save File").
+   * Same tenant scoping, same deadline rules; neither touches printedAt/deleteAfter or any retention state.
+   */
+  async function issueDocumentUrl(request: import('fastify').FastifyRequest, disposition: 'inline' | 'attachment') {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
@@ -304,14 +423,32 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     const deadline = window.deadline;
     const access = await storage.temporaryReadUrl(doc.objectKey, window.ttlSeconds, {
       contentType: doc.detectedMimeType,
-      filename: doc.originalFilename
+      filename: doc.originalFilename,
+      disposition
     });
-    await audit(ctx.prisma, { shopId, actorUserId: auth.userId, action: 'document.access', targetType: 'order', targetId: id });
-    return json({
+    // Safe activity record: who/what/when only (never the URL, key, filename or content).
+    await audit(ctx.prisma, {
+      shopId,
+      actorUserId: auth.userId,
+      action: disposition === 'attachment' ? 'document.download' : 'document.access',
+      targetType: 'order',
+      targetId: id
+    });
+    return {
       url: access.url,
       expiresAt: new Date(Math.min(access.expiresAt.getTime(), deadline.getTime())),
-      contentDisposition: 'inline',
-      mimeType: doc.detectedMimeType
-    });
-  });
+      contentDisposition: disposition,
+      mimeType: doc.detectedMimeType,
+      fileName: sanitizeFilename(doc.originalFilename)
+    };
+  }
+
+  app.post('/shop/orders/:id/document-access', { preHandler: limits.documentAccess }, async (request) =>
+    json(await issueDocumentUrl(request, 'inline'))
+  );
+
+  /** Explicit "Save File": a short-lived ATTACHMENT url for the original document. Never automatic, never extends retention. */
+  app.post('/shop/orders/:id/document-download', { preHandler: limits.documentAccess }, async (request) =>
+    json(await issueDocumentUrl(request, 'attachment'))
+  );
 }

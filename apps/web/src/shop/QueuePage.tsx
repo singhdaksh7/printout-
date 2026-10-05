@@ -4,6 +4,7 @@ import { formatCountdown, formatPaise } from '../lib/format';
 import { listOrders, describeError, type OrderSummary } from '../lib/shop-api';
 import { Banner, Skeleton, StatusChip } from './components';
 import { ageLabel, safeStorage, useAutoRefresh, useDebounced, useTick } from './hooks';
+import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useRealtimeRefresh } from './realtime';
 
 export interface Tab { key: string; label: string; query: { status?: string; active?: boolean } }
@@ -115,7 +116,17 @@ function Age({ iso }: { iso: string }) {
   return <time dateTime={iso} title={new Date(iso).toLocaleString()}>{t}</time>;
 }
 
-export const OrderCard = memo(function OrderCard({ o, isNew }: { o: OrderSummary; isNew: boolean }) {
+export const OrderCard = memo(function OrderCard({ o, isNew, onChanged }: { o: OrderSummary; isNew: boolean; onChanged?: () => void }) {
+  const [busy, setBusy] = useState<'print' | 'save' | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const printable = (o.status === 'NEW' || o.status === 'ACCEPTED' || o.status === 'PRINTING') && o.documentStatus === 'AVAILABLE';
+  async function run(kind: 'print' | 'save') {
+    if (busy) return;
+    setBusy(kind); setErr(null);
+    try {
+      if (kind === 'print') await printNowAndOpen(o.id); else await saveFileToDevice(o.id);
+    } catch (e) { setErr(describeError(e)); } finally { setBusy(null); onChanged?.(); }
+  }
   const pages = o.selectedPageCount != null
     ? (o.pageCount != null && o.pageCount !== o.selectedPageCount ? `${o.selectedPageCount}/${o.pageCount} pages` : `${o.selectedPageCount} pages`)
     : o.pageCount != null ? `${o.pageCount} pages` : null;
@@ -136,6 +147,16 @@ export const OrderCard = memo(function OrderCard({ o, isNew }: { o: OrderSummary
         {o.copies != null && <span>{o.copies} {o.copies === 1 ? 'copy' : 'copies'}</span>}
       </div>
       {o.customerDisplayNameOrReference && <div className="order-ref sh-ellip" title={o.customerDisplayNameOrReference}>For: {o.customerDisplayNameOrReference}</div>}
+      {printable && (
+        <div className="order-actions">
+          <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy !== null} onClick={() => void run('print')}>
+            {busy === 'print' ? 'Opening…' : o.status === 'PRINTING' ? 'Reopen document' : 'Print Now'}
+          </button>
+          <button className="sh-btn" disabled={busy !== null} onClick={() => void run('save')} title={SAVE_FILE_NOTE}>{busy === 'save' ? 'Saving…' : 'Save file'}</button>
+          <Link className="sh-btn sh-btn-sm" to={`/shop/orders/${o.id}`}>View details</Link>
+        </div>
+      )}
+      {err && <div className="sh-banner sh-banner-error" role="alert">{err}</div>}
       <div className="order-foot">
         <Age iso={o.createdAt} />
         <Retention deleteAfter={o.deleteAfter} documentStatus={o.documentStatus} />
@@ -188,7 +209,7 @@ export default function QueuePage() {
 
   const empty = !q.loading && q.items.length === 0 && !q.error;
   const fresh = q.fresh;
-  const rendered = useMemo(() => q.items.map((o) => <OrderCard key={o.id} o={o} isNew={fresh.has(o.id)} />), [q.items, fresh]);
+  const rendered = useMemo(() => q.items.map((o) => <OrderCard key={o.id} o={o} isNew={fresh.has(o.id)} onChanged={q.refresh} />), [q.items, fresh, q.refresh]);
 
   return (
     <section aria-labelledby="queue-title">

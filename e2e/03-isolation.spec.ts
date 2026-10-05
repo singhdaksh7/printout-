@@ -10,7 +10,7 @@ test('tenant isolation in the browser: metro cannot see or open central orders, 
   await createOrderViaApi('central-print', { name: 'Central Prior Customer' });
   await uiLogin(c, 'owner@central.test');
   await expect(c.getByRole('heading', { name: 'Print queue' })).toBeVisible();
-  const link = c.getByTestId('order-card').first().getByRole('link');
+  const link = c.getByTestId('order-card').first().getByRole('link').first();
   await expect(link).toBeVisible();
   const centralHref = await link.getAttribute('href');
   expect(centralHref).toMatch(/^\/shop\/orders\/.+/);

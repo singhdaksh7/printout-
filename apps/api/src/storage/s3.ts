@@ -103,14 +103,14 @@ export class S3Storage implements Storage {
     }
   }
 
-  async temporaryReadUrl(key: string, expiresSeconds: number, opts?: { contentType?: string; filename?: string }) {
+  async temporaryReadUrl(key: string, expiresSeconds: number, opts?: { contentType?: string; filename?: string; disposition?: 'inline' | 'attachment' }) {
     assertKey(key);
     // Hard cap: never longer than the caller asked for, and never beyond MAX_PRESIGN_SECONDS (callers also cap at deleteAfter).
     const seconds = Math.min(MAX_PRESIGN_SECONDS, Math.max(1, Math.floor(expiresSeconds)));
     const cmd = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
-      ResponseContentDisposition: `inline; filename="${safeFilename(opts?.filename ?? 'document')}"`,
+      ResponseContentDisposition: `${opts?.disposition ?? 'inline'}; filename="${safeFilename(opts?.filename ?? 'document')}"`,
       ResponseContentType: opts?.contentType,
       ResponseCacheControl: 'private, no-store'
     });

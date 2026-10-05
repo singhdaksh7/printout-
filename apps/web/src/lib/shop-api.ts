@@ -124,6 +124,14 @@ export const transitionOrder = (id: string, toStatus: OrderStatus, reason?: stri
 export const confirmPrinted = (id: string, clientRequestId: string) =>
   shopRequest<{ order: { id?: string; status: OrderStatus }; document: { status: string; printedAt: string; deleteAfter: string } }>(
     `/shop/orders/${encodeURIComponent(id)}/print-confirmation`, { method: 'POST', body: { clientRequestId } });
+/** One shop action: NEW -> ACCEPTED -> PRINTING (or just re-open when already PRINTING) + short-lived inline access. Never marks PRINTED. */
+export const printNow = (id: string) =>
+  shopRequest<{ order: { id: string; orderNumber: string; status: OrderStatus }; transitioned: boolean; access: { url: string; expiresAt: string; contentDisposition?: string } }>(
+    `/shop/orders/${encodeURIComponent(id)}/print-now`, { method: 'POST', body: { clientRequestId: newRequestId() } });
+/** Explicit "Save File": short-lived ATTACHMENT url for the original document (never automatic). */
+export const requestDocumentDownload = (id: string) =>
+  shopRequest<{ url: string; expiresAt: string; contentDisposition?: string; fileName: string }>(
+    `/shop/orders/${encodeURIComponent(id)}/document-download`, { method: 'POST', body: {} });
 export const requestDocumentAccess = (id: string) =>
   shopRequest<{ url: string; expiresAt: string; contentDisposition?: string }>(
     `/shop/orders/${encodeURIComponent(id)}/document-access`, { method: 'POST', body: {} });

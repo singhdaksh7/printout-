@@ -2,7 +2,7 @@ import { DocumentStatus, type PrismaClient } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { AppError } from './errors.js';
 import { isValidObjectKey, LocalStorage, type Storage } from './storage/index.js';
-import { contentDispositionInline } from './storage/filename.js';
+import { contentDisposition } from './storage/filename.js';
 
 export interface InternalStorageOptions {
   prisma: PrismaClient;
@@ -41,13 +41,14 @@ const CSP_IMAGE = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'
 export const internalStorageRoutes: FastifyPluginAsync<InternalStorageOptions> = async (app, opts) => {
   const { prisma, storage } = opts;
 
-  app.get<{ Params: { key: string }; Querystring: { exp?: string; sig?: string } }>('/internal/documents/:key', async (request, reply) => {
+  app.get<{ Params: { key: string }; Querystring: { exp?: string; sig?: string; dl?: string } }>('/internal/documents/:key', async (request, reply) => {
     const { key } = request.params;
     const gone = () => new AppError(404, 'NOT_FOUND', 'Document not found');
     if (!(storage instanceof LocalStorage) || !isValidObjectKey(key)) throw gone();
     const exp = Number(request.query.exp);
     const sig = request.query.sig ?? '';
-    if (!/^\d{1,12}$/.test(request.query.exp ?? '') || !storage.verifyRead(key, exp, sig)) {
+    const disposition: 'inline' | 'attachment' = request.query.dl === '1' ? 'attachment' : 'inline';
+    if (!/^\d{1,12}$/.test(request.query.exp ?? '') || !storage.verifyRead(key, exp, sig, Date.now(), disposition)) {
       throw new AppError(403, 'FORBIDDEN', 'Invalid or expired link');
     }
 
@@ -71,7 +72,7 @@ export const internalStorageRoutes: FastifyPluginAsync<InternalStorageOptions> =
 
     reply
       .header('content-type', doc.detectedMimeType)
-      .header('content-disposition', contentDispositionInline(doc.originalFilename))
+      .header('content-disposition', contentDisposition(doc.originalFilename, disposition))
       .header('cache-control', 'private, no-store')
       .header('x-content-type-options', 'nosniff')
       .header('content-security-policy', doc.detectedMimeType === 'application/pdf' ? CSP_PDF : CSP_IMAGE)

@@ -44,19 +44,13 @@ test('shop + customer lifecycle across two browser contexts (SSE, print confirma
   await expect(shop.getByRole('heading', { name: new RegExp(`Order #${order.orderNumber}`) })).toBeVisible();
   await shot(shop, '12-shop-order-new');
   await expectNoOverflow(shop, 'order detail NEW');
-  await shop.getByRole('button', { name: 'Accept order' }).click();
-  await expect(shop.getByRole('button', { name: 'Start printing' })).toBeVisible();
-  await expect(cust.getByText('The shop will print it soon')).toBeVisible({ timeout: 30_000 }); // customer page polls/refreshes itself
-
-  await shop.getByRole('button', { name: 'Start printing' }).click();
-  await expect(shop.getByRole('button', { name: 'Print document' })).toBeVisible();
-  await expect(cust.getByText('Your pages are being printed')).toBeVisible({ timeout: 30_000 });
-
-  // ---- open the document in a new tab ----
+  // ---- Print now: ONE click = NEW -> ACCEPTED -> PRINTING + the secure viewer tab (never marks printed) ----
   const popupP = shopCtx.waitForEvent('page');
   const docResP = shopCtx.waitForEvent('response', (r) => r.url().includes('/api/v1/internal/documents/'));
-  await shop.getByRole('button', { name: 'Print document' }).click();
+  await shop.getByRole('button', { name: 'Print now' }).click();
   const popup = await popupP;
+  await expect(shop.getByRole('button', { name: 'Reopen document' })).toBeVisible();
+  await expect(cust.getByText('Your pages are being printed')).toBeVisible({ timeout: 30_000 }); // customer page polls/refreshes itself
   const docRes = await docResP; // headless Chromium has no PDF viewer, so the navigation itself may end as a download
   expect(docRes.status()).toBe(200);
   expect(docRes.headers()['content-type']).toBe('application/pdf');

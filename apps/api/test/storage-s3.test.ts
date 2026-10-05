@@ -87,6 +87,18 @@ describe('S3 driver (stubbed client, no network)', () => {
     expect(Number(long.searchParams.get('X-Amz-Expires'))).toBe(300);
   });
 
+  it('Save File presign: attachment disposition with a safe filename, still short-lived, signed and private', async () => {
+    const key = generateObjectKey();
+    const { url } = await storage.temporaryReadUrl(key, 99_999, { contentType: 'application/pdf', filename: 'My "Q3" report.pdf', disposition: 'attachment' });
+    const u = new URL(url);
+    expect(u.searchParams.get('response-content-disposition')).toBe('attachment; filename="My _Q3_ report.pdf"');
+    expect(u.searchParams.get('response-cache-control')).toMatch(/no-store/);
+    expect(Number(u.searchParams.get('X-Amz-Expires'))).toBe(300);
+    expect(u.searchParams.get('X-Amz-Signature')).toMatch(/^[0-9a-f]{64}$/);
+    // default stays inline (Print Now never downloads)
+    expect(new URL((await storage.temporaryReadUrl(key, 60)).url).searchParams.get('response-content-disposition')).toMatch(/^inline;/);
+  });
+
   it('createStorage selects the s3 driver and requires a bucket', () => {
     const base = { SESSION_SECRET: 'x'.repeat(32), STORAGE_DRIVER: 's3' as const };
     expect(() => createStorage(base)).toThrow('S3_BUCKET');

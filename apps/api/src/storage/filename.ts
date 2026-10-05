@@ -18,7 +18,11 @@ export function sanitizeFilename(input: string, maxLength = 120): string {
 
 /** ASCII-only fallback plus RFC 5987 encoded name for Content-Disposition. */
 export function contentDispositionInline(filename: string): string {
+  return contentDisposition(filename, 'inline');
+}
+
+export function contentDisposition(filename: string, type: 'inline' | 'attachment'): string {
   const safe = sanitizeFilename(filename);
   const ascii = safe.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
-  return `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(safe).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())}`;
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(safe).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())}`;
 }

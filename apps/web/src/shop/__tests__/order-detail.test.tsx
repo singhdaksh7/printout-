@@ -36,14 +36,14 @@ describe('order detail', () => {
   });
 
   it.each([
-    ['NEW', ['Accept order', 'Cancel order'], ['Start printing', 'Mark ready', 'Mark collected', 'Print document', 'Reprint']],
-    ['ACCEPTED', ['Start printing', 'Cancel order'], ['Accept order', 'Mark ready', 'Reprint']],
-    ['PRINTING', ['Print document', 'Confirm printed successfully'], ['Accept order', 'Cancel order', 'Mark ready', 'Reprint']],
-    ['PRINTED', ['Reprint', 'Mark ready'], ['Accept order', 'Cancel order', 'Confirm printed successfully', 'Mark collected']],
-    ['READY', ['Mark collected'], ['Mark ready', 'Reprint', 'Cancel order', 'Confirm printed successfully']],
-    ['COLLECTED', [], ['Accept order', 'Mark collected', 'Reprint', 'Cancel order']],
-    ['CANCELLED', [], ['Accept order', 'Mark collected', 'Reprint']],
-    ['EXPIRED', [], ['Accept order', 'Mark collected', 'Reprint']]
+    ['NEW', ['Print now', 'Save file', 'Accept only', 'Cancel order'], ['Accept order', 'Start printing', 'Mark ready', 'Mark collected', 'Reopen document', 'Reprint']],
+    ['ACCEPTED', ['Print now', 'Save file', 'Cancel order'], ['Accept only', 'Start printing', 'Mark ready', 'Reprint']],
+    ['PRINTING', ['Reopen document', 'Confirm printed successfully', 'Save file'], ['Print now', 'Accept only', 'Cancel order', 'Mark ready', 'Reprint']],
+    ['PRINTED', ['Reprint', 'Save file', 'Mark ready'], ['Print now', 'Accept only', 'Cancel order', 'Confirm printed successfully', 'Mark collected']],
+    ['READY', ['Mark collected'], ['Mark ready', 'Reprint', 'Print now', 'Cancel order', 'Confirm printed successfully']],
+    ['COLLECTED', [], ['Accept only', 'Print now', 'Mark collected', 'Reprint', 'Cancel order']],
+    ['CANCELLED', [], ['Accept only', 'Print now', 'Mark collected', 'Reprint', 'Save file']],
+    ['EXPIRED', [], ['Accept only', 'Print now', 'Mark collected', 'Reprint', 'Save file']]
   ] as [OrderStatus, string[], string[]][])('%s offers exactly the allowed actions', async (status, shown, hidden) => {
     const doc = status === 'PRINTED' || status === 'READY' ? { status: 'PRINTED_RETENTION', deleteAfter: new Date(Date.now() + 600e3).toISOString() } : {};
     mockFetch(authedSession, getDetail({ d: detail(status, doc) }));
@@ -61,8 +61,9 @@ describe('order detail', () => {
       return undefined;
     });
     renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Accept order' }));
-    expect(await screen.findByRole('button', { name: 'Start printing' })).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Accept only' }));
+    expect(await screen.findByRole('button', { name: 'Print now' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Accept only' })).not.toBeInTheDocument();
     const post = calls.find((c) => c.path.endsWith('/transitions'))!;
     expect(post.body.toStatus).toBe('ACCEPTED');
     expect(post.body.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
@@ -99,7 +100,7 @@ describe('order detail', () => {
     const store = { d: detail('PRINTING') };
     const deleteAfter = new Date(Date.now() + 30 * 60_000).toISOString();
     const { calls } = mockFetch(authedSession, getDetail(store), ({ method, path }) => {
-      if (method === 'POST' && path.endsWith('/document-access')) return { data: { url: '/api/v1/internal/documents/k?sig=1', expiresAt: new Date(Date.now() + 300e3).toISOString(), contentDisposition: 'inline' } };
+      if (method === 'POST' && path.endsWith('/print-now')) return { data: { order: { id: 'o1', orderNumber: 'CENT-1', status: 'PRINTING' }, transitioned: false, access: { url: '/api/v1/internal/documents/k?sig=1', expiresAt: new Date(Date.now() + 300e3).toISOString(), contentDisposition: 'inline' } } };
       if (method === 'POST' && path.endsWith('/print-confirmation')) {
         store.d = detail('PRINTED', { status: 'PRINTED_RETENTION', printedAt: new Date().toISOString(), deleteAfter });
         return { data: { order: { id: 'o1', status: 'PRINTED' }, document: { status: 'PRINTED_RETENTION', printedAt: new Date().toISOString(), deleteAfter } } };
@@ -107,7 +108,7 @@ describe('order detail', () => {
       return undefined;
     });
     renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Print document' }));
+    await user.click(await screen.findByRole('button', { name: 'Reopen document' }));
     expect(await screen.findByRole('link', { name: /open document in a new tab/i })).toHaveAttribute('rel', 'noopener noreferrer');
     expect(calls.some((c) => c.path.endsWith('/print-confirmation'))).toBe(false); // opening is not confirming
 
@@ -202,7 +203,7 @@ describe('order detail', () => {
     const user = userEvent.setup();
     const { calls } = mockFetch(authedSession, getDetail({ d: detail('NEW') }), ({ method, path }) => (method === 'POST' && path.endsWith('/transitions') ? { status, error: { code } } : undefined));
     renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Accept order' }));
+    await user.click(await screen.findByRole('button', { name: 'Accept only' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
     if (code === 'INVALID_STATUS_TRANSITION') expect(calls.filter((c) => c.path === '/shop/orders/o1').length).toBeGreaterThan(1); // refetched
   });
@@ -211,7 +212,7 @@ describe('order detail', () => {
     const user = userEvent.setup();
     const { fn } = mockFetch(authedSession, getDetail({ d: detail('NEW') }));
     renderShop('/shop/orders/o1');
-    const accept = await screen.findByRole('button', { name: 'Accept order' });
+    const accept = await screen.findByRole('button', { name: 'Accept only' });
     fn.mockImplementation(async () => { throw new TypeError('fail'); });
     await user.click(accept);
     expect(await screen.findByRole('alert')).toHaveTextContent(/cannot reach the server/i);
@@ -221,10 +222,11 @@ describe('order detail', () => {
     const store = { d: detail('NEW') };
     mockFetch(authedSession, getDetail(store));
     renderShop('/shop/orders/o1');
-    await screen.findByRole('button', { name: 'Accept order' });
+    await screen.findByRole('button', { name: 'Accept only' });
     store.d = detail('ACCEPTED');
     const es = FakeES.open[0]!;
     act(() => es.emit('order.statusChanged', { id: 'o1', status: 'ACCEPTED' }));
-    expect(await screen.findByRole('button', { name: 'Start printing' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Accept only' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Print now' })).toBeInTheDocument();
   });
 });
