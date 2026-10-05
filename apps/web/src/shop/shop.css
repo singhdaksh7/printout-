@@ -174,5 +174,6 @@
 }
 
 /* Print Now / Save file actions on queue cards */
-.order-actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.75rem}
+.order-actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.75rem;position:relative;z-index:1} /* above the card's stretched order link so the buttons are clickable */
 .order-actions .sh-btn-lg{flex:1 1 9rem}
+.order-card .sh-banner{position:relative;z-index:1}
