@@ -6,6 +6,7 @@ import {
 } from '../lib/admin-api';
 import { Banner, Modal, useToast } from '../shop/components';
 import { AuditList } from './AuditPage';
+import { AdminOrderRows } from './OrdersPage';
 import { Field, LoadError, Loading, MANUAL_NOTE, ShopStatusChip, adminError, useLoad } from './ui';
 
 function StatusCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) => void }) {
@@ -139,6 +140,28 @@ export default function ShopDetailPage() {
               <div><dt>Pricing rules</dt><dd>{data.usage.pricingRuleCount}</dd></div>
               <div><dt>Last order</dt><dd>{fmtDate(data.usage.lastOrderAt)}</dd></div>
             </dl>
+          </section>
+          <section className="sh-card" aria-labelledby="os-h">
+            <h2 id="os-h">Orders by status</h2>
+            <dl className="sh-dl">{Object.entries(data.ordersByStatus).map(([k, v]) => <div key={k}><dt>{k.charAt(0) + k.slice(1).toLowerCase()}</dt><dd>{v}</dd></div>)}</dl>
+          </section>
+          <section className="sh-card" aria-labelledby="pr-h">
+            <h2 id="pr-h">Pricing (read only)</h2>
+            {data.pricingRules.length === 0 ? <p className="sh-muted">No pricing rules configured.</p> : (
+              <dl className="sh-dl">
+                {data.pricingRules.map((r) => (
+                  <div key={r.id}>
+                    <dt>{r.colourMode === 'colour' ? 'Colour' : 'B&W'} · {r.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · {r.paperSize}{r.active ? '' : ' (inactive)'}</dt>
+                    <dd>{inr(r.pricePerSheetPaise)} / sheet</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </section>
+          <section className="sh-card" aria-labelledby="ro-h">
+            <h2 id="ro-h">Recent orders</h2>
+            {data.recentOrders.length === 0 ? <p className="sh-muted">No orders yet.</p> : <AdminOrderRows items={data.recentOrders} showShop={false} />}
+            <p className="sh-muted">Operational metadata only. Customer documents are not accessible to platform administrators.</p>
           </section>
           <StatusCard d={data} onChanged={changed} />
           <SubscriptionCard key={`${data.subscription?.updatedAt ?? 'none'}`} d={data} onChanged={changed} />

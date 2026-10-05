@@ -4,9 +4,11 @@ import { AuthProvider } from '../shop/auth';
 import AuditPage from './AuditPage';
 import DashboardPage from './DashboardPage';
 import LoginPage from './LoginPage';
+import OrdersPage from './OrdersPage';
 import PlansPage from './PlansPage';
 import ShopDetailPage from './ShopDetailPage';
 import Shell, { RequireAdmin } from './Shell';
+import SubscriptionsPage from './SubscriptionsPage';
 import { CreateShop, ShopsList } from './ShopsPage';
 import '../shop/shop.css';
 import './admin.css';
@@ -33,6 +35,8 @@ export default function AdminRoutes() {
             <Route path="shops" element={<ShopsList />} />
             <Route path="shops/new" element={<CreateShop />} />
             <Route path="shops/:id" element={<ShopDetailPage />} />
+            <Route path="orders" element={<OrdersPage />} />
+            <Route path="subscriptions" element={<SubscriptionsPage />} />
             <Route path="plans" element={<PlansPage />} />
             <Route path="audit" element={<AuditPage />} />
           </Route>

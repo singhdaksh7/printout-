@@ -9,16 +9,29 @@ export interface Subscription { id: string; shopId: string; status: SubStatus; r
 export interface AdminShop {
   id: string; slug: string; displayName: string; address: string | null; status: ShopStatus; acceptsOrders: boolean;
   createdAt: string; updatedAt: string; subscription?: Subscription | null;
+  owner?: { displayName: string; email: string } | null; orderCount?: number; lastOrderAt?: string | null;
 }
+/** Operational metadata only: the API never returns document content, storage keys, URLs or tracking tokens. */
+export interface AdminOrder {
+  id: string; shopId: string; shopSlug: string; shopName: string; orderNumber: string; status: string;
+  customerDisplayNameOrReference: string | null; totalPaise: number; currency: string; createdAt: string; updatedAt: string;
+  fileName: string; mimeType: string | null; pageCount: number | null; selectedPageCount: number | null; paperSize: string | null;
+  colourMode: string | null; sides: string | null; copies: number | null; pageSelection: unknown;
+  documentStatus: string; printedAt: string | null; deleteAfter: string | null; deletedAt: string | null;
+}
+export interface AdminPricingRule { id: string; paperSize: string; colourMode: string; sides: string; pricePerSheetPaise: number; active: boolean }
 export interface Dashboard {
   timezone: string; totalShops: number; shopsByStatus: Record<string, number>; activeSubscriptions: number;
   subscriptionsByStatus: Record<string, number>; ordersToday: number;
+  totalOrders: number; ordersByStatus: Record<string, number>; totalPages: number;
+  recentShops: AdminShop[]; recentOrders: AdminOrder[];
 }
 export interface ShopDetail {
   shop: AdminShop;
   owners: { id: string; email: string; displayName: string; role: string }[];
   subscription: Subscription | null;
   usage: { orderCount: number; ordersLast30Days: number; pricingRuleCount: number; lastOrderAt: string | null };
+  ordersByStatus: Record<string, number>; pricingRules: AdminPricingRule[]; recentOrders: AdminOrder[];
 }
 export interface Plan { id: string; name: string; pricePaise: number; active: boolean; updatedAt?: string }
 export interface AuditEntry {
@@ -50,6 +63,11 @@ export const updateShop = (id: string, body: { status?: ShopStatus; acceptsOrder
 /** `shopId` identifies the subscription (one per shop). */
 export const updateSubscription = (shopId: string, body: { status?: SubStatus; planId?: string; renewsAt?: string | null }) =>
   shopRequest<Subscription>(`/admin/subscriptions/${encodeURIComponent(shopId)}`, { method: 'PUT', body });
+export const listOrders = (p: { shopId?: string; status?: string; cursor?: string; limit?: number } = {}, signal?: AbortSignal) =>
+  shopRequest<Page<AdminOrder>>(`/admin/orders${qs(p)}`, { signal: signal as AbortSignal });
+export type SubscriptionRow = Subscription & { shop: { slug: string; displayName: string; status: ShopStatus } };
+export const listSubscriptions = (p: { status?: SubStatus | ''; cursor?: string; limit?: number } = {}, signal?: AbortSignal) =>
+  shopRequest<Page<SubscriptionRow>>(`/admin/subscriptions${qs(p)}`, { signal: signal as AbortSignal });
 export const listPlans = (signal?: AbortSignal) => shopRequest<Plan[]>('/admin/plans', { signal: signal as AbortSignal });
 export const updatePlan = (id: string, body: { name?: string; pricePaise?: number; active?: boolean }) =>
   shopRequest<Plan>(`/admin/plans/${encodeURIComponent(id)}`, { method: 'PUT', body });

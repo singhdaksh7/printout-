@@ -19,6 +19,8 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
 const NAV = [
   { to: '/admin', label: 'Dashboard', end: true },
   { to: '/admin/shops', label: 'Shops', end: false },
+  { to: '/admin/orders', label: 'Orders', end: false },
+  { to: '/admin/subscriptions', label: 'Subscriptions', end: false },
   { to: '/admin/plans', label: 'Plans', end: false },
   { to: '/admin/audit', label: 'Audit log', end: false }
 ];

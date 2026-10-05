@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { createShop, inr, listPlans, listShops, slugHint, type AdminShop, type ShopStatus } from '../lib/admin-api';
+import { createShop, fmtDate, inr, listPlans, listShops, slugHint, type AdminShop, type ShopStatus } from '../lib/admin-api';
 import { Banner } from '../shop/components';
 import { Field, LoadError, LoadMore, Loading, ShopStatusChip, adminError, useCursorList, useLoad } from './ui';
 
@@ -30,10 +30,15 @@ export function ShopsList() {
           <ul className="ad-list" aria-label="Shops">
             {list.items.map((s) => (
               <li key={s.id} className="ad-row">
-                <div><Link to={s.id}>{s.displayName}</Link><div className="sh-muted">/{s.slug}</div></div>
+                <div>
+                  <Link to={s.id}>{s.displayName}</Link>
+                  <div className="sh-muted">/{s.slug}</div>
+                  {s.owner && <div className="sh-muted sh-wrap">{s.owner.displayName} · {s.owner.email}</div>}
+                </div>
                 <div style={{ textAlign: 'right' }}>
                   <ShopStatusChip status={s.status} />
                   <div className="sh-muted">{s.subscription ? `${s.subscription.plan.name} · ${s.subscription.status.toLowerCase()}` : 'No subscription'}</div>
+                  <div className="sh-muted">{s.orderCount ?? 0} orders · last {fmtDate(s.lastOrderAt)}</div>
                 </div>
               </li>
             ))}

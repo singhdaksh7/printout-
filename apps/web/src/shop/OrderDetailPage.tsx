@@ -178,10 +178,10 @@ export default function OrderDetailPage() {
         )}
         {status === 'PRINTING' && (
           <>
-            <p className="sh-muted">Open the document, print it with your browser's print dialog (Ctrl+P), then confirm once the paper has printed. Opening or printing a document never marks it as printed.</p>
+            <p className="sh-muted">Click Print document: the file opens in a secure viewer tab, use its Print button (or Ctrl+P) and your normal print dialog. You never need to download or save the file. Printing does not mark the order as printed: confirm below once the paper has actually printed.</p>
             <div className="sh-actions">
-              <button className="sh-btn" disabled={busy || !canPrintDoc} onClick={openDocument}>{acting === 'open' ? 'Opening…' : 'Open document to print'}</button>
-              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy || deleted} onClick={() => setConfirmOpen(true)}>Confirm printed successfully</button>
+              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy || !canPrintDoc} onClick={openDocument}>{acting === 'open' ? 'Opening…' : 'Print document'}</button>
+              <button className="sh-btn sh-btn-lg" disabled={busy || deleted} onClick={() => setConfirmOpen(true)}>Confirm printed successfully</button>
             </div>
           </>
         )}
@@ -289,10 +289,13 @@ export default function OrderDetailPage() {
           onConfirm={async (requestId) => {
             setActing('confirm');
             try {
-              await confirmPrinted(id, requestId);
+              const r = await confirmPrinted(id, requestId);
               setConfirmOpen(false);
               await load();
-              show('Printing confirmed. Deletion countdown started.');
+              const mins = Math.round((Date.parse(r.document.deleteAfter) - Date.parse(r.document.printedAt)) / 60_000);
+              show(Number.isFinite(mins) && mins > 0
+                ? `Printing confirmed. Document available for reprint for ${mins} minutes.`
+                : 'Printing confirmed. Deletion countdown started.');
             } catch (e) {
               setConfirmOpen(false);
               await handleError(e);

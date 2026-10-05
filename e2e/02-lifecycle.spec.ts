@@ -49,13 +49,13 @@ test('shop + customer lifecycle across two browser contexts (SSE, print confirma
   await expect(cust.getByText('The shop will print it soon')).toBeVisible({ timeout: 30_000 }); // customer page polls/refreshes itself
 
   await shop.getByRole('button', { name: 'Start printing' }).click();
-  await expect(shop.getByRole('button', { name: 'Open document to print' })).toBeVisible();
+  await expect(shop.getByRole('button', { name: 'Print document' })).toBeVisible();
   await expect(cust.getByText('Your pages are being printed')).toBeVisible({ timeout: 30_000 });
 
   // ---- open the document in a new tab ----
   const popupP = shopCtx.waitForEvent('page');
   const docResP = shopCtx.waitForEvent('response', (r) => r.url().includes('/api/v1/internal/documents/'));
-  await shop.getByRole('button', { name: 'Open document to print' }).click();
+  await shop.getByRole('button', { name: 'Print document' }).click();
   const popup = await popupP;
   const docRes = await docResP; // headless Chromium has no PDF viewer, so the navigation itself may end as a download
   expect(docRes.status()).toBe(200);

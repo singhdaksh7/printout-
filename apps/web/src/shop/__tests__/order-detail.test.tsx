@@ -36,9 +36,9 @@ describe('order detail', () => {
   });
 
   it.each([
-    ['NEW', ['Accept order', 'Cancel order'], ['Start printing', 'Mark ready', 'Mark collected', 'Open document to print', 'Reprint']],
+    ['NEW', ['Accept order', 'Cancel order'], ['Start printing', 'Mark ready', 'Mark collected', 'Print document', 'Reprint']],
     ['ACCEPTED', ['Start printing', 'Cancel order'], ['Accept order', 'Mark ready', 'Reprint']],
-    ['PRINTING', ['Open document to print', 'Confirm printed successfully'], ['Accept order', 'Cancel order', 'Mark ready', 'Reprint']],
+    ['PRINTING', ['Print document', 'Confirm printed successfully'], ['Accept order', 'Cancel order', 'Mark ready', 'Reprint']],
     ['PRINTED', ['Reprint', 'Mark ready'], ['Accept order', 'Cancel order', 'Confirm printed successfully', 'Mark collected']],
     ['READY', ['Mark collected'], ['Mark ready', 'Reprint', 'Cancel order', 'Confirm printed successfully']],
     ['COLLECTED', [], ['Accept order', 'Mark collected', 'Reprint', 'Cancel order']],
@@ -107,7 +107,7 @@ describe('order detail', () => {
       return undefined;
     });
     renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Open document to print' }));
+    await user.click(await screen.findByRole('button', { name: 'Print document' }));
     expect(await screen.findByRole('link', { name: /open document in a new tab/i })).toHaveAttribute('rel', 'noopener noreferrer');
     expect(calls.some((c) => c.path.endsWith('/print-confirmation'))).toBe(false); // opening is not confirming
 

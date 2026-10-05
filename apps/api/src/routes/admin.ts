@@ -1,4 +1,4 @@
-import { Role, ShopStatus, SubscriptionStatus, type Prisma } from '@prisma/client';
+import { OrderStatus, Role, ShopStatus, SubscriptionStatus, type Document, type Order, type Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { hashPassword } from '../auth.js';
@@ -109,6 +109,44 @@ const subscriptionView = (
       }
     : null;
 
+interface PriceSnapshotMeta { selectedPageCount?: number }
+interface OptionsSnapshotMeta { paperSize?: string; colourMode?: string; sides?: string; copies?: number; pageSelection?: unknown }
+
+/**
+ * Operational metadata only. Deliberately omits the storage object key, tracking token, document URLs and
+ * any content: PLATFORM_ADMIN must never be able to open a customer document through this API.
+ */
+const adminOrderView = (o: Order & { document: Document; shop: { slug: string; displayName: string } }) => {
+  const price = (o.priceSnapshot ?? {}) as PriceSnapshotMeta;
+  const opts = (o.printOptionsSnapshot ?? {}) as OptionsSnapshotMeta;
+  return {
+    id: o.id,
+    shopId: o.shopId,
+    shopSlug: o.shop.slug,
+    shopName: o.shop.displayName,
+    orderNumber: o.orderNumber,
+    status: o.status,
+    customerDisplayNameOrReference: o.customerDisplayNameOrReference,
+    totalPaise: o.totalPaise,
+    currency: o.currency,
+    createdAt: o.createdAt,
+    updatedAt: o.updatedAt,
+    fileName: o.document.originalFilename,
+    mimeType: o.document.detectedMimeType,
+    pageCount: o.document.pageCount,
+    selectedPageCount: price.selectedPageCount ?? null,
+    paperSize: opts.paperSize ?? null,
+    colourMode: opts.colourMode ?? null,
+    sides: opts.sides ?? null,
+    copies: opts.copies ?? null,
+    pageSelection: opts.pageSelection ?? null,
+    documentStatus: o.document.status,
+    printedAt: o.document.printedAt,
+    deleteAfter: o.document.deleteAfter,
+    deletedAt: o.document.deletedAt
+  };
+};
+
 /**
  * Platform admin API. Deliberately exposes NO documents, storage keys or document URLs; only metadata
  * and usage counters.
@@ -121,12 +159,26 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
 
   app.get('/admin/dashboard', { preHandler: limits.adminRead }, async () => {
     const todayStart = startOfIstDay();
-    const [shopGroups, subGroups, ordersToday, totalShops] = await Promise.all([
+    const [shopGroups, subGroups, ordersToday, totalShops, totalOrders, orderGroups, pageRows, recentShops, recentOrders] = await Promise.all([
       prisma.shop.groupBy({ by: ['status'], _count: { _all: true } }),
       prisma.subscription.groupBy({ by: ['status'], _count: { _all: true } }),
       prisma.order.count({ where: { createdAt: { gte: todayStart, lt: endOfIstDay() } } }),
-      prisma.shop.count()
+      prisma.shop.count(),
+      prisma.order.count(),
+      prisma.order.groupBy({ by: ['status'], _count: { _all: true } }),
+      // Pages = sum(selectedPageCount x copies) over orders that are not cancelled/expired (same rule as shop analytics).
+      prisma.$queryRaw<Array<{ pages: bigint | number | null }>>`
+        SELECT COALESCE(SUM(("priceSnapshot"->>'selectedPageCount')::int * COALESCE(("printOptionsSnapshot"->>'copies')::int, 1)), 0) AS pages
+        FROM "Order" WHERE status NOT IN ('CANCELLED', 'EXPIRED')`,
+      prisma.shop.findMany({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 5, include: { subscription: { include: { plan: true } } } }),
+      prisma.order.findMany({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 5,
+        include: { document: true, shop: { select: { slug: true, displayName: true } } }
+      })
     ]);
+    const ordersByStatus = Object.fromEntries(Object.values(OrderStatus).map((s) => [s, 0])) as Record<string, number>;
+    for (const g of orderGroups) ordersByStatus[g.status] = g._count._all;
     const shopsByStatus = Object.fromEntries(Object.values(ShopStatus).map((s) => [s, 0])) as Record<string, number>;
     for (const g of shopGroups) shopsByStatus[g.status] = g._count._all;
     const subscriptionsByStatus = Object.fromEntries(Object.values(SubscriptionStatus).map((s) => [s, 0])) as Record<string, number>;
@@ -137,7 +189,32 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       shopsByStatus,
       activeSubscriptions: subscriptionsByStatus.ACTIVE ?? 0,
       subscriptionsByStatus,
-      ordersToday
+      ordersToday,
+      totalOrders,
+      ordersByStatus,
+      totalPages: Number(pageRows[0]?.pages ?? 0),
+      recentShops: recentShops.map((s) => ({ ...shopView(s), subscription: subscriptionView(s.subscription) })),
+      recentOrders: recentOrders.map(adminOrderView)
+    });
+  });
+
+  /** Cross-shop order list: safe operational metadata only (see adminOrderView). */
+  app.get('/admin/orders', { preHandler: limits.adminRead }, async (request) => {
+    const q = pageQuery
+      .extend({ shopId: z.string().min(8).max(64).optional(), status: z.nativeEnum(OrderStatus).optional() })
+      .strict()
+      .parse(request.query);
+    const rows = await prisma.order.findMany({
+      where: { shopId: q.shopId, status: q.status, ...cursorWhere(decodeCursor(q.cursor)) },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: q.limit + 1,
+      include: { document: true, shop: { select: { slug: true, displayName: true } } }
+    });
+    const page = rows.slice(0, q.limit);
+    const last = page.at(-1);
+    return json({
+      items: page.map(adminOrderView),
+      nextCursor: rows.length > q.limit && last ? encodeCursor(last.createdAt, last.id) : undefined
     });
   });
 
@@ -158,12 +235,24 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: q.limit + 1,
-      include: { subscription: { include: { plan: true } } }
+      include: {
+        subscription: { include: { plan: true } },
+        users: { where: { role: Role.SHOP_OWNER }, select: { displayName: true, email: true }, orderBy: { createdAt: 'asc' }, take: 1 },
+        _count: { select: { orders: true } }
+      }
     });
     const page = rows.slice(0, q.limit);
     const last = page.at(-1);
+    const lastOrders = await prisma.order.groupBy({ by: ['shopId'], where: { shopId: { in: page.map((s) => s.id) } }, _max: { createdAt: true } });
+    const lastOrderAt = new Map(lastOrders.map((g) => [g.shopId, g._max.createdAt]));
     return json({
-      items: page.map((s) => ({ ...shopView(s), subscription: subscriptionView(s.subscription) })),
+      items: page.map((s) => ({
+        ...shopView(s),
+        subscription: subscriptionView(s.subscription),
+        owner: s.users[0] ?? null,
+        orderCount: s._count.orders,
+        lastOrderAt: lastOrderAt.get(s.id) ?? null
+      })),
       nextCursor: rows.length > q.limit && last ? encodeCursor(last.createdAt, last.id) : undefined
     });
   });
@@ -215,17 +304,36 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
     });
     if (!shop) throw notFound('Shop not found');
     const since = new Date(Date.now() - 30 * 86_400_000);
-    const [orderCount, orders30d, pricingRuleCount, lastOrder] = await Promise.all([
+    const [orderCount, orders30d, pricingRules, lastOrder, statusGroups, recentOrders] = await Promise.all([
       prisma.order.count({ where: { shopId: id } }),
       prisma.order.count({ where: { shopId: id, createdAt: { gte: since } } }),
-      prisma.pricingRule.count({ where: { shopId: id } }),
-      prisma.order.findFirst({ where: { shopId: id }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } })
+      prisma.pricingRule.findMany({ where: { shopId: id }, orderBy: [{ colourMode: 'asc' }, { sides: 'asc' }] }),
+      prisma.order.findFirst({ where: { shopId: id }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+      prisma.order.groupBy({ by: ['status'], where: { shopId: id }, _count: { _all: true } }),
+      prisma.order.findMany({
+        where: { shopId: id },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 10,
+        include: { document: true, shop: { select: { slug: true, displayName: true } } }
+      })
     ]);
+    const ordersByStatus = Object.fromEntries(Object.values(OrderStatus).map((st) => [st, 0])) as Record<string, number>;
+    for (const g of statusGroups) ordersByStatus[g.status] = g._count._all;
     return json({
       shop: shopView(shop),
       owners: shop.users,
       subscription: subscriptionView(shop.subscription),
-      usage: { orderCount, ordersLast30Days: orders30d, pricingRuleCount, lastOrderAt: lastOrder?.createdAt ?? null }
+      usage: { orderCount, ordersLast30Days: orders30d, pricingRuleCount: pricingRules.length, lastOrderAt: lastOrder?.createdAt ?? null },
+      ordersByStatus,
+      pricingRules: pricingRules.map((r) => ({
+        id: r.id,
+        paperSize: r.paperSize,
+        colourMode: r.colourMode,
+        sides: r.sides,
+        pricePerSheetPaise: r.pricePerSheetPaise,
+        active: r.active
+      })),
+      recentOrders: recentOrders.map(adminOrderView)
     });
   });
 

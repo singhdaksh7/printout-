@@ -16,6 +16,7 @@ describe('platform admin API', () => {
 
   const adminRoutes: Array<['GET' | 'POST' | 'PUT', string, unknown]> = [
     ['GET', '/admin/dashboard', undefined],
+    ['GET', '/admin/orders', undefined],
     ['GET', '/admin/shops', undefined],
     ['POST', '/admin/shops', { slug: 'new-shop', displayName: 'N', owner: { email: 'n@x.test', displayName: 'N', password: 'a-long-password-1' } }],
     ['GET', '/admin/shops/abcdefghij', undefined],
@@ -46,6 +47,78 @@ describe('platform admin API', () => {
     await newOrder(app, prisma, world.b);
     const d = (await call(app, admin, 'GET', '/admin/dashboard')).json().data;
     expect(d).toMatchObject({ totalShops: 2, shopsByStatus: { ACTIVE: 2, SUSPENDED: 0 }, activeSubscriptions: 2, ordersToday: 2 });
+  });
+
+  it('dashboard adds totals, status breakdown, recent shops and recent orders (metadata only)', async () => {
+    const a1 = await newOrder(app, prisma, world.a);
+    await newOrder(app, prisma, world.b);
+    const d = (await call(app, admin, 'GET', '/admin/dashboard')).json().data;
+    expect(d.totalOrders).toBe(2);
+    expect(d.ordersByStatus).toMatchObject({ NEW: 2, PRINTED: 0 });
+    const opts = a1.order.printOptionsSnapshot as { copies?: number };
+    expect(d.totalPages).toBeGreaterThanOrEqual(a1.quote.selectedPageCount * (opts.copies ?? 1));
+    expect(d.recentShops).toHaveLength(2);
+    expect(d.recentOrders).toHaveLength(2);
+    expect(JSON.stringify(d)).not.toMatch(/objectKey|trackingToken|passwordHash/);
+  });
+
+  it('GET /admin/orders returns safe operational metadata only and supports shop/status filters', async () => {
+    const a1 = await newOrder(app, prisma, world.a);
+    const b1 = await newOrder(app, prisma, world.b);
+    const res = await call(app, admin, 'GET', '/admin/orders');
+    expect(res.statusCode).toBe(200);
+    const items = res.json().data.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(2);
+    const row = items.find((i) => i.id === a1.order.id)!;
+    expect(row).toMatchObject({
+      shopSlug: world.a.slug,
+      orderNumber: a1.order.orderNumber,
+      status: 'NEW',
+      totalPaise: a1.order.totalPaise,
+      pageCount: 10,
+      documentStatus: 'AVAILABLE'
+    });
+    for (const key of ['fileName', 'colourMode', 'sides', 'copies', 'paperSize', 'pageSelection', 'selectedPageCount', 'printedAt', 'deleteAfter', 'deletedAt']) {
+      expect(row, key).toHaveProperty(key);
+    }
+    // Privacy: no storage keys, tracking tokens, URLs or content handles.
+    expect(res.body).not.toContain(a1.doc.objectKey);
+    expect(res.body).not.toContain(a1.trackingToken);
+    expect(res.body).not.toContain(b1.trackingToken);
+    expect(res.body).not.toMatch(/objectKey|trackingToken|"url"|signature/i);
+
+    const onlyA = (await call(app, admin, 'GET', `/admin/orders?shopId=${world.a.shopId}`)).json().data.items;
+    expect(onlyA.map((i: { id: string }) => i.id)).toEqual([a1.order.id]);
+    expect((await call(app, admin, 'GET', '/admin/orders?status=PRINTED')).json().data.items).toHaveLength(0);
+    expect((await call(app, admin, 'GET', '/admin/orders?status=BOGUS')).statusCode).toBe(400);
+    expect((await call(app, admin, 'GET', '/admin/orders?evil=1')).statusCode).toBe(400);
+  });
+
+  it('PLATFORM_ADMIN cannot obtain document access (content stays with the owning shop)', async () => {
+    const a1 = await newOrder(app, prisma, world.a);
+    const res = await call(app, admin, 'POST', `/shop/orders/${a1.order.id}/document-access`, {});
+    expect(res.statusCode).toBe(403);
+    expect(res.body).not.toMatch(/https?:\/\//);
+    const orderRes = await call(app, admin, 'GET', `/shop/orders/${a1.order.id}`);
+    expect(orderRes.statusCode).toBe(403);
+  });
+
+  it('shop list shows owner, order count and last activity; shop detail adds status counts, pricing and recent orders', async () => {
+    const a1 = await newOrder(app, prisma, world.a);
+    const list = (await call(app, admin, 'GET', '/admin/shops')).json().data.items as Array<Record<string, any>>;
+    const rowA = list.find((s) => s.id === world.a.shopId)!;
+    const rowB = list.find((s) => s.id === world.b.shopId)!;
+    expect(rowA).toMatchObject({ owner: { email: world.a.ownerEmail }, orderCount: 1 });
+    expect(rowA.lastOrderAt).toBeTruthy();
+    expect(rowB).toMatchObject({ orderCount: 0, lastOrderAt: null });
+    expect(JSON.stringify(list)).not.toContain('passwordHash');
+
+    const d = (await call(app, admin, 'GET', `/admin/shops/${world.a.shopId}`)).json().data;
+    expect(d.ordersByStatus).toMatchObject({ NEW: 1 });
+    expect(d.pricingRules).toHaveLength(4);
+    expect(d.usage.pricingRuleCount).toBe(4);
+    expect(d.recentOrders.map((o: { id: string }) => o.id)).toEqual([a1.order.id]);
+    expect(JSON.stringify(d)).not.toMatch(/objectKey|trackingToken|passwordHash/);
   });
 
   it('creates a shop with an owner who can then log in; validates and de-duplicates slugs/emails', async () => {
@@ -102,7 +175,7 @@ describe('platform admin API', () => {
     expect(d.owners[0].email).toBe(world.a.ownerEmail);
     expect(res.body).not.toContain(o.doc.objectKey);
     expect(res.body).not.toContain(o.trackingToken);
-    expect(res.body).not.toContain('notes.pdf');
+    // The original filename is operational metadata the platform admin may see (product decision); content/keys/tokens never.
     expect((await call(app, admin, 'GET', '/admin/shops/doesnotexist1')).statusCode).toBe(404);
   });
 
