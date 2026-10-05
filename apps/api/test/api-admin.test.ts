@@ -59,7 +59,7 @@ describe('platform admin API', () => {
     expect(d.totalPages).toBeGreaterThanOrEqual(a1.quote.selectedPageCount * (opts.copies ?? 1));
     expect(d.recentShops).toHaveLength(2);
     expect(d.recentOrders).toHaveLength(2);
-    expect(JSON.stringify(d)).not.toMatch(/objectKey|trackingToken|passwordHash/);
+    expect(JSON.stringify(d)).not.toMatch(/objectKey|trackingToken|passwordHash|notes.pdf|originalFilename|fileName/i);
   });
 
   it('GET /admin/orders returns safe operational metadata only and supports shop/status filters', async () => {
@@ -78,10 +78,13 @@ describe('platform admin API', () => {
       pageCount: 10,
       documentStatus: 'AVAILABLE'
     });
-    for (const key of ['fileName', 'colourMode', 'sides', 'copies', 'paperSize', 'pageSelection', 'selectedPageCount', 'printedAt', 'deleteAfter', 'deletedAt']) {
+    for (const key of ['colourMode', 'sides', 'copies', 'paperSize', 'pageSelection', 'selectedPageCount', 'printedAt', 'deleteAfter', 'deletedAt']) {
       expect(row, key).toHaveProperty(key);
     }
-    // Privacy: no storage keys, tracking tokens, URLs or content handles.
+    // Privacy: no customer filename, storage keys, tracking tokens, URLs or content handles.
+    expect(res.body).not.toContain('notes.pdf');
+    expect(res.body).not.toMatch(/fileName|originalFilename/i);
+    expect(row).not.toHaveProperty('fileName');
     expect(res.body).not.toContain(a1.doc.objectKey);
     expect(res.body).not.toContain(a1.trackingToken);
     expect(res.body).not.toContain(b1.trackingToken);
@@ -118,7 +121,7 @@ describe('platform admin API', () => {
     expect(d.pricingRules).toHaveLength(4);
     expect(d.usage.pricingRuleCount).toBe(4);
     expect(d.recentOrders.map((o: { id: string }) => o.id)).toEqual([a1.order.id]);
-    expect(JSON.stringify(d)).not.toMatch(/objectKey|trackingToken|passwordHash/);
+    expect(JSON.stringify(d)).not.toMatch(/objectKey|trackingToken|passwordHash|notes.pdf|originalFilename|fileName/i);
   });
 
   it('creates a shop with an owner who can then log in; validates and de-duplicates slugs/emails', async () => {
@@ -175,7 +178,7 @@ describe('platform admin API', () => {
     expect(d.owners[0].email).toBe(world.a.ownerEmail);
     expect(res.body).not.toContain(o.doc.objectKey);
     expect(res.body).not.toContain(o.trackingToken);
-    // The original filename is operational metadata the platform admin may see (product decision); content/keys/tokens never.
+    expect(res.body).not.toContain('notes.pdf'); // customer filenames are never exposed to PLATFORM_ADMIN
     expect((await call(app, admin, 'GET', '/admin/shops/doesnotexist1')).statusCode).toBe(404);
   });
 

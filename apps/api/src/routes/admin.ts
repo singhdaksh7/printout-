@@ -113,8 +113,8 @@ interface PriceSnapshotMeta { selectedPageCount?: number }
 interface OptionsSnapshotMeta { paperSize?: string; colourMode?: string; sides?: string; copies?: number; pageSelection?: unknown }
 
 /**
- * Operational metadata only. Deliberately omits the storage object key, tracking token, document URLs and
- * any content: PLATFORM_ADMIN must never be able to open a customer document through this API.
+ * Operational metadata only. Deliberately omits the customer's original filename, the storage object key, the
+ * tracking token, document URLs and any content: PLATFORM_ADMIN must never be able to open a customer document through this API.
  */
 const adminOrderView = (o: Order & { document: Document; shop: { slug: string; displayName: string } }) => {
   const price = (o.priceSnapshot ?? {}) as PriceSnapshotMeta;
@@ -131,7 +131,6 @@ const adminOrderView = (o: Order & { document: Document; shop: { slug: string; d
     currency: o.currency,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
-    fileName: o.document.originalFilename,
     mimeType: o.document.detectedMimeType,
     pageCount: o.document.pageCount,
     selectedPageCount: price.selectedPageCount ?? null,

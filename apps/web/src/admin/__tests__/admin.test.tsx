@@ -36,7 +36,7 @@ const sub = { id: 'sub-0001', shopId: 'shop-0001', status: 'ACTIVE', renewsAt: n
 const order = (over: object = {}) => ({
   id: 'ord-0001', shopId: 'shop-0001', shopSlug: 'central', shopName: 'Central Print', orderNumber: 'CEN-0001', status: 'PRINTED',
   customerDisplayNameOrReference: 'Ravi', totalPaise: 1200, currency: 'INR', createdAt: '2026-01-02T05:00:00Z', updatedAt: '2026-01-02T05:10:00Z',
-  fileName: 'notes.pdf', mimeType: 'application/pdf', pageCount: 10, selectedPageCount: 4, paperSize: 'A4', colourMode: 'bw', sides: 'duplex', copies: 2,
+  mimeType: 'application/pdf', pageCount: 10, selectedPageCount: 4, paperSize: 'A4', colourMode: 'bw', sides: 'duplex', copies: 2,
   pageSelection: { mode: 'ranges', ranges: [{ from: 1, to: 4 }] }, documentStatus: 'PRINTED_RETENTION', printedAt: '2026-01-02T05:05:00Z',
   deleteAfter: '2026-01-02T05:35:00Z', deletedAt: null, ...over
 });
@@ -291,7 +291,7 @@ describe('platform visibility (metadata only)', () => {
     renderAdmin('/admin/orders');
     const rows = await screen.findAllByTestId('admin-order');
     expect(rows).toHaveLength(2);
-    expect(within(rows[0]!).getByText('notes.pdf')).toBeInTheDocument();
+    expect(screen.queryByText(/notes\.pdf/)).toBeNull();
     expect(rows[0]).toHaveTextContent('Double-sided');
     expect(rows[0]).toHaveTextContent('Pages 1–4');
     expect(rows[0]).toHaveTextContent('2 copies');

@@ -15,7 +15,7 @@ export interface AdminShop {
 export interface AdminOrder {
   id: string; shopId: string; shopSlug: string; shopName: string; orderNumber: string; status: string;
   customerDisplayNameOrReference: string | null; totalPaise: number; currency: string; createdAt: string; updatedAt: string;
-  fileName: string; mimeType: string | null; pageCount: number | null; selectedPageCount: number | null; paperSize: string | null;
+  mimeType: string | null; pageCount: number | null; selectedPageCount: number | null; paperSize: string | null;
   colourMode: string | null; sides: string | null; copies: number | null; pageSelection: unknown;
   documentStatus: string; printedAt: string | null; deleteAfter: string | null; deletedAt: string | null;
 }

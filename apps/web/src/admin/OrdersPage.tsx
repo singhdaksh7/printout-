@@ -32,7 +32,6 @@ export function AdminOrderRows({ items, showShop = true }: { items: AdminOrder[]
           <div className="sh-muted sh-wrap">
             {fmtDate(o.createdAt)}{o.customerDisplayNameOrReference ? ` · ${o.customerDisplayNameOrReference}` : ''} · {inr(o.totalPaise)}
           </div>
-          <div className="sh-wrap">{o.fileName}</div>
           <div className="sh-muted sh-wrap">
             {o.mimeType ?? 'file'} · {o.selectedPageCount ?? o.pageCount ?? '?'}{o.pageCount != null ? `/${o.pageCount}` : ''} pages · {pagesText(o.pageSelection)} ·{' '}
             {o.colourMode === 'colour' ? 'Colour' : 'B&W'} · {o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · {o.copies ?? 1} copies · {o.paperSize ?? 'A4'}
