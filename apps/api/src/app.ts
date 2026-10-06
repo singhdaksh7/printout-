@@ -105,7 +105,7 @@ export function createApp(deps: AppDeps = {}) {
   app.register(cors, {
     origin: config.WEB_ORIGIN,
     credentials: true,
-    methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['content-type', 'x-csrf-token', 'last-event-id']
   });
   app.register(cookie);
