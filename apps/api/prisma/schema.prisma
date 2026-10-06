@@ -58,6 +58,8 @@ model Shop {
   pricingRules PricingRule[]
   orders Order[]
   documents Document[]
+  devices ShopDevice[]
+  devicePairingCodes DevicePairingCode[]
   auditLogs AuditLog[]
   subscription Subscription?
   createdAt DateTime @default(now())
@@ -167,6 +169,7 @@ model OrderStatusHistory {
   toStatus OrderStatus
   reason String?
   actorUserId String?
+  actorDeviceId String?
   createdAt DateTime @default(now())
   @@index([orderId, createdAt])
 }
@@ -178,6 +181,52 @@ model Plan {
  subscriptions Subscription[]
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
+}
+enum DevicePlatform {
+  ANDROID
+  WINDOWS
+}
+enum DeviceStatus {
+  ACTIVE
+  REVOKED
+}
+/// A paired printing device (future Android app / Windows agent). Authenticates with a high-entropy bearer credential;
+/// only its SHA-256 digest is stored. shopId is the ONLY tenant source for every device request.
+model ShopDevice {
+  id String @id @default(cuid())
+  shopId String
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name String
+  platform DevicePlatform
+  status DeviceStatus @default(ACTIVE)
+  /// sha256 hex of the raw credential (credential is 256-bit random, so a fast digest is appropriate). Never the raw value.
+  credentialHash String @unique
+  /// Bumped on credential rotation (future). Rotation = new hash + version+1.
+  credentialVersion Int @default(1)
+  appVersion String?
+  osVersion String?
+  /// FCM registration token (ANDROID). Never returned by any API, never logged.
+  pushToken String?
+  pushTokenUpdatedAt DateTime?
+  lastSeenAt DateTime?
+  revokedAt DateTime?
+  revokedByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([shopId, status])
+}
+/// One-time, short-lived pairing code created by a shop owner. Only an HMAC of the code is stored.
+model DevicePairingCode {
+  id String @id @default(cuid())
+  shopId String
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  codeHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+  usedByDeviceId String?
+  createdByUserId String?
+  createdAt DateTime @default(now())
+  @@index([shopId, expiresAt])
 }
 model Subscription {
  id String @id @default(cuid())
@@ -195,6 +244,9 @@ model AuditLog {
  shopId String?
  shop Shop? @relation(fields:[shopId], references:[id], onDelete:SetNull)
  actorUserId String?
+ /// SHOP_OWNER | SHOP_DEVICE | PLATFORM_ADMIN | SYSTEM (null on rows written before devices existed)
+ actorType String?
+ actorDeviceId String?
  action String
  targetType String?
  targetId String?

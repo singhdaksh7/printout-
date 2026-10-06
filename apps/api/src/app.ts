@@ -9,6 +9,12 @@ import { LoginThrottle } from './auth.js';
 import { configWarnings, loadConfig, type Config } from './config.js';
 import { AppError, registerErrorHandlers } from './errors.js';
 import { ShopEvents } from './events.js';
+import { NoopNotifier } from './notifications/noop.js';
+import type { Notifier } from './notifications/types.js';
+import { deviceOrderRoutes } from './routes/device-orders.js';
+import { devicePairingRoutes } from './routes/device-pairing.js';
+import { deviceSelfRoutes } from './routes/device-self.js';
+import { shopDeviceRoutes } from './routes/shop-devices.js';
 import { adminRoutes } from './routes/admin.js';
 import { authRoutes } from './routes/auth.js';
 import { json, type AppContext } from './routes/context.js';
@@ -25,6 +31,8 @@ export interface AppDeps {
   prisma?: PrismaClient;
   storage?: Storage;
   events?: ShopEvents;
+  /** Device push signal sink. Defaults to a no-op (no Firebase needed). */
+  notifier?: Notifier;
   /** Test hook: destination for the request logger. */
   logStream?: NodeJS.WritableStream;
   /** Test hook: Node http server timeouts (e.g. to prove SSE streams outlive requestTimeout). */
@@ -47,7 +55,8 @@ export function createApp(deps: AppDeps = {}) {
   const storage = deps.storage ?? createStorage(config);
   const events = deps.events ?? new ShopEvents();
   const loginThrottle = new LoginThrottle(config.LOGIN_FAIL_MAX, config.LOGIN_FAIL_WINDOW_MINUTES * 60_000);
-  const ctx: AppContext = { config, prisma, storage, events, loginThrottle };
+  const notifier = deps.notifier ?? new NoopNotifier();
+  const ctx: AppContext = { config, prisma, storage, events, loginThrottle, notifier };
 
   const app = Fastify({
     logger: {
@@ -139,6 +148,11 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopConfigRoutes(i, ctx));
       await api.register((i) => shopEventRoutes(i, ctx));
       await api.register((i) => adminRoutes(i, ctx));
+      // Device foundation (Phase 2): pairing (public), owner device management, device-authenticated APIs.
+      await api.register((i) => devicePairingRoutes(i, ctx));
+      await api.register((i) => shopDeviceRoutes(i, ctx));
+      await api.register((i) => deviceOrderRoutes(i, ctx));
+      await api.register((i) => deviceSelfRoutes(i, ctx));
     },
     { prefix: '/api/v1' }
   );
@@ -147,5 +161,5 @@ export function createApp(deps: AppDeps = {}) {
   app.register(uploadRoutes, { prefix: '/api/v1', prisma, storage, config });
   app.register(internalStorageRoutes, { prefix: '/api/v1', prisma, storage, config });
 
-  return { app, prisma, storage, events, config };
+  return { app, prisma, storage, events, config, notifier };
 }
