@@ -107,6 +107,26 @@
 .sh-toast-region { position: fixed; left: 0; right: 0; bottom: calc(var(--nav-h) + 1rem + env(safe-area-inset-bottom)); display: flex; justify-content: center; pointer-events: none; z-index: 120; }
 .sh-toast { background: #111827; color: #fff; padding: .7rem 1.1rem; border-radius: 10px; max-width: 90vw; }
 
+/* printing devices */
+.dev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr); }
+.dev-card { margin: 0; min-width: 0; }
+.dev-card.is-revoked { opacity: .75; }
+.dev-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.dev-name { flex: 1 1 100%; margin: 0 !important; font-size: 1.05rem; }
+.dev-presence-online { background: #d1fae5; color: #065f46; }
+.dev-presence-offline { background: #f3f4f6; color: #4b5563; }
+.dev-presence-revoked { background: #fee2e2; color: #991b1b; }
+.dev-meta { display: grid; gap: .4rem; margin: .75rem 0 0; }
+.dev-meta > div { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.dev-meta dt { color: var(--muted); }
+.dev-meta dd { margin: 0; font-weight: 600; }
+.dev-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.dev-code-box { text-align: center; margin: .5rem 0 1rem; }
+.dev-code { font-size: clamp(1.4rem, 7vw, 2rem); font-weight: 800; letter-spacing: .08em; padding: .75rem .5rem; background: #f1f5f9; border-radius: 10px; overflow-wrap: anywhere; user-select: all; }
+.dev-steps { padding-left: 1.2rem; }
+.dev-link-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: inherit; text-decoration: none; }
+@media (min-width: 900px) { .dev-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* pricing */
 .price-row.is-dirty { border-color: #f59e0b; }
 .price-row-head, .price-row-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }

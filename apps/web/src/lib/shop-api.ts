@@ -160,3 +160,24 @@ export const getQr = () => shopRequest<QrInfo>('/shop/qr');
 export const getAnalytics = () => shopRequest<Record<string, unknown>>('/shop/analytics');
 export const getSettings = () => shopRequest<ShopSettings | null>('/shop/settings');
 export const putSettings = (s: ShopSettings) => shopRequest<ShopSettings>('/shop/settings', { method: 'PUT', body: s });
+
+// ---- printing devices (Settings -> Printing Devices) ---------------------------------------------------
+export type DevicePlatform = 'ANDROID' | 'WINDOWS';
+export type DeviceStatus = 'ACTIVE' | 'REVOKED';
+export type DevicePresence = 'ONLINE' | 'OFFLINE' | 'REVOKED';
+/** Owner-safe device shape. Presence is derived by the server from the last heartbeat (not real-time). Never carries secrets. */
+export interface DeviceView {
+  id: string; name: string; platform: DevicePlatform; status: DeviceStatus; presence: DevicePresence;
+  lastSeenAt: string | null; createdAt: string; revokedAt: string | null; appVersion: string | null;
+}
+/** The raw pairing code is returned exactly once; keep it in component state only. */
+export interface PairingCode { code: string; expiresAt: string }
+
+export const listDevices = (signal?: AbortSignal) =>
+  shopRequest<{ devices: DeviceView[] }>('/shop/devices', signal ? { signal } : {});
+export const createPairingCode = () =>
+  shopRequest<PairingCode>('/shop/devices/pairing-codes', { method: 'POST', body: {} });
+export const renameDevice = (id: string, name: string) =>
+  shopRequest<{ device: DeviceView }>(`/shop/devices/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } });
+export const revokeDevice = (id: string) =>
+  shopRequest<{ device: DeviceView }>(`/shop/devices/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: {} });
