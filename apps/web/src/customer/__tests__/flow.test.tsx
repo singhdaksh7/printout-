@@ -23,14 +23,14 @@ describe('shop landing', () => {
   it.each([[1, '1 minute'], [45, '45 minutes']])('privacy copy follows the server retentionMinutes=%s', async (n, phrase) => {
     mockApi({ [`GET ${base}`]: { data: { ...shopOk, retentionMinutes: n } } });
     renderAt('/p/demo-shop');
-    expect(await screen.findByText(`Deleted ${phrase} after printing.`)).toBeInTheDocument();
+    expect(await screen.findByText(`Deleted ${phrase} after the shop starts printing.`)).toBeInTheDocument();
   });
 
   it('privacy copy falls back to 30 minutes when the server omits retentionMinutes', async () => {
     const { retentionMinutes: _omit, ...legacy } = shopOk;
     mockApi({ [`GET ${base}`]: { data: legacy } });
     renderAt('/p/demo-shop');
-    expect(await screen.findByText('Deleted 30 minutes after printing.')).toBeInTheDocument();
+    expect(await screen.findByText('Deleted 30 minutes after the shop starts printing.')).toBeInTheDocument();
   });
 
   it('shows shop details, privacy line and the choose-file CTA', async () => {
@@ -38,7 +38,7 @@ describe('shop landing', () => {
     renderAt('/p/demo-shop');
     expect(await screen.findByRole('heading', { name: 'Demo Copy Centre' })).toBeInTheDocument();
     expect(screen.getByText('12 Main Road')).toBeInTheDocument();
-    expect(screen.getByText('Deleted 30 minutes after printing.')).toBeInTheDocument();
+    expect(screen.getByText('Deleted 30 minutes after the shop starts printing.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose file' })).toBeInTheDocument();
     expect(screen.getByText(/PDF, JPG or PNG, up to 50\.0 MB/)).toBeInTheDocument();
   });
@@ -354,7 +354,7 @@ describe('submit', () => {
   it('shows pay-the-shop and privacy copy', async () => {
     await setup(order);
     expect(screen.getByText(/Pay the shop directly when you collect/)).toBeInTheDocument();
-    expect(screen.getByText(/deleted 30 minutes after printing/)).toBeInTheDocument();
+    expect(screen.getByText(/deleted 30 minutes after the shop starts printing/)).toBeInTheDocument();
     const card = screen.getByRole('region', { name: /Review/ });
     expect(within(card).getByRole('button', { name: 'Place order' })).toBeEnabled();
   });

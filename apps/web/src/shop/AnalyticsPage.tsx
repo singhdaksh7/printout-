@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { formatPaise } from '../lib/format';
 import { describeError, getAnalytics, type OrderStatus } from '../lib/shop-api';
-import { Banner, Skeleton, STATUS_LABEL, StatusChip } from './components';
+import { Banner, Skeleton, StatusChip } from './components';
 import { ageLabel } from './hooks';
 
 type Raw = Record<string, unknown>;
@@ -35,8 +35,9 @@ export default function AnalyticsPage() {
   const ordersAll = num(data, 'orderCount');
   const pages = num(data, 'pagesToday', 'pagesRepresented', 'pageCount', 'pages');
   const value = num(data, 'estimatedOrderValuePaise', 'quotedTotalPaise');
-  const printed = num(data, 'printedDocumentCount', 'printedCount');
-  const byStatus = obj(data, 'ordersByStatus') ?? {};
+  const initiated = num(data, 'printsInitiated');
+  const newReq = num(data, 'newPrintRequests');
+  const autoDeleted = num(data, 'documentsAutoDeleted');
   const split = obj(data, 'colourSplit', 'byColourMode');
   const bwN = num(data, 'bwCount'), colN = num(data, 'colourCount');
   const colour = split ?? (bwN != null || colN != null ? { bw: bwN ?? 0, colour: colN ?? 0 } : null);
@@ -44,7 +45,6 @@ export default function AnalyticsPage() {
   const col = colour ? (colour.colour ?? 0) : 0;
   const colTotal = bw + col;
   const recent = Array.isArray(data.recentActivity) ? (data.recentActivity as Activity[]) : [];
-  const totalStatus = Object.values(byStatus).reduce((n, v) => n + (typeof v === 'number' ? v : 0), 0);
 
   return (
     <section aria-labelledby="an-title">
@@ -53,7 +53,9 @@ export default function AnalyticsPage() {
         <Stat label={orders != null ? 'Orders today' : 'Orders'} value={String(orders ?? ordersAll ?? 0)} />
         {pages != null && <Stat label="Pages" value={String(pages)} />}
         {value != null && <Stat label="Estimated order value" value={formatPaise(value)} hint="Sum of quoted order totals. Not confirmed payments." />}
-        {printed != null && <Stat label="Documents printed" value={String(printed)} />}
+        {newReq != null && <Stat label="New print requests" value={String(newReq)} hint="Waiting for you to press Print." />}
+        {initiated != null && <Stat label="Prints initiated" value={String(initiated)} hint="Times Print was pressed. Does not confirm paper came out." />}
+        {autoDeleted != null && <Stat label="Files deleted automatically" value={String(autoDeleted)} />}
       </div>
 
       {colour && (
@@ -70,17 +72,6 @@ export default function AnalyticsPage() {
           ) : <p className="sh-muted">No orders yet.</p>}
         </div>
       )}
-
-      <div className="sh-card">
-        <h2>Orders by status</h2>
-        {totalStatus === 0 ? <p className="sh-muted">No orders yet.</p> : (
-          <ul className="an-status">
-            {(Object.keys(STATUS_LABEL) as OrderStatus[]).filter((s) => (byStatus[s] ?? 0) > 0).map((s) => (
-              <li key={s}><StatusChip status={s} /><span className="tnum">{byStatus[s]}</span></li>
-            ))}
-          </ul>
-        )}
-      </div>
 
       {recent.length > 0 && (
         <div className="sh-card">

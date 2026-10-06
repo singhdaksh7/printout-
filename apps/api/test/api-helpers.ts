@@ -182,13 +182,45 @@ export async function newOrder(
   return { doc, order, trackingToken: o.json().data.trackingToken as string, quote: q.json().data };
 }
 
-/** Walks an order through transitions as the given shop session. */
+/**
+ * Creates a LEGACY production state directly in the DB (the shop API no longer exposes these steps): sets the order status
+ * and appends a matching OrderStatusHistory row. PRINTED/READY/COLLECTED also move the document to PRINTED_RETENTION with
+ * printedAt + deleteAfter, as old print-confirmation did.
+ */
+export async function seedLegacyStatus(
+  prisma: PrismaClient,
+  orderId: string,
+  status: 'ACCEPTED' | 'PRINTING' | 'PRINTED' | 'READY' | 'COLLECTED',
+  opts: { printedAt?: Date; deleteAfter?: Date; retentionMinutes?: number } = {}
+) {
+  const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+  if (['PRINTED', 'READY', 'COLLECTED'].includes(status)) {
+    const doc = await prisma.document.findUniqueOrThrow({ where: { id: order.documentId } });
+    const printedAt = opts.printedAt ?? doc.printedAt ?? new Date();
+    const deleteAfter = opts.deleteAfter ?? doc.deleteAfter ?? new Date(printedAt.getTime() + (opts.retentionMinutes ?? 30) * 60_000);
+    await prisma.document.update({
+      where: { id: doc.id },
+      data: { status: DocumentStatus.PRINTED_RETENTION, printedAt, deleteAfter }
+    });
+  }
+  await prisma.order.update({ where: { id: orderId }, data: { status } });
+  await prisma.orderStatusHistory.create({ data: { orderId, fromStatus: order.status, toStatus: status } });
+}
+
+/**
+ * Walks an order to a state. CANCELLED goes through the real API (the only transition left); every other step is a legacy
+ * state created directly in the DB via seedLegacyStatus.
+ */
 export async function advance(app: FastifyInstance, session: Session, orderId: string, ...statuses: string[]) {
   for (const toStatus of statuses) {
-    const res = await call(app, session, 'POST', `/shop/orders/${orderId}/transitions`, {
-      toStatus,
-      clientRequestId: randomUUID()
-    });
-    if (res.statusCode !== 200) throw new Error(`transition to ${toStatus} failed: ${res.body}`);
+    if (toStatus === 'CANCELLED') {
+      const res = await call(app, session, 'POST', `/shop/orders/${orderId}/transitions`, {
+        toStatus,
+        clientRequestId: randomUUID()
+      });
+      if (res.statusCode !== 200) throw new Error(`transition to ${toStatus} failed: ${res.body}`);
+    } else {
+      await seedLegacyStatus(testPrisma(), orderId, toStatus as 'ACCEPTED');
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { OrderStatus, type Prisma } from '@prisma/client';
+import { DocumentStatus, OrderStatus, type Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { endOfIstDay, startOfIstDay } from '../domain/time.js';
@@ -193,17 +193,27 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     if (to <= from) throw new AppError(400, 'VALIDATION_ERROR', '`to` must be after `from`');
     if (to.getTime() - from.getTime() > 93 * 86_400_000) throw new AppError(400, 'VALIDATION_ERROR', 'Range too large (max 93 days)');
 
-    const [orders, recent] = await Promise.all([
+    const initiatedDoc = { OR: [{ printInitiatedAt: { not: null } }, { printedAt: { not: null } }] };
+    const [orders, recent, printsInitiated, newPrintRequests, documentsAutoDeleted] = await Promise.all([
       prisma.order.findMany({
         where: { shopId, createdAt: { gte: from, lt: to } },
         select: { status: true, totalPaise: true, printOptionsSnapshot: true, priceSnapshot: true }
       }),
       prisma.orderStatusHistory.findMany({
-        where: { order: { shopId } },
+        // The internal ACCEPTED step Print performs is an implementation detail, not shop-visible activity.
+        where: { order: { shopId }, NOT: { toStatus: OrderStatus.ACCEPTED, reason: 'Print' } },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 10,
         select: { fromStatus: true, toStatus: true, createdAt: true, order: { select: { id: true, orderNumber: true } } }
-      })
+      }),
+      // Print initiated = first Print pressed (printInitiatedAt) or, for legacy records, the old print confirmation (printedAt).
+      // It never means paper was physically confirmed. Counted by order creation date, like the other range figures.
+      prisma.order.count({ where: { shopId, createdAt: { gte: from, lt: to }, document: initiatedDoc } }),
+      // Operational, not range-limited: live requests nobody has pressed Print on yet.
+      prisma.order.count({
+        where: { shopId, status: { in: [OrderStatus.NEW, OrderStatus.ACCEPTED, OrderStatus.PRINTING] }, document: { printInitiatedAt: null, printedAt: null, status: DocumentStatus.AVAILABLE } }
+      }),
+      prisma.document.count({ where: { shopId, status: DocumentStatus.DELETED, deletedAt: { gte: from, lt: to } } })
     ]);
 
     const ordersByStatus = Object.fromEntries(Object.values(OrderStatus).map((s) => [s, 0])) as Record<OrderStatus, number>;
@@ -232,6 +242,11 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
       estimatedOrderValuePaise: value,
       bwCount: bw,
       colourCount: colour,
+      // Print-initiated model (replaces the retired "documents printed" figure).
+      printsInitiated,
+      newPrintRequests,
+      documentsAutoDeleted,
+      // Raw internal statuses, kept for compatibility/troubleshooting. PRINTING is where every new-flow order stays, so it is not an operational backlog.
       ordersByStatus,
       recentActivity: recent.map((h) => ({
         orderId: h.order.id,

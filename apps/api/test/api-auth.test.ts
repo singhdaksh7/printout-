@@ -81,7 +81,7 @@ describe('auth', () => {
       ['POST', '/shop/pricing-rules', { colourMode: 'bw', sides: 'single', pricePerSheetPaise: 5 }],
       ['PUT', '/shop/pricing-rules/abcdefghij', { pricePerSheetPaise: 5 }],
       ['DELETE', '/shop/pricing-rules/abcdefghij', undefined],
-      ['POST', '/shop/orders/abcdefghij/transitions', { toStatus: 'ACCEPTED', clientRequestId: randomUUID() }],
+      ['POST', '/shop/orders/abcdefghij/transitions', { toStatus: 'CANCELLED', clientRequestId: randomUUID() }],
       ['POST', '/shop/orders/abcdefghij/print-confirmation', { clientRequestId: randomUUID() }],
       ['POST', '/shop/orders/abcdefghij/document-access', {}],
       ['POST', '/auth/logout', undefined]
@@ -95,6 +95,18 @@ describe('auth', () => {
     }
     const valid = await call(app, s, 'PUT', '/shop/settings', { displayName: 'Renamed Shop' });
     expect(valid.statusCode).toBe(200);
+  });
+
+  it('transitions and the retired print-confirmation: anonymous 401, platform admin 403 (before any 410/400)', async () => {
+    const admin = await login(app, world.adminEmail);
+    const calls: Array<[string, unknown]> = [
+      ['/shop/orders/abcdefghij/transitions', { toStatus: 'CANCELLED', clientRequestId: randomUUID() }],
+      ['/shop/orders/abcdefghij/print-confirmation', { clientRequestId: randomUUID() }]
+    ];
+    for (const [url, body] of calls) {
+      expect((await call(app, null, 'POST', url, body)).statusCode, `anon ${url}`).toBe(401);
+      expect((await call(app, admin, 'POST', url, body)).statusCode, `admin ${url}`).toBe(403);
+    }
   });
 
   it('CSRF token of another session is rejected', async () => {

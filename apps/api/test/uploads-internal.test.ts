@@ -68,7 +68,7 @@ describe('signed document delivery (local driver)', () => {
   it('rejects bad signature, tampered expiry, wrong key and expired links', async () => {
     const doc = await availableDoc();
     const url = await signed(doc.objectKey);
-    expect((await get(url.replace(/sig=[0-9a-f]/, 'sig=0'))).statusCode).toBe(403);
+    expect((await get(url.replace(/sig=([0-9a-f])/, (_m: string, c: string) => 'sig=' + (c === '0' ? '1' : '0')))).statusCode).toBe(403);
     expect((await get(url.replace(/sig=[0-9a-f]+/, ''))).statusCode).toBe(403);
     expect((await get(url.replace(/exp=(\d+)/, (_m, e) => `exp=${Number(e) + 1000}`))).statusCode).toBe(403);
     const other = await signed('B'.repeat(43));

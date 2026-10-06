@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateObjectKey } from '../src/storage/keys.js';
-import { advance, buildApp, call, login, newOrder, seedWorld, type Session, type World } from './api-helpers.js';
+import { advance, buildApp, call, login, newOrder, seedLegacyStatus, seedWorld, type Session, type World } from './api-helpers.js';
 
 describe('Print Now (NEW -> ACCEPTED -> PRINTING) and Save File', () => {
   const { app, prisma, events, storage, config } = buildApp();
@@ -118,13 +118,18 @@ describe('Print Now (NEW -> ACCEPTED -> PRINTING) and Save File', () => {
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe('PRINTING');
   });
 
-  it('10+11. Confirm Printed (legacy) records printedAt but never moves deleteAfter; reprint, Print and Save File never change them', async () => {
+  it('10+11. Confirm Printed is retired (410); a legacy printedAt row never has deleteAfter moved; reprint, Print and Save File never change them', async () => {
     const { order, doc: d0 } = await newOrder(app, prisma, world.a);
     await printNow(a, order.id);
     const snap0 = await doc(d0.id);
     await new Promise((r) => setTimeout(r, 1100));
+    // print-confirmation is retired: it can no longer create the legacy state, nor touch anything
     const res = await confirm(a, order.id);
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(410);
+    expect(res.json().error.code).toBe('ENDPOINT_RETIRED');
+    expect((await doc(d0.id)).printedAt).toBeNull();
+    // represent a legacy production record: confirmed after Print, deleteAfter untouched
+    await seedLegacyStatus(prisma, order.id, 'PRINTED', { printedAt: new Date() });
     const snap = await doc(d0.id);
     expect(snap.printedAt).not.toBeNull();
     expect(snap.deleteAfter?.getTime()).toBe(snap0.deleteAfter?.getTime());
@@ -227,8 +232,7 @@ describe('Print Now (NEW -> ACCEPTED -> PRINTING) and Save File', () => {
     const u1 = await doc(d0.id);
     expect([u1.printedAt, u1.deleteAfter, u1.status, u1.expiresAt?.getTime()]).toEqual([u0.printedAt, u0.deleteAfter, u0.status, u0.expiresAt?.getTime()]);
     // printed
-    await advance(app, a, order.id, 'ACCEPTED', 'PRINTING');
-    await confirm(a, order.id);
+    await seedLegacyStatus(prisma, order.id, 'PRINTED', { retentionMinutes: config.PRINT_RETENTION_MINUTES });
     const p0 = await doc(d0.id);
     await new Promise((r) => setTimeout(r, 1100));
     for (let i = 0; i < 3; i++) expect((await download(a, order.id)).statusCode).toBe(200);
@@ -241,8 +245,7 @@ describe('Print Now (NEW -> ACCEPTED -> PRINTING) and Save File', () => {
 
   it('Save File: after deleteAfter the download is denied immediately (even before the worker runs)', async () => {
     const { order, doc: d0 } = await newOrder(app, prisma, world.a);
-    await advance(app, a, order.id, 'ACCEPTED', 'PRINTING');
-    await confirm(a, order.id);
+    await seedLegacyStatus(prisma, order.id, 'PRINTED', { retentionMinutes: config.PRINT_RETENTION_MINUTES });
     await prisma.document.update({ where: { id: d0.id }, data: { deleteAfter: new Date(Date.now() - 1000) } });
     const r = await download(a, order.id);
     expect(r.statusCode).toBe(410);
@@ -273,7 +276,7 @@ describe('Print Now (NEW -> ACCEPTED -> PRINTING) and Save File', () => {
     const inlineUrl = path((await access(a, order.id)).json().data.url);
     expect((await app.inject({ method: 'GET', url: inlineUrl + '&dl=1' })).statusCode).toBe(403);
     expect((await app.inject({ method: 'GET', url: path(dlUrl).replace('&dl=1', '') })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'GET', url: path(dlUrl).replace(/sig=[0-9a-f]/, 'sig=0') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: path(dlUrl).replace(/sig=([0-9a-f])/, (_m: string, c: string) => 'sig=' + (c === '0' ? '1' : '0')) })).statusCode).toBe(403);
   });
 
   it('Save File 13: the explicit save is audited without any sensitive data', async () => {

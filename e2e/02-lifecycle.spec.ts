@@ -63,7 +63,7 @@ test('shop + customer lifecycle across two browser contexts (SSE, Print starts r
   await expect(shop.getByTestId('countdown')).toBeVisible();
   expect(stamp(`extract(epoch from (d."deleteAfter" - d."printInitiatedAt"))::int`)).toBe(String(RETENTION_MINUTES * 60));
   expect(stamp(`d."printedAt" is null and d.status='PRINTED_RETENTION'`)).toBe('t'); // Print never claims a physical print
-  await expect(cust.getByText('Your pages are being printed')).toBeVisible({ timeout: 30_000 }); // customer page polls/refreshes itself
+  await expect(cust.getByText('The shop has started printing your document')).toBeVisible({ timeout: 30_000 }); // customer page polls/refreshes itself
   const docRes = await docResP; // headless Chromium has no PDF viewer, so the navigation itself may end as a download
   expect(docRes.status()).toBe(200);
   expect(docRes.headers()['content-type']).toBe('application/pdf');

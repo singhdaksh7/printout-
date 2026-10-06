@@ -56,7 +56,7 @@ describe('rate limits on authenticated surfaces', () => {
     const { order } = await newOrder(app, prisma, world.a);
     const s1 = await login(app, world.a.ownerEmail);
     const s2 = await login(app, world.a.ownerEmail); // same IP, different session
-    const noop = (s: typeof s1) => call(app!, s, 'POST', `/shop/orders/${order.id}/transitions`, { toStatus: 'NEW', clientRequestId: randomUUID() });
+    const noop = (s: typeof s1) => call(app!, s, 'POST', `/shop/orders/${order.id}/transitions`, { toStatus: 'CANCELLED', clientRequestId: randomUUID() });
     for (let i = 0; i < 3; i++) expect((await noop(s1)).statusCode).toBe(200);
     expectLimited(await noop(s1));
     expect((await noop(s2)).statusCode).toBe(200);
@@ -71,8 +71,8 @@ describe('rate limits on authenticated surfaces', () => {
     }));
     const { order } = await newOrder(app, prisma, world.a);
     const shop = await login(app, world.a.ownerEmail);
-    // print-confirmation (validation failures still count)
-    for (let i = 0; i < 2; i++) expect((await call(app, shop, 'POST', `/shop/orders/${order.id}/print-confirmation`, { clientRequestId: randomUUID() })).statusCode).toBe(409);
+    // print-confirmation (retired: 410 responses still count against its own bucket)
+    for (let i = 0; i < 2; i++) expect((await call(app, shop, 'POST', `/shop/orders/${order.id}/print-confirmation`, { clientRequestId: randomUUID() })).statusCode).toBe(410);
     expectLimited(await call(app, shop, 'POST', `/shop/orders/${order.id}/print-confirmation`, { clientRequestId: randomUUID() }));
     // document-access
     for (let i = 0; i < 2; i++) expect((await call(app, shop, 'POST', `/shop/orders/${order.id}/document-access`, {})).statusCode).toBe(200);
@@ -94,7 +94,7 @@ describe('rate limits on authenticated surfaces', () => {
     expectLimited(await call(app, shop, 'GET', '/shop/orders'));
     // exhausting reads does not block mutations buckets
     const { order } = await newOrder(app, prisma, world.a);
-    expect((await call(app, shop, 'POST', `/shop/orders/${order.id}/transitions`, { toStatus: 'NEW', clientRequestId: randomUUID() })).statusCode).toBe(200);
+    expect((await call(app, shop, 'POST', `/shop/orders/${order.id}/transitions`, { toStatus: 'CANCELLED', clientRequestId: randomUUID() })).statusCode).toBe(200);
   });
 
   it('unauthenticated floods against shop/admin scopes hit a per-IP ceiling (no DB lookups forever)', async () => {

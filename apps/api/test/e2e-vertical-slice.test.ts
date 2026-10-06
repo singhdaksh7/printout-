@@ -117,6 +117,7 @@ const options = (over: Record<string, unknown> = {}) => ({
 const track = async (token: string) => (await app.inject({ method: 'GET', url: `/api/v1/public/orders/${token}` })).json().data;
 const transition = (s: Session, id: string, toStatus: string) => call(app, s, 'POST', `/shop/orders/${id}/transitions`, { toStatus, clientRequestId: randomUUID() });
 const confirm = (s: Session, id: string, clientRequestId = randomUUID()) => call(app, s, 'POST', `/shop/orders/${id}/print-confirmation`, { clientRequestId });
+const printNow = (s: Session, id: string) => call(app, s, 'POST', `/shop/orders/${id}/print-now`, { clientRequestId: randomUUID() });
 const access = (s: Session, id: string) => call(app, s, 'POST', `/shop/orders/${id}/document-access`, {});
 
 async function placeFor(slug: string, bytes?: Buffer) {
@@ -169,18 +170,16 @@ describe('vertical slice: upload -> print -> 30 min privacy deletion', () => {
 
     // tenant isolation: B cannot see/act on anything of A
     expect((await call(app, b, 'GET', `/shop/orders/${orderId}`)).statusCode).toBe(404);
-    expect((await transition(b, orderId, 'ACCEPTED')).statusCode).toBe(404);
+    expect((await transition(b, orderId, 'CANCELLED')).statusCode).toBe(404);
     expect((await access(b, orderId)).statusCode).toBe(404);
-    expect((await confirm(b, orderId)).statusCode).toBe(404);
+    expect((await printNow(b, orderId)).statusCode).toBe(404);
+    expect((await confirm(b, orderId)).statusCode).toBe(410); // retired for everyone, touches nothing
     const analyticsB = (await call(app, b, 'GET', '/shop/analytics')).json().data;
     expect(analyticsB.orderCount).toBe(0);
 
-    // accept -> printing
-    expect((await transition(a, orderId, 'ACCEPTED')).statusCode).toBe(200);
-    expect((await transition(a, orderId, 'PRINTING')).statusCode).toBe(200);
-    expect((await track(trackingToken)).status).toBe('PRINTING');
-    // PRINTED can't be forced via transitions
-    expect((await transition(a, orderId, 'PRINTED')).statusCode).toBeGreaterThanOrEqual(400);
+    // the only shop transition left is cancel: everything else is rejected before touching the order
+    for (const to of ['ACCEPTED', 'PRINTING', 'PRINTED', 'READY', 'COLLECTED']) expect((await transition(a, orderId, to)).statusCode).toBe(400);
+    expect((await track(trackingToken)).status).toBe('NEW');
 
     // document access: signed URL, byte-identical PDF
     const acc = await access(a, orderId);
@@ -193,33 +192,49 @@ describe('vertical slice: upload -> print -> 30 min privacy deletion', () => {
     expect(Buffer.compare(Buffer.from(await fetched.arrayBuffer()), pdf)).toBe(0);
     // tampered signature rejected
     expect((await fetch(new URL(accData.url.replace(/sig=([0-9a-f])/, (_m: string, c: string) => 'sig=' + (c === '0' ? '1' : '0')), base))).status).toBeGreaterThanOrEqual(400);
-    // access never changes timestamps
-    expect((await prisma.document.findUniqueOrThrow({ where: { id: doc.documentId } })).printedAt).toBeNull();
+    // preview access (before Print) never starts retention
+    const preview = await prisma.document.findUniqueOrThrow({ where: { id: doc.documentId } });
+    expect(preview.printedAt).toBeNull();
+    expect(preview.printInitiatedAt).toBeNull();
+    expect(preview.deleteAfter).toBeNull();
 
-    // print confirmation: real call
+    // Print (print-now): NEW -> ACCEPTED -> PRINTING and the retention window starts, exactly once
     const before = Date.now();
-    const c1 = await confirm(a, orderId);
+    const c1 = await printNow(a, orderId);
     const after = Date.now();
     expect(c1.statusCode).toBe(200);
     const printed = c1.json().data;
-    const printedAt = new Date(printed.document.printedAt).getTime();
+    expect(printed.order.status).toBe('PRINTING');
+    expect(printed.firstPrint).toBe(true);
+    const printedAt = new Date(printed.document.printInitiatedAt).getTime();
     expect(printedAt).toBeGreaterThanOrEqual(before - 5);
     expect(printedAt).toBeLessThanOrEqual(after + 5);
     expect(new Date(printed.document.deleteAfter).getTime()).toBe(printedAt + RET_MS);
     expect(printed.document.status).toBe('PRINTED_RETENTION');
+    expect((await track(trackingToken)).status).toBe('PRINTING');
+    expect((await prisma.document.findUniqueOrThrow({ where: { id: doc.documentId } })).printedAt).toBeNull();
 
-    // duplicate confirmation (new clientRequestId, later time) is unchanged
+    // second Print (later time) is only access: timestamps unchanged
     await new Promise((r) => setTimeout(r, 30));
-    const c2 = await confirm(a, orderId);
+    const c2 = await printNow(a, orderId);
     expect(c2.statusCode).toBe(200);
+    expect(c2.json().data.firstPrint).toBe(false);
     expect(c2.json().data.document).toEqual(printed.document);
+
+    // print-confirmation is retired and changes nothing
+    const retired = await confirm(a, orderId);
+    expect(retired.statusCode).toBe(410);
+    expect(retired.json().error.code).toBe('ENDPOINT_RETIRED');
+    const afterRetired = await prisma.document.findUniqueOrThrow({ where: { id: doc.documentId } });
+    expect(afterRetired.printedAt).toBeNull();
+    expect(afterRetired.deleteAfter!.getTime()).toBe(printedAt + RET_MS);
 
     // reprint access before expiry does not change deleteAfter
     expect((await access(a, orderId)).statusCode).toBe(200);
     const det1 = (await call(app, a, 'GET', `/shop/orders/${orderId}`)).json().data;
     expect(new Date(det1.document.deleteAfter).getTime()).toBe(printedAt + RET_MS);
     const pub1 = await track(trackingToken);
-    expect(pub1.status).toBe('PRINTED');
+    expect(pub1.status).toBe('PRINTING');
     expect(pub1.document.status).toBe('PRINTED_RETENTION');
     expect(new Date(pub1.document.deleteAfter).getTime()).toBe(printedAt + RET_MS);
     expect(pub1.documentDeleteAfter).toBe(pub1.document.deleteAfter);
@@ -236,7 +251,7 @@ describe('vertical slice: upload -> print -> 30 min privacy deletion', () => {
     expect((await fetch(new URL(urlBefore, base))).status).toBeGreaterThanOrEqual(400);
     // object still physically there because worker has not run
     expect(await storage.exists(dbDoc.objectKey)).toBe(true);
-    expect((await confirm(a, orderId)).statusCode).toBe(200); // idempotent replay still fine
+    expect((await printNow(a, orderId)).statusCode).toBe(409); // Print after the deadline cannot reopen the document
     expect(new Date((await call(app, a, 'GET', `/shop/orders/${orderId}`)).json().data.document.deleteAfter).getTime()).toBe(printedAt + RET_MS);
 
     // cleanup worker run
@@ -254,19 +269,17 @@ describe('vertical slice: upload -> print -> 30 min privacy deletion', () => {
     // cleanup is idempotent
     expect(await cleanupExpiredDocuments(prisma, storage, { now: new Date() })).toMatchObject({ scanned: 0 });
 
-    // order progresses after deletion
-    expect((await transition(a, orderId, 'READY')).statusCode).toBe(200);
-    expect((await track(trackingToken)).status).toBe('READY');
-    expect((await transition(a, orderId, 'COLLECTED')).statusCode).toBe(200);
+    // the order record outlives the document; the shop cannot move it forward any more
+    expect((await transition(a, orderId, 'READY')).statusCode).toBe(400);
     const pub2 = await track(trackingToken);
-    expect(pub2.status).toBe('COLLECTED');
+    expect(pub2.status).toBe('PRINTING');
     expect(pub2.document.status).toBe('DELETED');
     expect(pub2.document.deletedAt).toBeTruthy();
     expect(JSON.stringify(pub2)).not.toMatch(/objectKey|internal\/documents|sig=/);
-    expect(pub2.timeline.map((t: { status: string }) => t.status)).toEqual(['NEW', 'ACCEPTED', 'PRINTING', 'PRINTED', 'READY', 'COLLECTED']);
+    expect(pub2.timeline.map((t: { status: string }) => t.status)).toEqual(['NEW', 'ACCEPTED', 'PRINTING']);
     const det = (await call(app, a, 'GET', `/shop/orders/${orderId}`)).json().data;
     expect(det.document).toMatchObject({ status: 'DELETED', deletionState: 'DELETED' });
-    expect(det.statusHistory).toHaveLength(6);
+    expect(det.statusHistory).toHaveLength(3);
 
     // B still sees nothing
     expect((await call(app, b, 'GET', '/shop/orders')).json().data.items).toHaveLength(0);
@@ -275,18 +288,19 @@ describe('vertical slice: upload -> print -> 30 min privacy deletion', () => {
     sseB.stop();
   });
 
-  it('cancelled order path: cancel from NEW, tracking shows it, no confirmation / access possible', async () => {
+  it('cancelled order path: cancel from NEW, tracking shows it, no print / confirmation / access possible', async () => {
     const { orderId, order } = await placeFor(world.a.slug);
     expect((await transition(a, orderId, 'CANCELLED')).statusCode).toBe(200);
     expect((await track(order.trackingToken)).status).toBe('CANCELLED');
     expect((await access(a, orderId)).statusCode).toBeGreaterThanOrEqual(400);
-    expect((await confirm(a, orderId)).statusCode).toBe(409);
-    expect((await transition(a, orderId, 'ACCEPTED')).statusCode).toBe(409);
+    expect((await confirm(a, orderId)).statusCode).toBe(410);
+    expect((await printNow(a, orderId)).statusCode).toBe(409);
+    expect((await transition(a, orderId, 'ACCEPTED')).statusCode).toBe(400);
+    expect((await prisma.document.findFirstOrThrow({ where: { order: { id: orderId } } })).printInitiatedAt).toBeNull();
   });
 
   it('unprinted documents expire exactly 24h after upload completion via the worker; order becomes EXPIRED', async () => {
     const { orderId, order, doc } = await placeFor(world.a.slug);
-    await transition(a, orderId, 'ACCEPTED');
     const row = await prisma.document.findUniqueOrThrow({ where: { id: doc.documentId } });
     // just before 24h: untouched
     let r = await cleanupExpiredDocuments(prisma, storage, { now: new Date(row.expiresAt!.getTime() - 1000) });

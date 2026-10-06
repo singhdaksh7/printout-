@@ -2,8 +2,8 @@ import { Component, createContext, useCallback, useContext, useEffect, useId, us
 import type { OrderStatus } from '../lib/shop-api';
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
-  NEW: 'New', ACCEPTED: 'Accepted', PRINTING: 'Print started', PRINTED: 'Printed', READY: 'Ready',
-  COLLECTED: 'Collected', CANCELLED: 'Cancelled', EXPIRED: 'Expired'
+  NEW: 'New', ACCEPTED: 'Accepted', PRINTING: 'Print started', PRINTED: 'Print confirmed (legacy)', READY: 'Ready (legacy)',
+  COLLECTED: 'Collected (legacy)', CANCELLED: 'Cancelled', EXPIRED: 'Expired'
 };
 
 export function StatusChip({ status }: { status: OrderStatus }) {

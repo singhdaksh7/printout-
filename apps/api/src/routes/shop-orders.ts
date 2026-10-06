@@ -21,7 +21,9 @@ import {
 
 const transitionBody = z
   .object({
-    toStatus: z.nativeEnum(OrderStatus),
+    // Shop owners can only cancel. Accept / Start printing / Ready / Collected are retired: Print (print-now) performs the
+    // internal NEW -> ACCEPTED -> PRINTING steps itself. Legacy PRINTED/READY/COLLECTED rows remain readable.
+    toStatus: z.literal(OrderStatus.CANCELLED),
     reason: z.string().trim().max(250).optional(),
     clientRequestId: z.string().uuid()
   })
@@ -182,9 +184,6 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
     const body = transitionBody.parse(request.body);
-    if (body.toStatus === OrderStatus.PRINTED) {
-      throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'PRINTED is set only by print confirmation');
-    }
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({ where: { id, shopId }, include: { document: true } });
@@ -192,20 +191,6 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
       if (order.status === body.toStatus) return { order, changed: false };
       const from = order.status;
       assertRequestedTransition(from, body.toStatus);
-
-      const now = new Date();
-      const doc = order.document;
-      const docUsable = doc.status === DocumentStatus.AVAILABLE && !!doc.expiresAt && doc.expiresAt > now;
-      if (body.toStatus === OrderStatus.EXPIRED) {
-        // Expiry rule: only an unprinted order whose document has expired or been removed.
-        const docGone = doc.status === DocumentStatus.DELETED || (!!doc.expiresAt && doc.expiresAt <= now && !doc.printedAt);
-        if (!docGone) {
-          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order cannot expire while its document is still available');
-        }
-      }
-      if ((body.toStatus === OrderStatus.ACCEPTED || body.toStatus === OrderStatus.PRINTING) && !docUsable) {
-        throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'The document for this order is no longer available');
-      }
 
       const updated = await tx.order.updateMany({ where: { id, shopId, status: from }, data: { status: body.toStatus } });
       if (updated.count !== 1) {
@@ -390,111 +375,13 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     });
   });
 
+  /**
+   * RETIRED. "Confirm printed" is not a shop-owner concept any more: the browser cannot prove paper came out, so the only
+   * signal is "Print initiated" (print-now). Existing PRINTED rows stay readable; nothing can create new ones here.
+   */
   app.post('/shop/orders/:id/print-confirmation', { preHandler: limits.printConfirm }, async (request) => {
-    const shopId = shopIdOf(request);
-    const auth = authOf(request);
-    const { id } = idParam.parse(request.params);
-    confirmBody.parse(request.body);
-
-    const outcome = await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findFirst({ where: { id, shopId }, include: { document: true } });
-      if (!order) throw orderNotFound();
-      const respond = (o: Order, d: Document, first: boolean) => ({ order: o, document: d, first });
-
-      // Idempotent: once printed, always return the ORIGINAL timestamps.
-      if (order.document.printedAt) return respond(order, order.document, false);
-
-      // Print already started the window (printInitiatedAt): confirmation only records the shop's statement that paper
-      // printed. It never moves deleteAfter, so it cannot extend or shorten retention.
-      const dInit = order.document;
-      if (dInit.status === DocumentStatus.PRINTED_RETENTION && dInit.printInitiatedAt) {
-        if (order.status !== OrderStatus.PRINTING) {
-          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order must be PRINTING before print confirmation', { from: order.status, to: OrderStatus.PRINTED });
-        }
-        const at = new Date();
-        const marked = await tx.document.updateMany({ where: { id: dInit.id, shopId, printedAt: null }, data: { printedAt: at } });
-        const movedInit = await tx.order.updateMany({ where: { id, shopId, status: OrderStatus.PRINTING }, data: { status: OrderStatus.PRINTED } });
-        if (marked.count !== 1 || movedInit.count !== 1) {
-          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order status changed concurrently; reload and retry');
-        }
-        await tx.orderStatusHistory.create({
-          data: { orderId: id, fromStatus: OrderStatus.PRINTING, toStatus: OrderStatus.PRINTED, actorUserId: auth.userId }
-        });
-        await audit(tx, {
-          shopId,
-          actorUserId: auth.userId,
-          action: 'order.printConfirmed',
-          targetType: 'order',
-          targetId: id,
-          metadata: { printedAt: at.toISOString(), deleteAfter: dInit.deleteAfter?.toISOString() ?? null }
-        });
-        const fresh = await tx.order.findFirstOrThrow({ where: { id, shopId }, include: { document: true } });
-        return respond(fresh, fresh.document, false);
-      }
-
-      if (order.status !== OrderStatus.PRINTING) {
-        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order must be PRINTING before print confirmation', {
-          from: order.status,
-          to: OrderStatus.PRINTED
-        });
-      }
-      const now = new Date();
-      const dates = retentionDates(now, config.PRINT_RETENTION_MINUTES);
-      // Conditional update: only the first concurrent confirmation can win; it also re-checks expiry.
-      const claimed = await tx.document.updateMany({
-        where: {
-          id: order.documentId,
-          shopId,
-          status: DocumentStatus.AVAILABLE,
-          printedAt: null,
-          expiresAt: { gt: now }
-        },
-        data: { status: DocumentStatus.PRINTED_RETENTION, printedAt: dates.printedAt, deleteAfter: dates.deleteAfter }
-      });
-      if (claimed.count !== 1) {
-        const doc = await tx.document.findUniqueOrThrow({ where: { id: order.documentId } });
-        if (doc.printedAt) return respond(order, doc, false);
-        throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'The document is no longer available to confirm printing');
-      }
-      const moved = await tx.order.updateMany({
-        where: { id, shopId, status: OrderStatus.PRINTING },
-        data: { status: OrderStatus.PRINTED }
-      });
-      if (moved.count !== 1) {
-        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order status changed concurrently; reload and retry');
-      }
-      await tx.orderStatusHistory.create({
-        data: { orderId: id, fromStatus: OrderStatus.PRINTING, toStatus: OrderStatus.PRINTED, actorUserId: auth.userId }
-      });
-      await audit(tx, {
-        shopId,
-        actorUserId: auth.userId,
-        action: 'order.printConfirmed',
-        targetType: 'order',
-        targetId: id,
-        metadata: { printedAt: dates.printedAt.toISOString(), deleteAfter: dates.deleteAfter.toISOString() }
-      });
-      const fresh = await tx.order.findFirstOrThrow({ where: { id, shopId }, include: { document: true } });
-      return respond(fresh, fresh.document, true);
-    });
-
-    if (outcome.first) {
-      events.emit(shopId, 'order.statusChanged', toStatusEvent(outcome.order));
-      events.emit(shopId, 'order.updated', toStatusEvent(outcome.order));
-      events.emit(shopId, 'document.deletionScheduled', {
-        orderId: outcome.order.id,
-        documentId: outcome.document.id,
-        deleteAfter: outcome.document.deleteAfter
-      });
-    }
-    return json({
-      order: { id: outcome.order.id, orderNumber: outcome.order.orderNumber, status: outcome.order.status },
-      document: {
-        status: outcome.document.status,
-        printedAt: outcome.document.printedAt,
-        deleteAfter: outcome.document.deleteAfter
-      }
-    });
+    shopIdOf(request);
+    throw new AppError(410, 'ENDPOINT_RETIRED', 'Print confirmation has been retired. Use Print (print-now); retention starts when Print is initiated.');
   });
 
   /**

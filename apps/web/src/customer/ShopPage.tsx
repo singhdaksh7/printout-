@@ -127,7 +127,7 @@ function ShopFlow({ slug, shop, unavailable }: { slug: string; shop: PublicShop;
                 <p className="cx-small"><strong>Pay the shop directly when you collect.</strong> No online payment.</p>
               </>
             )}
-            <p className="cx-small cx-muted">Your file is deleted {retentionPhrase(shop.retentionMinutes)} after printing. Unprinted files are removed within 24 hours.</p>
+            <p className="cx-small cx-muted">Your file is deleted {retentionPhrase(shop.retentionMinutes)} after the shop starts printing. Unprinted files are removed within 24 hours.</p>
           </section>
         </aside>
       </div>
@@ -140,7 +140,7 @@ function Header({ shop }: { shop: PublicShop }) {
     <header className="cx-header">
       <h1 className="cx-h1">{shop.displayName}</h1>
       {shop.address && <p className="cx-muted cx-addr">{shop.address}</p>}
-      <p className="cx-privacy">Deleted {retentionPhrase(shop.retentionMinutes)} after printing.</p>
+      <p className="cx-privacy">Deleted {retentionPhrase(shop.retentionMinutes)} after the shop starts printing.</p>
     </header>
   );
 }

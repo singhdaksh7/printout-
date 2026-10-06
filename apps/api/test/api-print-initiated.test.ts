@@ -2,7 +2,7 @@ import { DocumentStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupExpiredDocuments } from '../src/cleanup.js';
-import { advance, buildApp, call, login, newOrder, seedWorld, type Session, type World } from './api-helpers.js';
+import { advance, buildApp, call, login, newOrder, seedLegacyStatus, seedWorld, type Session, type World } from './api-helpers.js';
 import { FlakyStorage, MemoryStorage } from './helpers/retention.js';
 
 /**
@@ -261,12 +261,12 @@ describe('print-initiated retention', () => {
 
   it('existing documents: a legacy confirmed document keeps its deleteAfter untouched; an unprinted legacy PRINTING order starts 30 minutes on its first Print', async () => {
     const legacy = await newOrder(app, prisma, world.a);
-    await advance(app, a, legacy.order.id, 'ACCEPTED', 'PRINTING');
     const legacyUnprinted = await newOrder(app, prisma, world.a);
     await advance(app, a, legacyUnprinted.order.id, 'ACCEPTED', 'PRINTING');
-    // legacy confirmation (old flow): printedAt + deleteAfter set, no printInitiatedAt
-    const confirmed = await call(app, a, 'POST', `/shop/orders/${legacy.order.id}/print-confirmation`, { clientRequestId: randomUUID() });
-    expect(confirmed.statusCode).toBe(200);
+    // legacy confirmation (old flow, now retired): printedAt + deleteAfter set directly, no printInitiatedAt
+    await seedLegacyStatus(prisma, legacy.order.id, 'PRINTED', { retentionMinutes: RET() / 60_000 });
+    const retired = await call(app, a, 'POST', `/shop/orders/${legacy.order.id}/print-confirmation`, { clientRequestId: randomUUID() });
+    expect(retired.statusCode).toBe(410);
     const snap = await doc(legacy.doc.id);
     expect(snap.printInitiatedAt).toBeNull();
     expect(snap.deleteAfter!.getTime() - snap.printedAt!.getTime()).toBe(RET());

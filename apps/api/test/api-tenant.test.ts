@@ -24,7 +24,7 @@ describe('two-shop tenant isolation', () => {
     orderA = created.order;
   });
 
-  it("B cannot read, list, access, transition or confirm A's order", async () => {
+  it("B cannot read, list, access, transition, print or confirm A's order", async () => {
     expect((await call(app, b, 'GET', `/shop/orders/${orderA.id}`)).statusCode).toBe(404);
     expect((await call(app, b, 'GET', '/shop/orders')).json().data.items).toHaveLength(0);
     expect((await call(app, a, 'GET', '/shop/orders')).json().data.items).toHaveLength(1);
@@ -32,10 +32,19 @@ describe('two-shop tenant isolation', () => {
     const t = await call(app, b, 'POST', `/shop/orders/${orderA.id}/transitions`, { toStatus: 'CANCELLED', clientRequestId: randomUUID() });
     expect(t.statusCode).toBe(404);
     expect(t.json().error.code).toBe('ORDER_NOT_FOUND');
-    expect((await call(app, b, 'POST', `/shop/orders/${orderA.id}/print-confirmation`, { clientRequestId: randomUUID() })).statusCode).toBe(404);
+    // retired endpoint: 410 for any authenticated shop, and it never touches A's order
+    const retired = await call(app, b, 'POST', `/shop/orders/${orderA.id}/print-confirmation`, { clientRequestId: randomUUID() });
+    expect(retired.statusCode).toBe(410);
+    expect(retired.json().error.code).toBe('ENDPOINT_RETIRED');
+    for (const path of ['print-now', 'document-download']) {
+      const r = await call(app, b, 'POST', `/shop/orders/${orderA.id}/${path}`, path === 'print-now' ? { clientRequestId: randomUUID() } : {});
+      expect(r.statusCode, path).toBe(404);
+    }
     const row = await prisma.order.findUniqueOrThrow({ where: { id: orderA.id }, include: { document: true } });
     expect(row.status).toBe('PRINTING');
     expect(row.document.printedAt).toBeNull();
+    expect(row.document.printInitiatedAt).toBeNull();
+    expect(row.document.deleteAfter).toBeNull();
   });
 
   it("B cannot update, delete or even detect A's pricing rules, and settings stay separate", async () => {
@@ -58,7 +67,7 @@ describe('two-shop tenant isolation', () => {
     const got: Record<string, string[]> = { a: [], b: [] };
     const ua = events.subscribe(world.a.shopId, { write: (c) => got.a!.push(c), close: () => undefined });
     const ub = events.subscribe(world.b.shopId, { write: (c) => got.b!.push(c), close: () => undefined });
-    await call(app, a, 'POST', `/shop/orders/${orderA.id}/print-confirmation`, { clientRequestId: randomUUID() });
+    await call(app, a, 'POST', `/shop/orders/${orderA.id}/print-now`, { clientRequestId: randomUUID() });
     await newOrder(app, prisma, world.a);
     expect(got.a!.join('')).toContain('order.created');
     expect(got.a!.join('')).toContain('document.deletionScheduled');

@@ -160,6 +160,17 @@ describe('analytics', () => {
     expect(document.body.textContent).not.toMatch(/revenue/i);
   });
 
+  it('uses the print-initiated model: no "Documents printed", no status backlog, accurate wording', async () => {
+    mockFetch(authedSession, emptyList, ({ path }) => (path === '/shop/analytics' ? { data: {
+      ordersByStatus: { PRINTING: 40 }, orderCount: 40, ordersToday: 40, printsInitiated: 40, newPrintRequests: 2, documentsAutoDeleted: 38, bwCount: 40, colourCount: 0
+    } } : undefined));
+    renderShop('/shop/analytics');
+    expect(await screen.findByText('Prints initiated')).toBeInTheDocument();
+    expect(screen.getByText('New print requests')).toBeInTheDocument();
+    expect(screen.getByText('Files deleted automatically')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/documents printed|orders by status/i);
+  });
+
   it('shows an error with retry', async () => {
     mockFetch(authedSession, emptyList, ({ path }) => (path === '/shop/analytics' ? { status: 500, error: { code: 'INTERNAL' } } : undefined));
     renderShop('/shop/analytics');

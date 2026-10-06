@@ -11,7 +11,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('tracking', () => {
   it.each([
-    ['NEW', 'Submitted'], ['ACCEPTED', 'Accepted'], ['PRINTING', 'Printing'], ['PRINTED', 'Printed'], ['READY', 'Ready'], ['COLLECTED', 'Collected']
+    ['NEW', 'Submitted'], ['ACCEPTED', 'Accepted'], ['PRINTING', 'Print started'], ['PRINTED', 'Print confirmed'], ['READY', 'Ready'], ['COLLECTED', 'Collected']
   ])('highlights %s as the current step', async (status, label) => {
     mockApi({ [`GET /public/orders/${TOKEN}`]: { data: order({ status }) } });
     renderAt(`/t/${TOKEN}`);
@@ -101,12 +101,12 @@ describe('countdown and polling (fake timers)', () => {
 
   it.each([[1, '1 minute'], [45, '45 minutes']])('retention wording follows the server retentionMinutes=%s', async (n, phrase) => {
     await setup(() => order({ status: 'PRINTED', retentionMinutes: n, documentDeleteAfter: '2030-01-01T09:00:30.000Z' }));
-    expect(screen.getByText(`Printed files are removed ${phrase} after printing.`)).toBeInTheDocument();
+    expect(screen.getByText(`Your temporary file is deleted ${phrase} after the shop starts printing.`)).toBeInTheDocument();
   });
 
   it('falls back to 30 minutes wording (display only) when the server omits retentionMinutes', async () => {
     await setup(() => { const { retentionMinutes: _omit, ...o } = order({ status: 'PRINTED', documentDeleteAfter: '2030-01-01T09:00:30.000Z' }); return o; });
-    expect(screen.getByText('Printed files are removed 30 minutes after printing.')).toBeInTheDocument();
+    expect(screen.getByText('Your temporary file is deleted 30 minutes after the shop starts printing.')).toBeInTheDocument();
     expect(screen.getByTestId('countdown')).toHaveTextContent('0:30');
   });
 

@@ -121,13 +121,11 @@ export function listOrders(params: OrderQuery = {}, signal?: AbortSignal) {
 }
 export const getOrder = (id: string, signal?: AbortSignal) =>
   shopRequest<OrderDetail>(`/shop/orders/${encodeURIComponent(id)}`, signal ? { signal } : {});
-export const transitionOrder = (id: string, toStatus: OrderStatus, reason?: string) =>
+/** Shop owners can only cancel; every other lifecycle step is retired (Print does the internal steps itself). */
+export const transitionOrder = (id: string, toStatus: 'CANCELLED', reason?: string) =>
   shopRequest<{ order: OrderSummary }>(`/shop/orders/${encodeURIComponent(id)}/transitions`, {
     method: 'POST', body: { toStatus, clientRequestId: newRequestId(), ...(reason ? { reason } : {}) }
   });
-export const confirmPrinted = (id: string, clientRequestId: string) =>
-  shopRequest<{ order: { id?: string; status: OrderStatus }; document: { status: string; printedAt: string; deleteAfter: string } }>(
-    `/shop/orders/${encodeURIComponent(id)}/print-confirmation`, { method: 'POST', body: { clientRequestId } });
 /**
  * The ONE shop action. The first successful call starts the retention window (document.printInitiatedAt, deleteAfter = +30 min)
  * and returns short-lived INLINE access; later calls (Reprint) only return access and never move either timestamp.

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { cleanupExpiredDocuments } from '../src/cleanup.js';
+import { MemoryStorage } from './helpers/retention.js';
 import {
   advance,
   buildApp,
@@ -8,6 +10,7 @@ import {
   login,
   newOrder,
   quoteFor,
+  seedLegacyStatus,
   placeOrder,
   seedWorld,
   type Session,
@@ -25,12 +28,15 @@ describe('order lifecycle', () => {
     s = await login(app, world.a.ownerEmail);
   });
 
+
   const transition = (orderId: string, toStatus: string) =>
     call(app, s, 'POST', `/shop/orders/${orderId}/transitions`, { toStatus, clientRequestId: randomUUID() });
   const confirm = (orderId: string) =>
     call(app, s, 'POST', `/shop/orders/${orderId}/print-confirmation`, { clientRequestId: randomUUID() });
+  const printNow = (orderId: string) =>
+    call(app, s, 'POST', `/shop/orders/${orderId}/print-now`, { clientRequestId: randomUUID() });
 
-  it('runs the full happy path to COLLECTED with history, audit logs and SSE events', async () => {
+  it('new flow: print-now takes NEW -> ACCEPTED -> PRINTING with history, audit logs and SSE events', async () => {
     const seen: Array<{ event: string; data: string }> = [];
     const unsub = events.subscribe(world.a.shopId, {
       write: (chunk) => {
@@ -40,30 +46,31 @@ describe('order lifecycle', () => {
       close: () => undefined
     });
     const { order } = await newOrder(app, prisma, world.a);
-    await advance(app, s, order.id, 'ACCEPTED', 'PRINTING');
 
     const before = Date.now();
-    const res = await confirm(order.id);
+    const res = await printNow(order.id);
     const after = Date.now();
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
-    expect(data.order.status).toBe('PRINTED');
+    expect(data.order.status).toBe('PRINTING');
     expect(data.document.status).toBe('PRINTED_RETENTION');
-    const printedAt = new Date(data.document.printedAt).getTime();
-    expect(printedAt).toBeGreaterThanOrEqual(before - 1);
-    expect(printedAt).toBeLessThanOrEqual(after + 1);
-    expect(new Date(data.document.deleteAfter).getTime() - printedAt).toBe(config.PRINT_RETENTION_MINUTES * 60_000);
+    const initiated = new Date(data.document.printInitiatedAt).getTime();
+    expect(initiated).toBeGreaterThanOrEqual(before - 1);
+    expect(initiated).toBeLessThanOrEqual(after + 1);
+    expect(new Date(data.document.deleteAfter).getTime() - initiated).toBe(config.PRINT_RETENTION_MINUTES * 60_000);
 
-    await advance(app, s, order.id, 'READY', 'COLLECTED');
     const detail = (await call(app, s, 'GET', `/shop/orders/${order.id}`)).json().data;
-    expect(detail.order.status).toBe('COLLECTED');
-    expect(detail.statusHistory.map((h: { toStatus: string }) => h.toStatus)).toEqual(['NEW', 'ACCEPTED', 'PRINTING', 'PRINTED', 'READY', 'COLLECTED']);
+    expect(detail.order.status).toBe('PRINTING');
+    expect(detail.statusHistory.map((h: { toStatus: string }) => h.toStatus)).toEqual(['NEW', 'ACCEPTED', 'PRINTING']);
     expect(detail.order).toMatchObject({ originalFilename: 'notes.pdf', selectedPageCount: 10, orderNumber: 'SHARMA-0001' });
     expect(detail.document.deletionState).toBe('OK');
+    const row = await prisma.document.findUniqueOrThrow({ where: { id: order.documentId } });
+    expect(row.printedAt).toBeNull();
 
     const actions = (await prisma.auditLog.findMany({ where: { shopId: world.a.shopId } })).map((a) => a.action);
-    expect(actions).toContain('order.printConfirmed');
-    expect(actions.filter((a) => a === 'order.transition')).toHaveLength(4);
+    expect(actions).toContain('order.printInitiated');
+    expect(actions).not.toContain('order.printConfirmed');
+    expect(actions.filter((a) => a === 'order.transition')).toHaveLength(2);
 
     const names = seen.map((e) => e.event);
     expect(names).toContain('order.created');
@@ -77,99 +84,115 @@ describe('order lifecycle', () => {
     unsub();
   });
 
-  it('never allows PRINTED outside print-confirmation, and rejects illegal transitions', async () => {
+  it('transitions accepts ONLY CANCELLED: every other toStatus is a 400 VALIDATION_ERROR and changes nothing', async () => {
     const { order } = await newOrder(app, prisma, world.a);
-    for (const to of ['PRINTED', 'READY', 'COLLECTED', 'PRINTING', 'EXPIRED']) {
+    for (const to of ['NEW', 'ACCEPTED', 'PRINTING', 'PRINTED', 'READY', 'COLLECTED', 'EXPIRED']) {
       const r = await transition(order.id, to);
-      expect(r.statusCode, `NEW -> ${to}`).toBe(409);
-      expect(r.json().error.code).toBe('INVALID_STATUS_TRANSITION');
+      expect(r.statusCode, `-> ${to}`).toBe(400);
+      expect(r.json().error.code).toBe('VALIDATION_ERROR');
     }
-    await advance(app, s, order.id, 'ACCEPTED', 'PRINTING');
-    const bypass = await transition(order.id, 'PRINTED');
-    expect(bypass.statusCode).toBe(409);
-    expect(bypass.json().error.code).toBe('INVALID_STATUS_TRANSITION');
-    expect((await transition(order.id, 'READY')).statusCode).toBe(409);
+    // also from a PRINTING order
+    await printNow(order.id);
+    for (const to of ['PRINTED', 'READY', 'EXPIRED', 'ACCEPTED']) {
+      expect((await transition(order.id, to)).statusCode, `PRINTING -> ${to}`).toBe(400);
+    }
+    // PRINTING cannot be cancelled either
     expect((await transition(order.id, 'CANCELLED')).statusCode).toBe(409);
-    expect((await transition(order.id, 'EXPIRED')).statusCode).toBe(409); // system-only edge
     const row = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { document: true } });
     expect(row.status).toBe('PRINTING');
     expect(row.document.printedAt).toBeNull();
-    expect(row.document.deleteAfter).toBeNull();
+    expect(await prisma.orderStatusHistory.count({ where: { orderId: order.id } })).toBe(3);
   });
 
   it('applies cancellation rules and terminal states', async () => {
     const a = await newOrder(app, prisma, world.a);
     expect((await transition(a.order.id, 'CANCELLED')).statusCode).toBe(200);
-    for (const to of ['ACCEPTED', 'PRINTING', 'NEW']) expect((await transition(a.order.id, to)).statusCode).toBe(409);
+    for (const to of ['ACCEPTED', 'PRINTING', 'NEW']) expect((await transition(a.order.id, to)).statusCode).toBe(400);
     const b = await newOrder(app, prisma, world.a);
-    await advance(app, s, b.order.id, 'ACCEPTED', 'CANCELLED');
-    const c = await newOrder(app, prisma, world.a);
-    await advance(app, s, c.order.id, 'ACCEPTED', 'PRINTING');
-    await confirm(c.order.id);
-    expect((await transition(c.order.id, 'CANCELLED')).statusCode).toBe(409);
-    await advance(app, s, c.order.id, 'READY', 'COLLECTED');
-    expect((await transition(c.order.id, 'READY')).statusCode).toBe(409);
+    await advance(app, s, b.order.id, 'ACCEPTED'); // legacy ACCEPTED row can still be cancelled
+    expect((await transition(b.order.id, 'CANCELLED')).statusCode).toBe(200);
+    // Legacy printed / ready / collected orders can never be cancelled.
+    for (const st of ['PRINTED', 'READY', 'COLLECTED'] as const) {
+      const c = await newOrder(app, prisma, world.a);
+      await seedLegacyStatus(prisma, c.order.id, st);
+      expect((await transition(c.order.id, 'CANCELLED')).statusCode, st).toBe(409);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: c.order.id } })).status).toBe(st);
+    }
   });
 
-  it('transition retries to the same status are harmless no-ops', async () => {
+  it('cancel retries are harmless no-ops (idempotent, history not duplicated)', async () => {
     const { order } = await newOrder(app, prisma, world.a);
-    await advance(app, s, order.id, 'ACCEPTED');
-    expect((await transition(order.id, 'ACCEPTED')).statusCode).toBe(200);
+    expect((await transition(order.id, 'CANCELLED')).statusCode).toBe(200);
+    expect((await transition(order.id, 'CANCELLED')).statusCode).toBe(200);
     expect(await prisma.orderStatusHistory.count({ where: { orderId: order.id } })).toBe(2);
+    expect(await prisma.auditLog.count({ where: { action: 'order.transition', targetId: order.id } })).toBe(1);
   });
 
-  it('print-confirmation requires PRINTING and a CSRF-protected, validated body', async () => {
+  it('transitions still validates body: CSRF, strict body, missing clientRequestId', async () => {
     const { order } = await newOrder(app, prisma, world.a);
-    expect((await confirm(order.id)).statusCode).toBe(409);
-    await advance(app, s, order.id, 'ACCEPTED');
-    expect((await confirm(order.id)).statusCode).toBe(409);
-    await advance(app, s, order.id, 'PRINTING');
-    expect((await call(app, s, 'POST', `/shop/orders/${order.id}/print-confirmation`, {})).statusCode).toBe(400);
+    const url = `/shop/orders/${order.id}/transitions`;
+    expect((await call(app, s, 'POST', url, { toStatus: 'CANCELLED' })).statusCode).toBe(400);
+    expect((await call(app, s, 'POST', url, { toStatus: 'CANCELLED', clientRequestId: randomUUID(), extra: 1 })).statusCode).toBe(400);
+    expect((await call(app, s, 'POST', url, { toStatus: 'CANCELLED', clientRequestId: randomUUID() }, { headers: { 'x-csrf-token': 'wrong' } })).statusCode).toBe(403);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe('NEW');
   });
 
-  it('print-confirmation is idempotent: timestamps never change, even concurrently', async () => {
-    const { order } = await newOrder(app, prisma, world.a);
-    await advance(app, s, order.id, 'ACCEPTED', 'PRINTING');
-    const results = await Promise.all(Array.from({ length: 5 }, () => confirm(order.id)));
-    for (const r of results) expect(r.statusCode).toBe(200);
-    expect(new Set(results.map((r) => r.json().data.document.printedAt)).size).toBe(1);
-    expect(new Set(results.map((r) => r.json().data.document.deleteAfter)).size).toBe(1);
-    const first = await prisma.document.findUniqueOrThrow({ where: { id: order.documentId } });
-    await new Promise((r) => setTimeout(r, 30));
-    const again = await confirm(order.id);
-    expect(again.json().data.document.printedAt).toBe(first.printedAt!.toISOString());
-    expect(again.json().data.document.deleteAfter).toBe(first.deleteAfter!.toISOString());
-    // still after the order moved on
-    await advance(app, s, order.id, 'READY');
-    const later = await confirm(order.id);
-    expect(later.statusCode).toBe(200);
-    expect(later.json().data.document.printedAt).toBe(first.printedAt!.toISOString());
-    expect(await prisma.orderStatusHistory.count({ where: { orderId: order.id, toStatus: 'PRINTED' } })).toBe(1);
-    expect(await prisma.auditLog.count({ where: { action: 'order.printConfirmed' } })).toBe(1);
-  });
-
-  it('refuses print-confirmation when the document expired or was deleted', async () => {
+  it('print-confirmation is RETIRED: always 410 ENDPOINT_RETIRED and changes nothing', async () => {
     const { order, doc } = await newOrder(app, prisma, world.a);
-    await advance(app, s, order.id, 'ACCEPTED', 'PRINTING');
-    await prisma.document.update({ where: { id: doc.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
-    const r = await confirm(order.id);
-    expect(r.statusCode).toBe(409);
-    expect(r.json().error.code).toBe('DOCUMENT_UNAVAILABLE');
-    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe('PRINTING');
-    await prisma.document.update({ where: { id: doc.id }, data: { status: 'DELETED', deletedAt: new Date() } });
-    expect((await confirm(order.id)).json().error.code).toBe('DOCUMENT_UNAVAILABLE');
+    const snapshot = async () => ({
+      order: await prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+      doc: await prisma.document.findUniqueOrThrow({ where: { id: doc.id } }),
+      history: await prisma.orderStatusHistory.count({ where: { orderId: order.id } }),
+      audits: await prisma.auditLog.count()
+    });
+    const check = async (label: string) => {
+      const before = await snapshot();
+      for (const body of [{ clientRequestId: randomUUID() }, {}]) {
+        const r = await call(app, s, 'POST', `/shop/orders/${order.id}/print-confirmation`, body);
+        expect(r.statusCode, label).toBe(410);
+        expect(r.json().error.code).toBe('ENDPOINT_RETIRED');
+      }
+      const after = await snapshot();
+      expect(after.order.status).toBe(before.order.status);
+      expect(after.doc.printedAt).toEqual(before.doc.printedAt);
+      expect(after.doc.printInitiatedAt).toEqual(before.doc.printInitiatedAt);
+      expect(after.doc.deleteAfter).toEqual(before.doc.deleteAfter);
+      expect(after.doc.status).toBe(before.doc.status);
+      expect(after.history).toBe(before.history);
+      expect(after.audits).toBe(before.audits);
+      expect(after.doc.printedAt).toBeNull();
+    };
+    await check('NEW');
+    await printNow(order.id);
+    await check('PRINTING');
+    expect(await prisma.auditLog.count({ where: { action: 'order.printConfirmed' } })).toBe(0);
   });
 
-  it('enforces the expiry rule', async () => {
+  it('legacy PRINTED orders: print-confirmation retired, reads keep working', async () => {
+    const { order, doc } = await newOrder(app, prisma, world.a);
+    await seedLegacyStatus(prisma, order.id, 'PRINTED');
+    const printed = await prisma.document.findUniqueOrThrow({ where: { id: doc.id } });
+    expect(printed.status).toBe('PRINTED_RETENTION');
+    expect((await confirm(order.id)).statusCode).toBe(410);
+    const unchanged = await prisma.document.findUniqueOrThrow({ where: { id: doc.id } });
+    expect(unchanged.printedAt).toEqual(printed.printedAt);
+    expect(unchanged.deleteAfter).toEqual(printed.deleteAfter);
+    const list = (await call(app, s, 'GET', '/shop/orders')).json().data;
+    expect(JSON.stringify(list)).toContain(order.id);
+    expect((await call(app, s, 'GET', `/shop/orders/${order.id}`)).json().data.order.status).toBe('PRINTED');
+  });
+
+  it('expiry: the shop cannot request EXPIRED (400); an expired unprinted order is not printable', async () => {
     const live = await newOrder(app, prisma, world.a);
-    expect((await transition(live.order.id, 'EXPIRED')).statusCode).toBe(409);
+    expect((await transition(live.order.id, 'EXPIRED')).statusCode).toBe(400);
     await prisma.document.update({ where: { id: live.doc.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
-    // expired document: cannot accept, but can expire
-    const accept = await transition(live.order.id, 'ACCEPTED');
-    expect(accept.statusCode).toBe(409);
-    expect(accept.json().error.code).toBe('DOCUMENT_UNAVAILABLE');
-    expect((await transition(live.order.id, 'EXPIRED')).statusCode).toBe(200);
-    expect((await transition(live.order.id, 'ACCEPTED')).statusCode).toBe(409);
+    expect((await transition(live.order.id, 'EXPIRED')).statusCode).toBe(400);
+    const pn = await printNow(live.order.id);
+    expect(pn.statusCode).toBe(409);
+    expect(pn.json().error.code).toBe('DOCUMENT_UNAVAILABLE');
+    const row = await prisma.order.findUniqueOrThrow({ where: { id: live.order.id }, include: { document: true } });
+    expect(row.status).toBe('NEW');
+    expect(row.document.printInitiatedAt).toBeNull();
   });
 
   it('document-access: capped TTL, no timestamp changes on reprint, denied after deleteAfter without the worker', async () => {
@@ -179,8 +202,7 @@ describe('order lifecycle', () => {
     expect(preview.statusCode).toBe(200);
     expect(preview.json().data.contentDisposition).toBe('inline');
     expect(preview.json().data.url).toBeTruthy();
-    await advance(app, s, order.id, 'ACCEPTED', 'PRINTING');
-    await confirm(order.id);
+    await seedLegacyStatus(prisma, order.id, 'PRINTED'); // legacy production record
     const printed = await prisma.document.findUniqueOrThrow({ where: { id: doc.id } });
 
     const r1 = await access();
@@ -205,6 +227,49 @@ describe('order lifecycle', () => {
     expect(denied.json().error.code).toBe('DOCUMENT_UNAVAILABLE');
     await prisma.document.update({ where: { id: doc.id }, data: { status: 'DELETED', deletedAt: new Date() } });
     expect((await access()).json().error.code).toBe('DOCUMENT_UNAVAILABLE');
+  });
+
+  it('legacy PRINTED/READY/COLLECTED rows list, show detail and open while retained, and are denied at deleteAfter', async () => {
+    for (const st of ['PRINTED', 'READY', 'COLLECTED'] as const) {
+      const { order, doc } = await newOrder(app, prisma, world.a);
+      await seedLegacyStatus(prisma, order.id, st);
+      const list = (await call(app, s, 'GET', '/shop/orders')).json().data;
+      expect(JSON.stringify(list), st).toContain(order.id);
+      const detail = (await call(app, s, 'GET', `/shop/orders/${order.id}`)).json().data;
+      expect(detail.order.status).toBe(st);
+      expect(detail.statusHistory.map((h: { toStatus: string }) => h.toStatus).at(-1)).toBe(st);
+      const open = await call(app, s, 'POST', `/shop/orders/${order.id}/document-access`, {});
+      expect(open.statusCode, st).toBe(200);
+      await prisma.document.update({ where: { id: doc.id }, data: { deleteAfter: new Date(Date.now() - 1) } });
+      const denied = await call(app, s, 'POST', `/shop/orders/${order.id}/document-access`, {});
+      expect(denied.statusCode, st).toBe(410);
+      expect(denied.json().error.code).toBe('DOCUMENT_UNAVAILABLE');
+    }
+  });
+
+  it('worker cleanup still deletes legacy PRINTED/READY/COLLECTED documents at deleteAfter and leaves earlier ones', async () => {
+    const storage = new MemoryStorage();
+    const rows = [];
+    for (const st of ['PRINTED', 'READY', 'COLLECTED'] as const) {
+      const { order, doc } = await newOrder(app, prisma, world.a);
+      await seedLegacyStatus(prisma, order.id, st, { printedAt: new Date(Date.now() - 31 * 60_000), deleteAfter: new Date(Date.now() - 1000) });
+      storage.put(doc.objectKey);
+      rows.push({ order, doc, st });
+    }
+    const fresh = await newOrder(app, prisma, world.a);
+    await seedLegacyStatus(prisma, fresh.order.id, 'PRINTED'); // still inside its window
+    storage.put(fresh.doc.objectKey);
+
+    const result = await cleanupExpiredDocuments(prisma, storage, { now: new Date() });
+    expect(result).toMatchObject({ deleted: 3, failed: 0 });
+    for (const { order, doc, st } of rows) {
+      expect(storage.objects.has(doc.objectKey), st).toBe(false);
+      expect((await prisma.document.findUniqueOrThrow({ where: { id: doc.id } })).status).toBe('DELETED');
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe(st);
+      expect((await call(app, s, 'POST', `/shop/orders/${order.id}/document-access`, {})).statusCode).toBe(410);
+    }
+    expect(storage.objects.has(fresh.doc.objectKey)).toBe(true);
+    expect((await prisma.document.findUniqueOrThrow({ where: { id: fresh.doc.id } })).status).toBe('PRINTED_RETENTION');
   });
 
   it('document-access is denied for cancelled orders and expired unprinted documents', async () => {
@@ -244,6 +309,22 @@ describe('order lifecycle', () => {
 
     const actions = (await prisma.auditLog.findMany({ where: { shopId: world.a.shopId } })).map((a) => a.action);
     for (const a of ['shop.settings.update', 'pricing.create', 'pricing.update', 'pricing.delete']) expect(actions).toContain(a);
+  });
+
+  it('analytics uses the print-initiated model: prints initiated / new requests / auto-deleted, hides internal ACCEPTED step', async () => {
+    const printed = await newOrder(app, prisma, world.a);
+    await newOrder(app, prisma, world.a);
+    const other = await newOrder(app, prisma, world.b);
+    expect((await call(app, s, 'POST', `/shop/orders/${printed.order.id}/print-now`, { clientRequestId: randomUUID() })).statusCode).toBe(200);
+    await prisma.document.update({ where: { id: printed.doc.id }, data: { status: 'DELETED', deletedAt: new Date() } });
+    const d = (await call(app, s, 'GET', '/shop/analytics')).json().data;
+    expect(d.printsInitiated).toBe(1);
+    expect(d.newPrintRequests).toBe(1);
+    expect(d.documentsAutoDeleted).toBe(1);
+    expect(d.printedDocumentCount).toBeUndefined();
+    expect(d.recentActivity.map((a: { toStatus: string }) => a.toStatus)).not.toContain('ACCEPTED');
+    expect(d.recentActivity.map((a: { toStatus: string }) => a.toStatus)).toContain('PRINTING');
+    expect(other.order.id).toBeTruthy(); // another shop's orders never count
   });
 
   it('analytics returns dashboard data (IST today) without a "revenue" field', async () => {

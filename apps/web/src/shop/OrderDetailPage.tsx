@@ -99,7 +99,7 @@ export default function OrderDetailPage() {
     if (status === 410 || code === 'DOCUMENT_UNAVAILABLE') setAccess(null);
   }
 
-  async function transition(action: Action, to: OrderStatus, okMsg: string) {
+  async function transition(action: Action, to: 'CANCELLED', okMsg: string) {
     if (acting) return;
     setActing(action); setError(null);
     try {

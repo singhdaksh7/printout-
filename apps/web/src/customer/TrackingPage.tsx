@@ -9,10 +9,10 @@ import { Alert, NotFound, Skeleton } from './parts';
 import { TERMINAL, useOrder, useServerNow } from './useOrder';
 
 const STEPS: { status: OrderStatus; label: string; hint: string }[] = [
-  { status: 'NEW', label: 'Submitted', hint: 'Waiting for the shop to accept' },
-  { status: 'ACCEPTED', label: 'Accepted', hint: 'The shop will print it soon' },
-  { status: 'PRINTING', label: 'Printing', hint: 'Your pages are being printed' },
-  { status: 'PRINTED', label: 'Printed', hint: 'Printing is finished' },
+  { status: 'NEW', label: 'Submitted', hint: 'Waiting for the shop to start printing' },
+  { status: 'ACCEPTED', label: 'Accepted', hint: 'The shop has your order' },
+  { status: 'PRINTING', label: 'Print started', hint: 'The shop has started printing your document' },
+  { status: 'PRINTED', label: 'Print confirmed', hint: 'The shop confirmed your printout' },
   { status: 'READY', label: 'Ready', hint: 'Collect it from the shop and pay there' },
   { status: 'COLLECTED', label: 'Collected', hint: 'All done. Thank you!' }
 ];
@@ -63,10 +63,12 @@ export function TrackingPage() {
     try { await navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { setCopied(false); }
   };
   const slug = order.shopSlug ?? getRecentOrders().find((o) => o.token === token)?.slug;
-  const idx = STEPS.findIndex((s) => s.status === order.status);
+  // Current flow is just Submitted -> Print started. Accepted / Print confirmed / Ready / Collected only appear for older orders.
+  const steps = order.status === 'NEW' || order.status === 'PRINTING' ? STEPS.filter((s) => s.status === 'NEW' || s.status === 'PRINTING') : STEPS;
+  const idx = steps.findIndex((s) => s.status === order.status);
   const times = stepTimes(order);
   const cancelled = order.status === 'CANCELLED', expired = order.status === 'EXPIRED';
-  const afterPrint = idx >= 2; // Print (PRINTING) starts the retention clock
+  const afterPrint = order.status !== 'NEW'; // Print (PRINTING) starts the retention clock
   const showRetention = hasClock && afterPrint;
   const opts = order.printOptions ? describeOptions(order.printOptions) : null;
 
@@ -89,9 +91,9 @@ export function TrackingPage() {
       {!cancelled && !expired && (
         <section className="cx-card" aria-labelledby="cx-status-h">
           <h2 className="cx-h2" id="cx-status-h">Status</h2>
-          <p className="cx-sr" aria-live="polite">Current status: {STEPS[idx]?.label ?? order.status}</p>
+          <p className="cx-sr" aria-live="polite">Current status: {steps[idx]?.label ?? order.status}</p>
           <ol className="cx-timeline">
-            {STEPS.map((s, i) => {
+            {steps.map((s, i) => {
               const cls = i < idx || (order.status === 'COLLECTED' && i === idx) ? 'is-done' : i === idx ? 'is-current' : 'is-todo';
               const t = fmtTime(times[s.status]);
               return (
@@ -114,7 +116,7 @@ export function TrackingPage() {
           {deleted
             ? <><h2 className="cx-h2">Your file has been deleted</h2><p className="cx-muted">Your order is still tracked here. No copy of your document is kept.</p></>
             : <><h2 className="cx-h2">Your file will be deleted in <span className="cx-tnum" data-testid="countdown">{formatCountdown(Math.ceil((deleteAt - now) / 1000) * 1000)}</span></h2>
-              <p className="cx-muted">Printed files are removed {retentionPhrase(order.retentionMinutes)} after printing.</p></>}
+              <p className="cx-muted">Your temporary file is deleted {retentionPhrase(order.retentionMinutes)} after the shop starts printing.</p></>}
         </section>
       )}
 
