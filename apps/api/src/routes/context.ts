@@ -5,6 +5,7 @@ import { csrfToken, equalToken, tokenHash, type LoginThrottle } from '../auth.js
 import type { Config } from '../config.js';
 import { AppError } from '../errors.js';
 import type { ShopEvents } from '../events.js';
+import type { Notifier } from '../notifications/types.js';
 import type { Storage } from '../storage.js';
 
 export interface AppContext {
@@ -13,6 +14,8 @@ export interface AppContext {
   storage: Storage;
   events: ShopEvents;
   loginThrottle: LoginThrottle;
+  /** Device push signals (NEW_PRINT_REQUEST etc.). Never carries URLs, keys or credentials. */
+  notifier: Notifier;
 }
 
 export interface AuthContext {
@@ -105,13 +108,17 @@ export function audit(
   entry: {
     shopId: string | null;
     actorUserId: string | null;
+    /** SHOP_OWNER | SHOP_DEVICE | PLATFORM_ADMIN | SYSTEM. Derived to SHOP_DEVICE / SYSTEM when omitted. */
+    actorType?: 'SHOP_OWNER' | 'SHOP_DEVICE' | 'PLATFORM_ADMIN' | 'SYSTEM';
+    actorDeviceId?: string | null;
     action: string;
     targetType?: string;
     targetId?: string;
     metadata?: Prisma.InputJsonValue;
   }
 ) {
-  return db.auditLog.create({ data: entry });
+  const actorType = entry.actorType ?? (entry.actorDeviceId ? 'SHOP_DEVICE' : entry.actorUserId ? undefined : 'SYSTEM');
+  return db.auditLog.create({ data: { ...entry, ...(actorType ? { actorType } : {}) } });
 }
 
 export function isUniqueViolation(error: unknown, field?: string): boolean {
