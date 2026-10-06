@@ -10,6 +10,7 @@ import PricingPage from './PricingPage';
 import QrPage from './QrPage';
 import AnalyticsPage from './AnalyticsPage';
 import SettingsPage from './SettingsPage';
+import DevicesPage from './DevicesPage';
 import './shop.css';
 
 // Mounted by App at /shop/*; paths below are relative to that.
@@ -26,6 +27,7 @@ export default function ShopRoutes() {
             <Route path="qr" element={<QrPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="devices" element={<DevicesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/shop" replace />} />
         </Routes>

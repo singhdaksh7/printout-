@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { describeError, getQr, getSettings, putSettings, type ShopSettings } from '../lib/shop-api';
 import { Banner, Skeleton, useToast, useUnsavedGuard } from './components';
 
@@ -82,6 +83,10 @@ export default function SettingsPage() {
       </div>
       {url && <p className="sh-muted sh-wrap">Your public shop page: <a href={url} target="_blank" rel="noopener noreferrer">{url}</a></p>}
       {error && <Banner>{error}</Banner>}
+      <Link className="sh-card dev-link-card" to="/shop/devices">
+        <span><strong>Printing Devices</strong><br /><small className="sh-muted">Connect a phone or PC to print your orders.</small></span>
+        <span aria-hidden="true">›</span>
+      </Link>
       <form className="sh-card sh-form" onSubmit={submit} noValidate>
         {present.has('displayName') && (
           <Field label="Shop name" error={errors.displayName}>
