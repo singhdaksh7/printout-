@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { ConfigError, loadConfig } from './config.js';
-import { cleanupExpiredDocuments, type CleanupLogger, type CleanupResult, type CleanupStorage } from './cleanup.js';
+import { cleanupExpiredDocuments, cleanupPairingCodes, type CleanupLogger, type CleanupResult, type CleanupStorage } from './cleanup.js';
 import { createStorage, type StorageConfig } from './storage/index.js';
 
 /**
@@ -45,6 +45,8 @@ export interface WorkerHandle {
   runs: CleanupResult[];
 }
 
+const PAIRING_SWEEP_INTERVAL_MS = 60 * 60_000;
+
 const consoleLogger: CleanupLogger = {
   info: (obj, msg) => console.log(JSON.stringify({ level: 'info', msg, ...obj })),
   warn: (obj, msg) => console.warn(JSON.stringify({ level: 'warn', msg, ...obj })),
@@ -67,6 +69,7 @@ export function startWorker(options: WorkerOptions = {}): WorkerHandle {
   let timer: NodeJS.Timeout | undefined;
   let wake: (() => void) | undefined;
   let running: Promise<void> | undefined;
+  let lastPairingSweepAt = 0;
 
   log.info?.({ intervalMs, runOnce, batchSize: settings.DOCUMENT_CLEANUP_BATCH_SIZE }, 'retention worker started');
 
@@ -83,6 +86,17 @@ export function startWorker(options: WorkerOptions = {}): WorkerHandle {
     } catch (error) {
       // Crash-safe: a failed run (e.g. DB down) is logged and retried on the next tick.
       log.error?.({ err: error instanceof Error ? error.name : 'unknown' }, 'document cleanup run failed');
+    }
+    // Housekeeping AFTER document cleanup, hourly at most, in its own try/catch: it can never delay or break document deletion.
+    const nowMs = (options.now?.() ?? new Date()).getTime();
+    if (nowMs - lastPairingSweepAt >= PAIRING_SWEEP_INTERVAL_MS) {
+      try {
+        const swept = await cleanupPairingCodes(prisma, { now: new Date(nowMs) });
+        lastPairingSweepAt = nowMs;
+        if (swept.deleted > 0) log.info?.({ deleted: swept.deleted }, 'pairing code sweep finished');
+      } catch (error) {
+        log.error?.({ err: error instanceof Error ? error.name : 'unknown' }, 'pairing code sweep failed');
+      }
     }
   };
 

@@ -255,6 +255,26 @@ function emitSafe(opts: CleanupOptions, shopId: string, event: string, data: unk
   }
 }
 
+/** Pairing codes (single use, minutes-long TTL) are kept this long after they expire/are used, then deleted. */
+export const PAIRING_CODE_RETENTION_HOURS = 24;
+
+/**
+ * Housekeeping for DevicePairingCode rows: removes codes whose expiry or use is older than the retention window.
+ * Only the short-lived code rows are touched (ShopDevice rows are never purged; devices stay listed/revoked for audit).
+ * Independent of document deletion: callers run it in its own try/catch.
+ */
+export async function cleanupPairingCodes(
+  prisma: PrismaClient,
+  opts: { now?: Date; retentionHours?: number } = {}
+): Promise<{ deleted: number }> {
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - (opts.retentionHours ?? PAIRING_CODE_RETENTION_HOURS) * 3_600_000);
+  const res = await prisma.devicePairingCode.deleteMany({
+    where: { OR: [{ expiresAt: { lt: cutoff } }, { usedAt: { lt: cutoff } }] }
+  });
+  return { deleted: res.count };
+}
+
 /** Optional safety net: a DELETED document whose object reappeared (e.g. restored backup, late upload write). */
 async function recheckDeleted(
   prisma: PrismaClient,
