@@ -36,7 +36,22 @@ export const rateLimitedError = () => new AppError(429, 'RATE_LIMITED', 'Too man
 
 const sessionOrIp = (request: FastifyRequest): string =>
   request.device ? `d:${request.device.deviceId}` : request.auth ? `s:${request.auth.sessionId}` : `ip:${request.ip}`;
-const ipOnly = (request: FastifyRequest): string => `ip:${request.ip}`;
+/**
+ * Canonical client key for per-IP buckets: IPv4 unchanged; IPv4-mapped IPv6 collapses to the IPv4 address; any other IPv6
+ * address collapses to its /64 prefix (an attacker owning a /64 would otherwise rotate through 2^64 "distinct" keys).
+ */
+export function clientIpKey(ip: string | undefined): string {
+  if (!ip) return 'unknown';
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1]!;
+  if (!ip.includes(':')) return ip;
+  const [head = '', tail = ''] = ip.split('::');
+  const a = head ? head.split(':') : [];
+  const b = tail ? tail.split(':') : [];
+  const groups = ip.includes('::') ? [...a, ...Array<string>(Math.max(0, 8 - a.length - b.length)).fill('0'), ...b] : a;
+  return `v6:${groups.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, '')).join(':')}`;
+}
+const ipOnly = (request: FastifyRequest): string => `ip:${clientIpKey(request.ip)}`;
 
 const cache = new WeakMap<object, Limiters>();
 

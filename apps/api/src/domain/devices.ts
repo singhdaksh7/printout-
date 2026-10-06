@@ -3,6 +3,7 @@ import type { DevicePlatform, PrismaClient, ShopDevice } from '@prisma/client';
 import type { Config } from '../config.js';
 import { generateDeviceCredential } from '../device-auth.js';
 import { AppError } from '../errors.js';
+import { clientIpKey } from '../rate-limits.js';
 import { audit } from '../routes/context.js';
 import { deriveSecret, hmacHex } from '../storage/keys.js';
 import { subscriptionAllowsIntake } from './eligibility.js';
@@ -43,17 +44,7 @@ export const pairingCodeInvalid = () => new AppError(400, 'PAIRING_CODE_INVALID'
  * Client key for pairing throttles: the IP, with IPv6 addresses collapsed to their /64 (an attacker owning a /64 would
  * otherwise rotate through 2^64 "distinct" addresses).
  */
-export function pairingClientKey(ip: string | undefined): string {
-  if (!ip) return 'unknown';
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
-  if (mapped) return mapped[1]!;
-  if (!ip.includes(':')) return ip;
-  const [head = '', tail = ''] = ip.split('::');
-  const a = head ? head.split(':') : [];
-  const b = tail ? tail.split(':') : [];
-  const groups = ip.includes('::') ? [...a, ...Array<string>(Math.max(0, 8 - a.length - b.length)).fill('0'), ...b] : a;
-  return `v6:${groups.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, '')).join(':')}`;
-}
+export const pairingClientKey = clientIpKey;
 
 /**
  * Failed-pairing throttle (in memory, per process).
