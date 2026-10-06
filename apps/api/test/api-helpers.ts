@@ -3,6 +3,7 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { hashPassword } from '../src/auth.js';
+import { generateDeviceCredential } from '../src/device-auth.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { testPrisma, resetDb } from './helpers/db.js';
 
@@ -223,4 +224,25 @@ export async function advance(app: FastifyInstance, session: Session, orderId: s
       await seedLegacyStatus(testPrisma(), orderId, toStatus as 'ACCEPTED');
     }
   }
+}
+
+/** Inserts a paired device directly (bypasses pairing). Returns the row and the RAW credential (tests only). */
+export async function seedDevice(
+  prisma: PrismaClient,
+  shopId: string,
+  opts: { name?: string; platform?: 'ANDROID' | 'WINDOWS'; status?: 'ACTIVE' | 'REVOKED'; lastSeenAt?: Date | null } = {}
+) {
+  const { secret, hash } = generateDeviceCredential();
+  const device = await prisma.shopDevice.create({
+    data: {
+      shopId,
+      name: opts.name ?? 'Counter phone',
+      platform: opts.platform ?? 'ANDROID',
+      status: opts.status ?? 'ACTIVE',
+      revokedAt: opts.status === 'REVOKED' ? new Date() : null,
+      lastSeenAt: opts.lastSeenAt ?? null,
+      credentialHash: hash
+    }
+  });
+  return { device, secret, auth: { authorization: `Bearer ${secret}` } };
 }

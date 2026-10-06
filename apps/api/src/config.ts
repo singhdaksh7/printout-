@@ -18,6 +18,11 @@ const RATE_LIMIT_DEFAULTS = {
   RATE_LIMIT_ADMIN_READ_MAX: 600,
   RATE_LIMIT_ADMIN_MUTATION_MAX: 60,
   RATE_LIMIT_SSE_CONNECT_MAX: 30,
+  /** Device (bearer-credential) surface, per device per minute. */
+  RATE_LIMIT_DEVICE_READ_MAX: 300,
+  RATE_LIMIT_DEVICE_MUTATION_MAX: 120,
+  /** Unauthenticated pairing attempts, per client IP per minute (plus a global ceiling in the pairing route). */
+  RATE_LIMIT_DEVICE_PAIR_MAX: 10,
   SSE_MAX_CONNECTIONS_PER_SHOP: 10
 } as const;
 const TEST_UNLIMITED = 1_000_000;
@@ -81,6 +86,13 @@ const schema = z
     RATE_LIMIT_ADMIN_READ_MAX: optionalPositiveInt,
     RATE_LIMIT_ADMIN_MUTATION_MAX: optionalPositiveInt,
     RATE_LIMIT_SSE_CONNECT_MAX: optionalPositiveInt,
+    RATE_LIMIT_DEVICE_READ_MAX: optionalPositiveInt,
+    RATE_LIMIT_DEVICE_MUTATION_MAX: optionalPositiveInt,
+    RATE_LIMIT_DEVICE_PAIR_MAX: optionalPositiveInt,
+    /** Pairing codes live this long and are single use. */
+    DEVICE_PAIRING_TTL_MINUTES: z.coerce.number().positive().default(10),
+    /** Heartbeats only write lastSeenAt when the stored value is older than this (limits DB write load). */
+    DEVICE_LASTSEEN_WRITE_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(30),
     SSE_MAX_CONNECTIONS_PER_SHOP: optionalPositiveInt,
 
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),

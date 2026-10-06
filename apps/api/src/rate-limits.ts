@@ -23,13 +23,19 @@ export interface Limiters {
   adminRead: Limiter;
   adminMutation: Limiter;
   sseConnect: Limiter;
+  /** Device surface: bucket per authenticated device (falls back to IP before the guard has run). */
+  deviceRead: Limiter;
+  deviceMutation: Limiter;
+  /** Unauthenticated pairing: strictly per client IP. */
+  devicePair: Limiter;
   /** Coarse per-IP ceiling for a whole scope (also covers unauthenticated floods that never reach a session). */
   ipCeiling: (max: number) => Limiter;
 }
 
 export const rateLimitedError = () => new AppError(429, 'RATE_LIMITED', 'Too many requests. Please slow down and retry shortly.');
 
-const sessionOrIp = (request: FastifyRequest): string => (request.auth ? `s:${request.auth.sessionId}` : `ip:${request.ip}`);
+const sessionOrIp = (request: FastifyRequest): string =>
+  request.device ? `d:${request.device.deviceId}` : request.auth ? `s:${request.auth.sessionId}` : `ip:${request.ip}`;
 const ipOnly = (request: FastifyRequest): string => `ip:${request.ip}`;
 
 const cache = new WeakMap<object, Limiters>();
@@ -58,6 +64,9 @@ export function getLimiters(app: FastifyInstance, config: Config): Limiters {
     adminRead: make(config.RATE_LIMIT_ADMIN_READ_MAX),
     adminMutation: make(config.RATE_LIMIT_ADMIN_MUTATION_MAX),
     sseConnect: make(config.RATE_LIMIT_SSE_CONNECT_MAX),
+    deviceRead: make(config.RATE_LIMIT_DEVICE_READ_MAX),
+    deviceMutation: make(config.RATE_LIMIT_DEVICE_MUTATION_MAX),
+    devicePair: make(config.RATE_LIMIT_DEVICE_PAIR_MAX, ipOnly),
     ipCeiling: (max) => make(max, ipOnly)
   };
   cache.set(root, limiters);
