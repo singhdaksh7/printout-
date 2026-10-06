@@ -20,6 +20,8 @@ export async function deviceSelfRoutes(app: FastifyInstance, ctx: AppContext): P
   const { prisma, config } = ctx;
   const limits = getLimiters(app, config);
   const guard = deviceGuard(ctx);
+  // Per-IP flood ceiling BEFORE the guard: bogus credentials cost a DB lookup each, so unauthenticated floods must be bounded.
+  app.addHook('onRequest', limits.ipCeiling(config.RATE_LIMIT_SHOP_READ_MAX * 5));
 
   app.post('/device/heartbeat', { preHandler: [guard, limits.deviceMutation] }, async (request) => {
     const me = deviceOf(request);
