@@ -86,3 +86,23 @@ New env: `QUOTE_SECRET`, `QUOTE_TTL_SECONDS`, `STORAGE_URL_SECRET`, `PUBLIC_API_
 
 ## Contract evolution
 Additive optional fields are preferred; breaking changes require an explicit versioning decision. Not yet implemented: automated subscription/payment integration, QR image generation (client-side), cross-process SSE fan-out.
+
+## Devices (Phase 2 foundation)
+
+Owner (cookie session + CSRF, role SHOP_OWNER, shop-scoped; another shop's id is `404 NOT_FOUND`):
+* `GET /shop/devices` -> `{ devices: DeviceView[] }` (newest first, includes REVOKED).
+* `POST /shop/devices/pairing-codes` body `{}` -> `{ code: "PB-XXXX-XXXX", expiresAt }`. The raw code is shown once (only an HMAC is stored); max 5 active codes per shop (`409 CONFLICT`).
+* `PATCH /shop/devices/:id` body `{ name }` (1-60) -> `{ device }`.
+* `POST /shop/devices/:id/revoke` body `{}` -> `{ device }` (idempotent; clears the push token).
+* `DeviceView = { id, name, platform: ANDROID|WINDOWS, status: ACTIVE|REVOKED, presence: ONLINE|OFFLINE|REVOKED, lastSeenAt, createdAt, revokedAt, appVersion }`. Never credentials, push tokens or OS internals.
+
+Public pairing: `POST /device/pair` body `{ code, deviceName, platform, appVersion?, osVersion? }` -> `{ deviceId, deviceCredential: "pbd_...", shop: { displayName }, heartbeatIntervalSeconds: 60 }`. Wrong, expired, used or suspended-shop codes all return an identical `400 PAIRING_CODE_INVALID`. Per-client (IPv6 /64) throttle + global ceiling -> `429 RATE_LIMITED`.
+
+Device (header `Authorization: Bearer pbd_...`, no cookies/CSRF; the tenant is the device's shop only):
+* `POST /device/heartbeat`, `PUT /device/push-token` (ANDROID only), `GET /device/me`.
+* `GET /device/orders?print=pending|initiated&status=&cursor=&limit=`, `GET /device/orders/:id`.
+* `POST /device/orders/:id/print` `{clientRequestId}`, `POST .../reprint` `{}`, `POST .../download` `{}`. Same response shapes and retention semantics as the browser print-now / document-access / document-download (one engine: `domain/print-service.ts`).
+
+Device error codes: `401 UNAUTHORIZED` (missing/unknown/malformed credential), `401 DEVICE_REVOKED` (checked on every request, effective immediately), `403 SHOP_SUSPENDED`, `403 SUBSCRIPTION_INACTIVE`, `400 PAIRING_CODE_INVALID`.
+
+Credential handling: 256-bit random, shown once at pairing, stored only as sha256; never logged (Authorization header is redacted) and never returned again. Lost credential = revoke and pair again.
