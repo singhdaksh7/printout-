@@ -173,35 +173,18 @@ describe('pairing abuse limits', () => {
     expect(statuses.slice(3)).toEqual([429, 429]);
   });
 
-  it('global failed-attempt ceiling blocks distributed guessing and even valid codes', async () => {
-    const c = new PairingAttemptCeiling(3, 1000);
-    expect(c.blocked(0)).toBe(false);
-    c.recordFailure(0);
-    c.recordFailure(1);
-    c.recordFailure(2);
-    expect(c.blocked(3)).toBe(true);
-    expect(c.blocked(1500)).toBe(false); // window slides
-
-    const a = await setup({ TRUST_PROXY: 'true' });
-    const code = await newCode(a, owner);
-    for (let i = 0; i < 200; i++) {
-      const r = await a.inject({
-        method: 'POST',
-        url: '/api/v1/device/pair',
-        headers: { 'x-forwarded-for': `10.9.${Math.floor(i / 250)}.${i % 250}` },
-        payload: { code: 'PB-AAAA-BBBB', deviceName: 'x', platform: 'ANDROID' }
-      });
-      expect(r.statusCode).toBe(400);
-    }
-    const blocked = await a.inject({
-      method: 'POST',
-      url: '/api/v1/device/pair',
-      headers: { 'x-forwarded-for': '10.99.0.1' },
-      payload: { code, deviceName: 'x', platform: 'ANDROID' }
-    });
-    expect(blocked.statusCode).toBe(429);
-    expect(await prisma.shopDevice.count()).toBe(0);
-  }, 60_000);
+  it('global ceiling unit: only distinct clients can trip it; one client is capped and blocked individually', () => {
+    const c = new PairingAttemptCeiling(3, 1000, 1, 2);
+    expect(c.blocked(0, 'a')).toBe(false);
+    c.recordFailure(0, 'a');
+    c.recordFailure(1, 'a'); // capped: does not count globally again
+    expect(c.blocked(2, 'b')).toBe(false);
+    expect(c.blocked(2, 'a')).toBe(true); // client a hit its own block threshold
+    c.recordFailure(3, 'b');
+    c.recordFailure(4, 'c');
+    expect(c.blocked(5, 'd')).toBe(true); // 3 distinct clients reached the global ceiling
+    expect(c.blocked(1500, 'd')).toBe(false); // window slides
+  });
 });
 
 describe('secrets never persisted or logged', () => {

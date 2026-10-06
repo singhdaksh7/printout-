@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { PairingAttemptCeiling, redeemPairingCode } from '../domain/devices.js';
+import { PairingAttemptCeiling, pairingClientKey, redeemPairingCode } from '../domain/devices.js';
 import { AppError } from '../errors.js';
 import { getLimiters, rateLimitedError } from '../rate-limits.js';
 import { json, type AppContext } from './context.js';
@@ -22,7 +22,8 @@ export async function devicePairingRoutes(app: FastifyInstance, ctx: AppContext)
   const ceiling = new PairingAttemptCeiling();
 
   app.post('/device/pair', { preHandler: limits.devicePair }, async (request, reply) => {
-    if (ceiling.blocked()) {
+    const clientKey = pairingClientKey(request.ip);
+    if (ceiling.blocked(Date.now(), clientKey)) {
       reply.header('retry-after', '60');
       throw rateLimitedError();
     }
@@ -38,7 +39,7 @@ export async function devicePairingRoutes(app: FastifyInstance, ctx: AppContext)
         })
       );
     } catch (error) {
-      if (error instanceof AppError && error.code === 'PAIRING_CODE_INVALID') ceiling.recordFailure();
+      if (error instanceof AppError && error.code === 'PAIRING_CODE_INVALID') ceiling.recordFailure(Date.now(), clientKey);
       throw error;
     }
   });

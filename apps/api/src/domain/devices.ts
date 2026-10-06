@@ -39,24 +39,73 @@ export const hashPairingCode = (config: Pick<Config, 'SESSION_SECRET' | 'STORAGE
 
 export const pairingCodeInvalid = () => new AppError(400, 'PAIRING_CODE_INVALID', 'This pairing code is invalid or has expired');
 
-/** Global failed-attempt ceiling across all IPs (in memory, per process): bounds distributed guessing. */
+/**
+ * Client key for pairing throttles: the IP, with IPv6 addresses collapsed to their /64 (an attacker owning a /64 would
+ * otherwise rotate through 2^64 "distinct" addresses).
+ */
+export function pairingClientKey(ip: string | undefined): string {
+  if (!ip) return 'unknown';
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1]!;
+  if (!ip.includes(':')) return ip;
+  const [head = '', tail = ''] = ip.split('::');
+  const a = head ? head.split(':') : [];
+  const b = tail ? tail.split(':') : [];
+  const groups = ip.includes('::') ? [...a, ...Array<string>(Math.max(0, 8 - a.length - b.length)).fill('0'), ...b] : a;
+  return `v6:${groups.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, '')).join(':')}`;
+}
+
+/**
+ * Failed-pairing throttle (in memory, per process).
+ *  - Per client key: after `perKeyBlock` failures inside the window that client is refused (a guesser is stopped quickly).
+ *  - Global: bounds DISTRIBUTED guessing. Each client key contributes at most `perKeyCap` failures to the global count, so
+ *    tripping it needs `max / perKeyCap` DISTINCT clients (a botnet), not a couple of cheap IPs. A cheap attacker can no
+ *    longer lock every shop out of pairing (regression: see test/security-devices-pairing-dos.test.ts).
+ * Failures without a key (legacy callers/tests) are never capped.
+ */
 export class PairingAttemptCeiling {
-  private failures: number[] = [];
+  private readonly counted: number[] = [];
+  private readonly perKey = new Map<string, number[]>();
   constructor(
-    private readonly max = 200,
-    private readonly windowMs = 10 * 60_000
+    private readonly max = 1000,
+    private readonly windowMs = 10 * 60_000,
+    private readonly perKeyCap = 5,
+    private readonly perKeyBlock = 10
   ) {}
   private prune(now: number) {
     const cutoff = now - this.windowMs;
-    while (this.failures.length && this.failures[0]! <= cutoff) this.failures.shift();
+    while (this.counted.length && this.counted[0]! <= cutoff) this.counted.shift();
+    if (this.perKey.size > 5000) {
+      for (const [k, v] of this.perKey) {
+        const live = v.filter((t) => t > cutoff);
+        if (live.length) this.perKey.set(k, live);
+        else this.perKey.delete(k);
+      }
+    }
   }
-  blocked(now = Date.now()): boolean {
-    this.prune(now);
-    return this.failures.length >= this.max;
+  private keyFailures(key: string, now: number): number[] {
+    const cutoff = now - this.windowMs;
+    const live = (this.perKey.get(key) ?? []).filter((t) => t > cutoff);
+    if (live.length) this.perKey.set(key, live);
+    else this.perKey.delete(key);
+    return live;
   }
-  recordFailure(now = Date.now()): void {
+  /** True when the request must be refused with 429: this client is guessing, or the global distributed ceiling is hit. */
+  blocked(now = Date.now(), key?: string): boolean {
     this.prune(now);
-    this.failures.push(now);
+    if (key !== undefined && this.keyFailures(key, now).length >= this.perKeyBlock) return true;
+    return this.counted.length >= this.max;
+  }
+  recordFailure(now = Date.now(), key?: string): void {
+    this.prune(now);
+    if (key === undefined) {
+      this.counted.push(now);
+      return;
+    }
+    const live = this.keyFailures(key, now);
+    if (live.length < this.perKeyCap) this.counted.push(now);
+    live.push(now);
+    this.perKey.set(key, live);
   }
 }
 
@@ -92,15 +141,17 @@ export function deviceView(
 
 export async function createPairingCode(prisma: PrismaClient, config: Config, actor: { shopId: string; userId: string }) {
   const now = new Date();
-  const outstanding = await prisma.devicePairingCode.count({
-    where: { shopId: actor.shopId, usedAt: null, expiresAt: { gt: now } }
-  });
-  if (outstanding >= MAX_OUTSTANDING_PAIRING_CODES) {
-    throw new AppError(409, 'CONFLICT', 'Too many active pairing codes. Use or wait for an existing code to expire.');
-  }
   const code = generatePairingCode();
   const expiresAt = new Date(now.getTime() + config.DEVICE_PAIRING_TTL_MINUTES * 60_000);
   const row = await prisma.$transaction(async (tx) => {
+    // Serialise per shop so concurrent requests cannot all pass the count and exceed the cap (count-then-create race).
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'device-pairing:' + actor.shopId}))`;
+    const outstanding = await tx.devicePairingCode.count({
+      where: { shopId: actor.shopId, usedAt: null, expiresAt: { gt: now } }
+    });
+    if (outstanding >= MAX_OUTSTANDING_PAIRING_CODES) {
+      throw new AppError(409, 'CONFLICT', 'Too many active pairing codes. Use or wait for an existing code to expire.');
+    }
     const created = await tx.devicePairingCode.create({
       data: { shopId: actor.shopId, codeHash: hashPairingCode(config, normalizePairingCode(code)!), expiresAt, createdByUserId: actor.userId }
     });
