@@ -32,7 +32,7 @@ for (const [name, vp] of SIZES) {
     await shot(page, `61-shop-queue-${name}`, false);
     await page.getByRole('tab', { name: 'New' }).click();
     await page.getByTestId('order-card').filter({ hasText: `Resp ${name}` }).getByRole('link').first().click();
-    await expect(page.getByRole('button', { name: 'Print now' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
     await expectNoOverflow(page, `order detail ${name}`);
     for (const label of ['Pricing', 'QR', 'Analytics', 'Settings']) {
       await page.getByRole('link', { name: label, exact: true }).click();

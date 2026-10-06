@@ -141,6 +141,7 @@ const adminOrderView = (o: Order & { document: Document; shop: { slug: string; d
     pageSelection: opts.pageSelection ?? null,
     documentStatus: o.document.status,
     printedAt: o.document.printedAt,
+    printInitiatedAt: o.document.printInitiatedAt,
     deleteAfter: o.document.deleteAfter,
     deletedAt: o.document.deletedAt
   };

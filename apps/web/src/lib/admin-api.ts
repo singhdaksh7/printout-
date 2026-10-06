@@ -17,7 +17,7 @@ export interface AdminOrder {
   customerDisplayNameOrReference: string | null; totalPaise: number; currency: string; createdAt: string; updatedAt: string;
   mimeType: string | null; pageCount: number | null; selectedPageCount: number | null; paperSize: string | null;
   colourMode: string | null; sides: string | null; copies: number | null; pageSelection: unknown;
-  documentStatus: string; printedAt: string | null; deleteAfter: string | null; deletedAt: string | null;
+  documentStatus: string; printedAt: string | null; printInitiatedAt?: string | null; deleteAfter: string | null; deletedAt: string | null;
 }
 export interface AdminPricingRule { id: string; paperSize: string; colourMode: string; sides: string; pricePerSheetPaise: number; active: boolean }
 export interface Dashboard {

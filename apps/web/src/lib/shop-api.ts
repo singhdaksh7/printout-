@@ -15,11 +15,14 @@ export interface OrderSummary {
   documentStatus?: string; originalFilename?: string | null; pageCount?: number | null; selectedPageCount?: number | null;
   colourMode?: 'bw' | 'colour'; sides?: 'single' | 'duplex'; copies?: number;
   customerDisplayNameOrReference?: string | null; deleteAfter?: string | null;
+  /** Server time of the first successful Print (starts retention). Does NOT prove paper printed. */
+  printInitiatedAt?: string | null; paperSize?: string | null;
+  pageSelection?: { mode: 'all' } | { mode: 'ranges'; ranges: { from: number; to: number }[] } | null;
 }
 export interface OrderListPage { items: OrderSummary[]; nextCursor?: string | undefined }
 export interface DocumentInfo {
   id?: string; status: string; pageCount?: number | null; uploadedAt?: string | null; expiresAt?: string | null;
-  printedAt?: string | null; deleteAfter?: string | null; deletedAt?: string | null; deletionState?: string; originalFilename?: string | null;
+  printedAt?: string | null; printInitiatedAt?: string | null; deleteAfter?: string | null; deletedAt?: string | null; deletionState?: string; originalFilename?: string | null;
 }
 export interface PrintOptionsSnapshot {
   paperSize?: string; colourMode?: 'bw' | 'colour'; sides?: 'single' | 'duplex'; copies?: number;
@@ -105,12 +108,13 @@ export const login = (email: string, password: string) =>
   api<SessionData>('/auth/login', { method: 'POST', body: { email, password } });
 export const logout = () => api<void>('/auth/logout', { method: 'POST', body: {} });
 
-export interface OrderQuery { status?: string; active?: boolean; cursor?: string | undefined }
+export interface OrderQuery { status?: string; active?: boolean; print?: 'pending' | 'initiated'; cursor?: string | undefined }
 /** `status` may be one status or a comma-separated list; `active` hides terminal orders (both documented by the API). */
 export function listOrders(params: OrderQuery = {}, signal?: AbortSignal) {
   const q = new URLSearchParams();
   if (params.status) q.set('status', params.status);
   if (params.active) q.set('active', '1');
+  if (params.print) q.set('print', params.print);
   if (params.cursor) q.set('cursor', params.cursor);
   const qs = q.toString();
   return shopRequest<OrderListPage>(`/shop/orders${qs ? `?${qs}` : ''}`, signal ? { signal } : {});
@@ -124,10 +128,17 @@ export const transitionOrder = (id: string, toStatus: OrderStatus, reason?: stri
 export const confirmPrinted = (id: string, clientRequestId: string) =>
   shopRequest<{ order: { id?: string; status: OrderStatus }; document: { status: string; printedAt: string; deleteAfter: string } }>(
     `/shop/orders/${encodeURIComponent(id)}/print-confirmation`, { method: 'POST', body: { clientRequestId } });
-/** One shop action: NEW -> ACCEPTED -> PRINTING (or just re-open when already PRINTING) + short-lived inline access. Never marks PRINTED. */
+/**
+ * The ONE shop action. The first successful call starts the retention window (document.printInitiatedAt, deleteAfter = +30 min)
+ * and returns short-lived INLINE access; later calls (Reprint) only return access and never move either timestamp.
+ * It does not mean paper printed.
+ */
 export const printNow = (id: string) =>
-  shopRequest<{ order: { id: string; orderNumber: string; status: OrderStatus }; transitioned: boolean; access: { url: string; expiresAt: string; contentDisposition?: string } }>(
-    `/shop/orders/${encodeURIComponent(id)}/print-now`, { method: 'POST', body: { clientRequestId: newRequestId() } });
+  shopRequest<{
+    order: { id: string; orderNumber: string; status: OrderStatus }; transitioned: boolean; firstPrint?: boolean;
+    document?: { status: string; printInitiatedAt: string | null; deleteAfter: string | null };
+    access: { url: string; expiresAt: string; contentDisposition?: string };
+  }>(`/shop/orders/${encodeURIComponent(id)}/print-now`, { method: 'POST', body: { clientRequestId: newRequestId() } });
 /** Explicit "Save File": short-lived ATTACHMENT url for the original document (never automatic). */
 export const requestDocumentDownload = (id: string) =>
   shopRequest<{ url: string; expiresAt: string; contentDisposition?: string; fileName: string }>(

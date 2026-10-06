@@ -2,17 +2,18 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import { listOrders, describeError, type OrderSummary } from '../lib/shop-api';
-import { Banner, Skeleton, StatusChip } from './components';
+import { Banner, pageSelectionText, Skeleton, StatusChip } from './components';
 import { ageLabel, safeStorage, useAutoRefresh, useDebounced, useTick } from './hooks';
 import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useRealtimeRefresh } from './realtime';
 
-export interface Tab { key: string; label: string; query: { status?: string; active?: boolean } }
+export interface Tab { key: string; label: string; query: { status?: string; active?: boolean; print?: 'pending' | 'initiated' } }
 export const TABS: Tab[] = [
-  { key: 'active', label: 'Active', query: { active: true } }, // NEW..READY (API hides terminal orders)
-  { key: 'new', label: 'New', query: { status: 'NEW' } },
-  { key: 'ready', label: 'Ready', query: { status: 'READY' } },
-  { key: 'done', label: 'Done', query: { status: 'COLLECTED,CANCELLED,EXPIRED' } }
+  // New: customer requests nobody has pressed Print on yet.
+  { key: 'new', label: 'New', query: { print: 'pending', status: 'NEW,ACCEPTED,PRINTING' } },
+  // Recent: Print was pressed; reprint stays available until the file is deleted.
+  { key: 'recent', label: 'Recent', query: { print: 'initiated' } },
+  { key: 'closed', label: 'Cancelled / expired', query: { status: 'CANCELLED,EXPIRED' } }
 ];
 const MAX_REFRESH_PAGES = 5;
 
@@ -28,6 +29,8 @@ function useQueue(tab: Tab) {
   const pages = useRef(1);
   const seen = useRef<Set<string> | null>(null);
   const gen = useRef(0);
+  const activeKey = useRef(tab.key);
+  activeKey.current = tab.key;
   const newestFresh = useRef(0);
   const key = tab.key;
 
@@ -80,10 +83,12 @@ function useQueue(tab: Tab) {
   const loadMore = useCallback(async () => {
     if (!nextCursor) return;
     setLoadingMore(true);
-    const my = gen.current;
+    const startKey = key;
+    ++gen.current; // discard any in-flight refresh that only holds the first page (it would overwrite the appended page)
     try {
       const page = await listOrders({ ...tab.query, cursor: nextCursor });
-      if (my !== gen.current) return;
+      if (activeKey.current !== startKey) return; // tab switched meanwhile
+      ++gen.current; // refreshes that began while this page loaded predate it too
       pages.current = Math.min(MAX_REFRESH_PAGES, pages.current + 1);
       setNextCursor(page.nextCursor);
       setItems((prev) => {
@@ -105,7 +110,7 @@ function useQueue(tab: Tab) {
 function Retention({ deleteAfter, documentStatus }: { deleteAfter?: string | null | undefined; documentStatus?: string | undefined }) {
   const target = deleteAfter ? Date.parse(deleteAfter) : NaN;
   const secs = useTick(() => (Number.isNaN(target) ? 0 : Math.ceil((target - Date.now()) / 1000)));
-  if (documentStatus === 'DELETED') return <span className="sh-chip sh-chip-deleted">File deleted</span>;
+  if (documentStatus === 'DELETED') return <span className="sh-chip sh-chip-deleted">File deleted automatically ✓</span>;
   if (Number.isNaN(target)) return null;
   if (secs <= 0) return <span className="sh-chip sh-chip-warn">Deleting…</span>;
   return <span className="sh-chip sh-chip-retention">Deletes in {formatCountdown(secs * 1000)}</span>;
@@ -119,7 +124,15 @@ function Age({ iso }: { iso: string }) {
 export const OrderCard = memo(function OrderCard({ o, isNew, onChanged }: { o: OrderSummary; isNew: boolean; onChanged?: () => void }) {
   const [busy, setBusy] = useState<'print' | 'save' | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const printable = (o.status === 'NEW' || o.status === 'ACCEPTED' || o.status === 'PRINTING') && o.documentStatus === 'AVAILABLE';
+  const target = o.deleteAfter ? Date.parse(o.deleteAfter) : NaN;
+  const secsLeft = useTick(() => (Number.isNaN(target) ? 0 : Math.ceil((target - Date.now()) / 1000)));
+  const initiated = !!o.printInitiatedAt;
+  const deleted = o.documentStatus === 'DELETED';
+  const live = o.status !== 'CANCELLED' && o.status !== 'EXPIRED';
+  // Print: a request nobody printed yet. Reprint: Print was pressed and the file is still inside its retention window.
+  const canPrint = live && !initiated && o.documentStatus === 'AVAILABLE';
+  const canReprint = live && initiated && !deleted && secsLeft > 0;
+  const hasFile = canPrint || canReprint;
   async function run(kind: 'print' | 'save') {
     if (busy) return;
     setBusy(kind); setErr(null);
@@ -130,29 +143,39 @@ export const OrderCard = memo(function OrderCard({ o, isNew, onChanged }: { o: O
   const pages = o.selectedPageCount != null
     ? (o.pageCount != null && o.pageCount !== o.selectedPageCount ? `${o.selectedPageCount}/${o.pageCount} pages` : `${o.selectedPageCount} pages`)
     : o.pageCount != null ? `${o.pageCount} pages` : null;
+  const mins = Math.max(1, Math.ceil(secsLeft / 60));
   return (
     <li className={`sh-card order-card${isNew ? ' is-fresh' : ''}`} data-testid="order-card">
       <div className="order-card-top">
         <Link className="order-card-link" to={`/shop/orders/${o.id}`} aria-label={`Order #${o.orderNumber}`}>
           <span className="order-num">#{o.orderNumber}</span>
         </Link>
-        <StatusChip status={o.status} />
+        {initiated && <StatusChip status={o.status} />}
         <span className="order-amount tnum">{formatPaise(o.totalPaise)}</span>
       </div>
+      {o.customerDisplayNameOrReference && <div className="order-ref sh-ellip" title={o.customerDisplayNameOrReference}>For: {o.customerDisplayNameOrReference}</div>}
       <div className="order-file sh-ellip" title={o.originalFilename ?? undefined}>{o.originalFilename ?? 'Document'}</div>
-      <div className="order-meta">
+      <div className="order-meta" data-testid="order-specs">
         {pages && <span>{pages}</span>}
         {o.colourMode && <span>{o.colourMode === 'colour' ? 'Colour' : 'B&W'}</span>}
-        {o.sides && <span>{o.sides === 'duplex' ? 'Duplex' : 'Single'}</span>}
         {o.copies != null && <span>{o.copies} {o.copies === 1 ? 'copy' : 'copies'}</span>}
+        {o.sides && <span>{o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'}</span>}
+        {o.pageSelection && <span>{pageSelectionText(o.pageSelection)}</span>}
+        <span>{o.paperSize ?? 'A4'}</span>
       </div>
-      {o.customerDisplayNameOrReference && <div className="order-ref sh-ellip" title={o.customerDisplayNameOrReference}>For: {o.customerDisplayNameOrReference}</div>}
-      {printable && (
+      {hasFile && (
         <div className="order-actions">
           <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy !== null} onClick={() => void run('print')}>
-            {busy === 'print' ? 'Opening…' : o.status === 'PRINTING' ? 'Reopen document' : 'Print Now'}
+            {busy === 'print' ? 'Opening…' : canReprint ? 'Reprint' : 'Print'}
           </button>
           <button className="sh-btn" disabled={busy !== null} onClick={() => void run('save')} title={SAVE_FILE_NOTE}>{busy === 'save' ? 'Saving…' : 'Save file'}</button>
+          <Link className="sh-btn sh-btn-sm" to={`/shop/orders/${o.id}`}>View</Link>
+        </div>
+      )}
+      {initiated && <div className="order-initiated sh-muted" data-testid="print-initiated">Print initiated <time dateTime={o.printInitiatedAt!} title={new Date(o.printInitiatedAt!).toLocaleString()}>{new Date(o.printInitiatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>}
+      {canReprint && <div className="order-reprint sh-muted" data-testid="reprint-window">Available for reprint for {mins} min</div>}
+      {!hasFile && (
+        <div className="order-actions">
           <Link className="sh-btn sh-btn-sm" to={`/shop/orders/${o.id}`}>View details</Link>
         </div>
       )}
@@ -184,7 +207,7 @@ function useBeep() {
 }
 
 export default function QueuePage() {
-  const [tabKey, setTabKey] = useState('active');
+  const [tabKey, setTabKey] = useState('new');
   const tab = TABS.find((t) => t.key === tabKey)!;
   const q = useQueue(tab);
   const sound = useBeep();
@@ -230,9 +253,9 @@ export default function QueuePage() {
       {q.loading ? <Skeleton lines={5} label="Loading orders" /> : null}
       {empty && (
         <div className="sh-empty">
-          <h2>{tabKey === 'done' ? 'Nothing finished yet' : 'No orders yet'}</h2>
-          <p>{tabKey === 'active' || tabKey === 'new' ? 'New orders appear here the moment customers send them. Show your QR code at the counter to get started.' : 'Orders will show up here as they move along.'}</p>
-          {(tabKey === 'active' || tabKey === 'new') && <Link className="sh-btn" to="/shop/qr">Open counter QR</Link>}
+          <h2>{tabKey === 'new' ? 'No new requests' : 'Nothing here yet'}</h2>
+          <p>{tabKey === 'new' ? 'New orders appear here the moment customers send them. Show your QR code at the counter to get started.' : 'Orders will show up here as they move along.'}</p>
+          {tabKey === 'new' && <Link className="sh-btn" to="/shop/qr">Open counter QR</Link>}
         </div>
       )}
       {q.items.length > 0 && <ul className="order-list">{rendered}</ul>}

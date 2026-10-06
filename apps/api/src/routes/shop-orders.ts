@@ -30,8 +30,12 @@ const transitionBody = z
 const confirmBody = z.object({ clientRequestId: z.string().uuid() }).strict();
 const printNowBody = z.object({ clientRequestId: z.string().uuid() }).strict();
 
-/** Statuses from which "Print Now" is meaningful: it ends in PRINTING and never goes further. */
-const PRINT_NOW_FROM: ReadonlySet<OrderStatus> = new Set([OrderStatus.NEW, OrderStatus.ACCEPTED, OrderStatus.PRINTING]);
+/** Statuses from which the FIRST Print may start retention: it ends in PRINTING and never goes further. */
+const PRINT_INITIATE_FROM: ReadonlySet<OrderStatus> = new Set([OrderStatus.NEW, OrderStatus.ACCEPTED, OrderStatus.PRINTING]);
+/** Statuses that may (re)open the document for printing while it is still retained (includes legacy confirmed orders). */
+const PRINT_ACCESS_FROM: ReadonlySet<OrderStatus> = new Set([
+  OrderStatus.NEW, OrderStatus.ACCEPTED, OrderStatus.PRINTING, OrderStatus.PRINTED, OrderStatus.READY, OrderStatus.COLLECTED
+]);
 const PRINT_NOW_RACE = 'PRINT_NOW_RACE';
 
 const listQuery = z
@@ -40,6 +44,8 @@ const listQuery = z
     status: z.string().max(200).optional(),
     /** active=1 hides terminal orders (COLLECTED, CANCELLED, EXPIRED). */
     active: z.enum(['1', 'true', '0', 'false']).optional(),
+    /** pending = Print not yet pressed; initiated = Print pressed (or legacy print-confirmed). */
+    print: z.enum(['pending', 'initiated']).optional(),
     cursor: z.string().max(300).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50)
   })
@@ -53,6 +59,7 @@ interface OptionsSnapshot {
   sides?: string;
   copies?: number;
   pageSelection?: unknown;
+  paperSize?: string;
 }
 
 const orderCore = (o: Order) => ({
@@ -92,7 +99,13 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
         ? { notIn: TERMINAL_STATUSES as OrderStatus[] }
         : undefined;
     const rows = await prisma.order.findMany({
-      where: { shopId, status: statusFilter, ...cursorWhere(decodeCursor(q.cursor)) },
+      where: {
+        shopId,
+        status: statusFilter,
+        ...(q.print === 'initiated' ? { document: { OR: [{ printInitiatedAt: { not: null } }, { printedAt: { not: null } }] } } : {}),
+        ...(q.print === 'pending' ? { document: { printInitiatedAt: null, printedAt: null } } : {}),
+        ...cursorWhere(decodeCursor(q.cursor))
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: q.limit + 1,
       include: { document: true }
@@ -112,7 +125,10 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
           sides: options.sides ?? null,
           copies: options.copies ?? null,
           documentStatus: o.document.status,
-          deleteAfter: o.document.deleteAfter
+          deleteAfter: o.document.deleteAfter,
+          printInitiatedAt: o.document.printInitiatedAt ?? o.document.printedAt,
+          paperSize: options.paperSize ?? null,
+          pageSelection: options.pageSelection ?? null
         };
       }),
       nextCursor: rows.length > q.limit && last ? encodeCursor(last.createdAt, last.id) : undefined
@@ -144,6 +160,7 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
         uploadedAt: d.uploadedAt,
         expiresAt: d.expiresAt,
         printedAt: d.printedAt,
+        printInitiatedAt: d.printInitiatedAt,
         deleteAfter: d.deleteAfter,
         deletedAt: d.deletedAt,
         deletionState: d.status === DocumentStatus.DELETED ? 'DELETED' : d.deletionError ? 'FAILED' : 'OK'
@@ -217,35 +234,42 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
   });
 
   /**
-   * "Print Now": one shop action = NEW -> ACCEPTED -> PRINTING (or ACCEPTED -> PRINTING, or just re-open when already
-   * PRINTING) plus short-lived document access. It uses the same guarded transitions, history and audit as the manual steps.
-   *  - Everything that can fail (tenant, status, document availability, URL generation) is checked/produced BEFORE any
-   *    state change, and the state changes happen in ONE transaction: either the order ends in PRINTING or it is untouched.
-   *  - It never marks the order PRINTED and never touches printedAt/deleteAfter (only print-confirmation does).
-   *  - Retry/double-click safe: an order already past the steps just returns fresh access; a concurrent loser re-evaluates once.
+   * "Print": the ONE shop action. The FIRST successful call starts the retention window; everything after is access only.
+   *  - First call: claims the document (AVAILABLE -> PRINTED_RETENTION) with printInitiatedAt = server now and
+   *    deleteAfter = printInitiatedAt + PRINT_RETENTION_MINUTES, and moves the order NEW -> ACCEPTED -> PRINTING, all in ONE
+   *    transaction. The claim is a conditional update, so concurrent double-clicks produce exactly one winner and the
+   *    losers just get access (they never move either timestamp).
+   *  - Reprint / reopen / retry: returns fresh inline access bounded by the EXISTING deleteAfter. Never touches
+   *    printInitiatedAt or deleteAfter.
+   *  - Failure rule: the access URL is produced BEFORE the transaction. If anything fails (tenant, status, availability, URL),
+   *    nothing is written and no retention starts.
+   *  - printInitiatedAt records that Print was authorised and access given. It does NOT prove paper came out; the order is
+   *    never marked PRINTED here and printedAt (legacy "confirmed") is never written.
    */
   app.post('/shop/orders/:id/print-now', { preHandler: limits.status }, async (request) => {
     const shopId = shopIdOf(request);
     const auth = authOf(request);
     const { id } = idParam.parse(request.params);
     printNowBody.parse(request.body);
+    const retentionMs = config.PRINT_RETENTION_MINUTES * 60_000;
 
     const attempt = async () => {
       const order0 = await prisma.order.findFirst({ where: { id, shopId }, include: { document: true } });
       if (!order0) throw orderNotFound();
-      if (!PRINT_NOW_FROM.has(order0.status)) {
-        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Print Now is only available for NEW, ACCEPTED or PRINTING orders', {
-          from: order0.status,
-          to: OrderStatus.PRINTING
-        });
+      if (!PRINT_ACCESS_FROM.has(order0.status)) {
+        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Print is not available for this order', { from: order0.status, to: OrderStatus.PRINTING });
       }
       const doc0 = order0.document;
       const window = documentAccessWindow(doc0, order0.status, Date.now());
       if (!window || !doc0.detectedMimeType) {
         throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'The document for this order is no longer available');
       }
-      // Produce the access URL first: if this throws, nothing has changed.
-      const access = await storage.temporaryReadUrl(doc0.objectKey, window.ttlSeconds, {
+      const mayInitiate =
+        PRINT_INITIATE_FROM.has(order0.status) && doc0.status === DocumentStatus.AVAILABLE && !doc0.printInitiatedAt && !doc0.printedAt;
+      // A first print can never hand out a link that outlives its own (about to be created) retention deadline.
+      const ttlSeconds = mayInitiate ? Math.min(window.ttlSeconds, Math.floor(retentionMs / 1000)) : window.ttlSeconds;
+      // Produce the access URL first: if this throws, nothing has changed and no retention starts.
+      const access = await storage.temporaryReadUrl(doc0.objectKey, ttlSeconds, {
         contentType: doc0.detectedMimeType,
         filename: doc0.originalFilename
       });
@@ -253,17 +277,37 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
       const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.findFirst({ where: { id, shopId }, include: { document: true } });
         if (!order) throw orderNotFound();
-        if (!PRINT_NOW_FROM.has(order.status)) {
-          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Print Now is only available for NEW, ACCEPTED or PRINTING orders', {
-            from: order.status,
-            to: OrderStatus.PRINTING
-          });
+        if (!PRINT_ACCESS_FROM.has(order.status)) {
+          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Print is not available for this order', { from: order.status, to: OrderStatus.PRINTING });
         }
         const now = new Date();
-        const d = order.document;
-        if (!(d.status === DocumentStatus.AVAILABLE && !d.printedAt && !!d.expiresAt && d.expiresAt > now)) {
-          throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'The document for this order is no longer available');
+        let firstPrint = false;
+        if (mayInitiate && PRINT_INITIATE_FROM.has(order.status)) {
+          // Conditional claim: only ONE concurrent request can start the window; it also re-checks expiry.
+          const claimed = await tx.document.updateMany({
+            where: {
+              id: order.documentId,
+              shopId,
+              status: DocumentStatus.AVAILABLE,
+              printInitiatedAt: null,
+              printedAt: null,
+              expiresAt: { gt: now }
+            },
+            data: {
+              status: DocumentStatus.PRINTED_RETENTION,
+              printInitiatedAt: now,
+              deleteAfter: new Date(now.getTime() + retentionMs)
+            }
+          });
+          firstPrint = claimed.count === 1;
         }
+        const d = await tx.document.findUniqueOrThrow({ where: { id: order.documentId } });
+        // Whether we won the claim or an earlier/concurrent print did, a usable document is PRINTED_RETENTION within its deadline.
+        const usable =
+          (d.status === DocumentStatus.PRINTED_RETENTION && !!d.deleteAfter && d.deleteAfter > now) ||
+          (!mayInitiate && d.status === DocumentStatus.AVAILABLE && !d.printedAt && !d.printInitiatedAt && !!d.expiresAt && d.expiresAt > now);
+        if (!usable) throw new AppError(409, 'DOCUMENT_UNAVAILABLE', 'The document for this order is no longer available');
+
         const start = order.status;
         const path: OrderStatus[] =
           start === OrderStatus.NEW ? [OrderStatus.ACCEPTED, OrderStatus.PRINTING] : start === OrderStatus.ACCEPTED ? [OrderStatus.PRINTING] : [];
@@ -273,7 +317,7 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
           const moved = await tx.order.updateMany({ where: { id, shopId, status: current }, data: { status: to } });
           if (moved.count !== 1) throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order status changed concurrently', { race: PRINT_NOW_RACE });
           await tx.orderStatusHistory.create({
-            data: { orderId: id, fromStatus: current, toStatus: to, reason: 'Print Now', actorUserId: auth.userId }
+            data: { orderId: id, fromStatus: current, toStatus: to, reason: 'Print', actorUserId: auth.userId }
           });
           await audit(tx, {
             shopId,
@@ -285,18 +329,28 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
           });
           current = to;
         }
+        if (firstPrint) {
+          await audit(tx, {
+            shopId,
+            actorUserId: auth.userId,
+            action: 'order.printInitiated',
+            targetType: 'order',
+            targetId: id,
+            metadata: { printInitiatedAt: d.printInitiatedAt?.toISOString() ?? null, deleteAfter: d.deleteAfter?.toISOString() ?? null }
+          });
+        }
         await audit(tx, {
           shopId,
           actorUserId: auth.userId,
           action: 'order.printNow',
           targetType: 'order',
           targetId: id,
-          metadata: { from: start, to: current, transitioned: path.length > 0 }
+          metadata: { from: start, to: current, transitioned: path.length > 0, firstPrint }
         });
         const fresh = await tx.order.findFirstOrThrow({ where: { id, shopId } });
-        return { order: fresh, changed: path.length > 0 };
+        return { order: fresh, document: d, changed: path.length > 0, firstPrint };
       });
-      return { result, access, deadline: window.deadline, mimeType: doc0.detectedMimeType };
+      return { result, access, mimeType: doc0.detectedMimeType };
     };
 
     let out: Awaited<ReturnType<typeof attempt>>;
@@ -308,17 +362,28 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
       out = await attempt(); // a concurrent request moved the order: re-evaluate once (now typically PRINTING -> just access)
     }
 
-    if (out.result.changed) {
-      events.emit(shopId, 'order.statusChanged', toStatusEvent(out.result.order));
-      events.emit(shopId, 'order.updated', toStatusEvent(out.result.order));
+    const { order, document, changed, firstPrint } = out.result;
+    if (changed) {
+      events.emit(shopId, 'order.statusChanged', toStatusEvent(order));
+      events.emit(shopId, 'order.updated', toStatusEvent(order));
+    }
+    if (firstPrint) {
+      events.emit(shopId, 'document.deletionScheduled', { orderId: order.id, documentId: document.id, deleteAfter: document.deleteAfter });
     }
     await audit(ctx.prisma, { shopId, actorUserId: auth.userId, action: 'document.access', targetType: 'order', targetId: id });
+    const deadline = document.deleteAfter ?? document.expiresAt;
     return json({
-      order: { id: out.result.order.id, orderNumber: out.result.order.orderNumber, status: out.result.order.status },
-      transitioned: out.result.changed,
+      order: { id: order.id, orderNumber: order.orderNumber, status: order.status },
+      transitioned: changed,
+      firstPrint,
+      document: {
+        status: document.status,
+        printInitiatedAt: document.printInitiatedAt ?? document.printedAt,
+        deleteAfter: document.deleteAfter
+      },
       access: {
         url: out.access.url,
-        expiresAt: new Date(Math.min(out.access.expiresAt.getTime(), out.deadline.getTime())),
+        expiresAt: new Date(Math.min(out.access.expiresAt.getTime(), deadline ? deadline.getTime() : Infinity)),
         contentDisposition: 'inline',
         mimeType: out.mimeType
       }
@@ -338,6 +403,34 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
 
       // Idempotent: once printed, always return the ORIGINAL timestamps.
       if (order.document.printedAt) return respond(order, order.document, false);
+
+      // Print already started the window (printInitiatedAt): confirmation only records the shop's statement that paper
+      // printed. It never moves deleteAfter, so it cannot extend or shorten retention.
+      const dInit = order.document;
+      if (dInit.status === DocumentStatus.PRINTED_RETENTION && dInit.printInitiatedAt) {
+        if (order.status !== OrderStatus.PRINTING) {
+          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order must be PRINTING before print confirmation', { from: order.status, to: OrderStatus.PRINTED });
+        }
+        const at = new Date();
+        const marked = await tx.document.updateMany({ where: { id: dInit.id, shopId, printedAt: null }, data: { printedAt: at } });
+        const movedInit = await tx.order.updateMany({ where: { id, shopId, status: OrderStatus.PRINTING }, data: { status: OrderStatus.PRINTED } });
+        if (marked.count !== 1 || movedInit.count !== 1) {
+          throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order status changed concurrently; reload and retry');
+        }
+        await tx.orderStatusHistory.create({
+          data: { orderId: id, fromStatus: OrderStatus.PRINTING, toStatus: OrderStatus.PRINTED, actorUserId: auth.userId }
+        });
+        await audit(tx, {
+          shopId,
+          actorUserId: auth.userId,
+          action: 'order.printConfirmed',
+          targetType: 'order',
+          targetId: id,
+          metadata: { printedAt: at.toISOString(), deleteAfter: dInit.deleteAfter?.toISOString() ?? null }
+        });
+        const fresh = await tx.order.findFirstOrThrow({ where: { id, shopId }, include: { document: true } });
+        return respond(fresh, fresh.document, false);
+      }
 
       if (order.status !== OrderStatus.PRINTING) {
         throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order must be PRINTING before print confirmation', {

@@ -21,7 +21,7 @@ test('tenant isolation in the browser: metro cannot see or open central orders, 
   await uiLogin(m, 'owner@metro.test');
   await expect(m.getByRole('heading', { name: 'Print queue' })).toBeVisible();
   await expect(m.locator('.shop-conn')).toContainText('Live');
-  await expect(m.getByText('No orders yet')).toBeVisible();
+  await expect(m.getByText('No new requests')).toBeVisible();
   await expect(m.getByTestId('order-card')).toHaveCount(0);
   await shot(m, '30-metro-empty-queue');
   await expectNoOverflow(m, 'metro queue');
@@ -38,7 +38,6 @@ test('tenant isolation in the browser: metro cannot see or open central orders, 
   m.on('response', async (r) => { if (r.url().includes('/shop/orders?')) metroApiCalls.push(await r.text().catch(() => '')); });
   await createOrderViaApi('central-print', { name: 'Central Secret Customer', fileName: 'secret.pdf' });
   await expect(c.getByTestId('order-card').first()).toBeVisible();
-  await c.getByRole('tab', { name: 'Active' }).click();
   await expect(c.getByText('Central Secret Customer')).toBeVisible({ timeout: 15_000 });
   await m.waitForTimeout(2500);
   await expect(m.getByText('Central Secret Customer')).toHaveCount(0);

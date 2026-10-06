@@ -14,7 +14,7 @@ function pagesText(sel: unknown): string {
 
 function documentState(o: AdminOrder): string {
   if (o.documentStatus === 'DELETED' || o.deletedAt) return `Document deleted${o.deletedAt ? ` (${fmtDate(o.deletedAt)})` : ''}`;
-  if (o.printedAt && o.deleteAfter) return `Retained until ${fmtDate(o.deleteAfter)}`;
+  if ((o.printInitiatedAt ?? o.printedAt) && o.deleteAfter) return `Retained until ${fmtDate(o.deleteAfter)}`;
   if (o.documentStatus === 'AVAILABLE') return 'Document held (not yet printed)';
   return label(o.documentStatus.toLowerCase());
 }
@@ -37,7 +37,7 @@ export function AdminOrderRows({ items, showShop = true }: { items: AdminOrder[]
             {o.colourMode === 'colour' ? 'Colour' : 'B&W'} · {o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · {o.copies ?? 1} copies · {o.paperSize ?? 'A4'}
           </div>
           <div className="sh-muted sh-wrap">
-            Printed: {fmtDate(o.printedAt)} · {documentState(o)}
+            Print started: {fmtDate(o.printInitiatedAt ?? o.printedAt)} · {documentState(o)}
           </div>
         </li>
       ))}

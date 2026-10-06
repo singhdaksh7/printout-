@@ -40,7 +40,7 @@ describe('Print Now (NEW -> ACCEPTED -> PRINTING) and Save File', () => {
     expect(typeof d.access.url).toBe('string');
     expect(await edges(order.id)).toEqual(['NEW->ACCEPTED', 'ACCEPTED->PRINTING']);
     const hist = await prisma.orderStatusHistory.findMany({ where: { orderId: order.id, fromStatus: { not: null } } });
-    expect(hist.every((h) => h.reason === 'Print Now' && h.actorUserId === a.userId)).toBe(true);
+    expect(hist.every((h) => h.reason === 'Print' && h.actorUserId === a.userId)).toBe(true);
     const audits = await prisma.auditLog.findMany({ where: { targetId: order.id } });
     expect(audits.filter((x) => x.action === 'order.transition' && (x.metadata as { via?: string }).via === 'print-now')).toHaveLength(2);
     expect(audits.some((x) => x.action === 'order.printNow')).toBe(true);
@@ -99,34 +99,45 @@ describe('Print Now (NEW -> ACCEPTED -> PRINTING) and Save File', () => {
     expect(await edges(order.id)).toEqual(before);
   });
 
-  it('8+9. Print Now never sets printedAt/deleteAfter, never marks PRINTED and leaves the document AVAILABLE', async () => {
+  it('8+9. first Print sets printInitiatedAt + deleteAfter (+retention) and PRINTED_RETENTION, never printedAt or PRINTED; repeats change nothing', async () => {
     const { order, doc: d0 } = await newOrder(app, prisma, world.a);
-    await printNow(a, order.id);
-    await printNow(a, order.id);
-    const d = await doc(d0.id);
-    expect(d.printedAt).toBeNull();
-    expect(d.deleteAfter).toBeNull();
-    expect(d.status).toBe(DocumentStatus.AVAILABLE);
+    const t0 = Date.now();
+    const first = await printNow(a, order.id);
+    expect(first.json().data.firstPrint).toBe(true);
+    const d1 = await doc(d0.id);
+    expect(d1.printedAt).toBeNull();
+    expect(d1.status).toBe(DocumentStatus.PRINTED_RETENTION);
+    expect(d1.printInitiatedAt!.getTime()).toBeGreaterThanOrEqual(t0 - 50);
+    expect(d1.deleteAfter!.getTime() - d1.printInitiatedAt!.getTime()).toBe(config.PRINT_RETENTION_MINUTES * 60_000);
+    await new Promise((r) => setTimeout(r, 1100));
+    const again = await printNow(a, order.id);
+    expect(again.json().data.firstPrint).toBe(false);
+    const d2 = await doc(d0.id);
+    expect(d2.printInitiatedAt?.getTime()).toBe(d1.printInitiatedAt?.getTime());
+    expect(d2.deleteAfter?.getTime()).toBe(d1.deleteAfter?.getTime());
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe('PRINTING');
   });
 
-  it('10+11. Confirm Printed still sets printedAt and deleteAfter = +retention; reprint, Print Now and Save File never change them', async () => {
+  it('10+11. Confirm Printed (legacy) records printedAt but never moves deleteAfter; reprint, Print and Save File never change them', async () => {
     const { order, doc: d0 } = await newOrder(app, prisma, world.a);
     await printNow(a, order.id);
+    const snap0 = await doc(d0.id);
+    await new Promise((r) => setTimeout(r, 1100));
     const res = await confirm(a, order.id);
     expect(res.statusCode).toBe(200);
-    const printedAt = new Date(res.json().data.document.printedAt).getTime();
-    const deleteAfter = new Date(res.json().data.document.deleteAfter).getTime();
-    expect(deleteAfter - printedAt).toBe(config.PRINT_RETENTION_MINUTES * 60_000);
     const snap = await doc(d0.id);
+    expect(snap.printedAt).not.toBeNull();
+    expect(snap.deleteAfter?.getTime()).toBe(snap0.deleteAfter?.getTime());
+    expect(snap.printInitiatedAt?.getTime()).toBe(snap0.printInitiatedAt?.getTime());
 
-    expect((await access(a, order.id)).statusCode).toBe(200); // reprint
+    expect((await access(a, order.id)).statusCode).toBe(200); // reopen
     expect((await download(a, order.id)).statusCode).toBe(200); // save file
-    const again = await printNow(a, order.id); // PRINTED: Print Now is not offered
-    expect(again.statusCode).toBe(409);
-    expect(again.json().error.code).toBe('INVALID_STATUS_TRANSITION');
+    const again = await printNow(a, order.id); // legacy PRINTED order: still reprintable inside the window
+    expect(again.statusCode).toBe(200);
+    expect(again.json().data.firstPrint).toBe(false);
     const after = await doc(d0.id);
     expect(after.printedAt?.getTime()).toBe(snap.printedAt?.getTime());
+    expect(after.printInitiatedAt?.getTime()).toBe(snap.printInitiatedAt?.getTime());
     expect(after.deleteAfter?.getTime()).toBe(snap.deleteAfter?.getTime());
     expect(after.status).toBe(DocumentStatus.PRINTED_RETENTION);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe('PRINTED');

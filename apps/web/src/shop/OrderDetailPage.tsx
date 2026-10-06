@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import {
-  confirmPrinted, describeError, errorCode, getOrder, newRequestId, requestDocumentAccess, transitionOrder,
-  type OrderDetail, type OrderStatus, type PrintOptionsSnapshot
+  describeError, errorCode, getOrder, newRequestId, transitionOrder,
+  type OrderDetail, type OrderStatus
 } from '../lib/shop-api';
 import { ApiError } from '../lib/api';
-import { Banner, Modal, Skeleton, StatusChip, useToast } from './components';
-import { retentionHyphen, resolveRetentionMinutes } from '../lib/retention';
+import { Banner, Modal, pageSelectionText, Skeleton, StatusChip, useToast } from './components';
+import { retentionHyphen } from '../lib/retention';
 import { useAuth } from './auth';
 import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useAutoRefresh, useDebounced, useTick } from './hooks';
@@ -16,12 +16,13 @@ import { useRealtimeRefresh } from './realtime';
 const fmtDateTime = (iso?: string | null) => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-function pageSelectionText(sel: PrintOptionsSnapshot['pageSelection']): string {
-  if (!sel || sel.mode === 'all') return 'All pages';
-  return `Pages ${sel.ranges.map((r) => (r.from === r.to ? `${r.from}` : `${r.from}–${r.to}`)).join(', ')}`;
+/** Display-only: minutes between the server's printInitiatedAt and deleteAfter (falls back to the configured policy). */
+function resolveMins(deleteAfter?: string | null, started?: string | null, policy?: number): number {
+  const m = deleteAfter && started ? Math.round((Date.parse(deleteAfter) - Date.parse(started)) / 60_000) : NaN;
+  return Number.isFinite(m) && m > 0 ? m : (policy && policy > 0 ? policy : 30);
 }
 
-type Action = 'accept' | 'start' | 'cancel' | 'ready' | 'collect' | 'open' | 'confirm' | 'printnow' | 'save';
+type Action = 'cancel' | 'printnow' | 'save';
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams();
@@ -32,9 +33,10 @@ export default function OrderDetailPage() {
   const [acting, setActing] = useState<Action | null>(null);
   const [access, setAccess] = useState<{ url: string; expiresAt: string } | null>(null);
   const [preview, setPreview] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const { show, node: toast } = useToast();
+  const { state } = useAuth();
+  const retentionMinutes = state.status === 'authed' ? state.session.retentionMinutes : undefined;
   const gen = useRef(0);
 
   const load = useCallback(async (initial = false) => {
@@ -111,22 +113,7 @@ export default function OrderDetailPage() {
     } finally { setActing(null); }
   }
 
-  async function openDocument() {
-    if (acting) return;
-    setActing('open'); setError(null);
-    let w: Window | null = null;
-    try { w = typeof window.open === 'function' ? window.open('', '_blank') : null; } catch { w = null; }
-    try {
-      const r = await requestDocumentAccess(id);
-      setAccess({ url: r.url, expiresAt: r.expiresAt });
-      if (w) { try { w.opener = null; } catch { /* ignore */ } w.location.href = r.url; }
-    } catch (e) {
-      try { w?.close(); } catch { /* ignore */ }
-      await handleError(e);
-    } finally { setActing(null); }
-  }
-
-  /** Print Now: NEW/ACCEPTED -> PRINTING (server-side, one transaction) and open the viewer. Never marks printed. */
+  /** Print / Reprint: the first success starts the server-side retention window; later calls only reopen the viewer. */
   async function printNowAction() {
     if (acting) return;
     setActing('printnow'); setError(null);
@@ -134,7 +121,7 @@ export default function OrderDetailPage() {
       const r = await printNowAndOpen(id);
       setAccess({ url: r.access.url, expiresAt: r.access.expiresAt });
       await load();
-      show(r.transitioned ? 'Order moved to printing. Print it, then confirm once the paper has printed.' : 'Document opened again');
+      show(r.firstPrint ? `Print started. Available for reprint for ${resolveMins(r.document?.deleteAfter, r.document?.printInitiatedAt, retentionMinutes)} minutes.` : 'Document opened again');
     } catch (e) { await handleError(e); } finally { setActing(null); }
   }
 
@@ -162,7 +149,8 @@ export default function OrderDetailPage() {
   const filename = (order.originalFilename ?? doc.originalFilename ?? null) as string | null;
   const customerRef = order.customerDisplayNameOrReference as string | null | undefined;
   const busy = acting !== null;
-  const canPrintDoc = !docGone;
+  const initiated = !!(doc.printInitiatedAt ?? doc.printedAt);
+  const printable = !docGone && status !== 'CANCELLED' && status !== 'EXPIRED';
 
   return (
     <article className="order-detail" aria-labelledby="order-title">
@@ -182,48 +170,28 @@ export default function OrderDetailPage() {
 
       {error && <Banner onDismiss={() => setError(null)}>{error}</Banner>}
 
-      {/* ---- status-specific actions: only what the API allows ---- */}
+      {/* ---- one primary action: Print (first time) / Reprint (while the file is retained). No lifecycle steps to manage. ---- */}
       <section className="sh-card od-actions" aria-label="Actions">
-        {(status === 'NEW' || status === 'ACCEPTED') && (
+        {printable ? (
           <>
             <div className="sh-actions">
-              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy || !canPrintDoc} onClick={printNowAction}>{acting === 'printnow' ? 'Opening…' : 'Print now'}</button>
-              <button className="sh-btn" disabled={busy || !canPrintDoc} onClick={saveFileAction}>{acting === 'save' ? 'Saving…' : 'Save file'}</button>
-              {status === 'NEW' && (
-                <button className="sh-btn sh-btn-sm" disabled={busy} onClick={() => transition('accept', 'ACCEPTED', 'Order accepted')}>{acting === 'accept' ? 'Accepting…' : 'Accept only'}</button>
+              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy} onClick={printNowAction}>{acting === 'printnow' ? 'Opening…' : initiated ? 'Reprint' : 'Print'}</button>
+              <button className="sh-btn" disabled={busy} onClick={saveFileAction}>{acting === 'save' ? 'Saving…' : 'Save file'}</button>
+              {!initiated && status === 'NEW' && (
+                <button className="sh-btn sh-btn-sm sh-btn-danger" disabled={busy} onClick={() => setCancelOpen(true)}>Cancel order</button>
               )}
-              <button className="sh-btn sh-btn-sm sh-btn-danger" disabled={busy} onClick={() => setCancelOpen(true)}>Cancel order</button>
             </div>
-            <p className="sh-muted">Print now moves the order to printing and opens the document in a secure viewer. It does not mark the order as printed. {SAVE_FILE_NOTE}</p>
+            <p className="sh-muted">
+              {initiated
+                ? 'Reprinting or saving does not extend the deletion timer. '
+                : `Print opens the document in a secure viewer and starts a ${retentionHyphen(retentionMinutes)} countdown, after which the file is deleted. `}
+              {SAVE_FILE_NOTE}
+            </p>
           </>
-        )}
-        {status === 'PRINTING' && (
-          <>
-            <p className="sh-muted">The document opens in a secure viewer tab: use its Print button (or Ctrl+P) and your normal print dialog. You never need to download or save the file. Printing does not mark the order as printed: confirm below once the paper has actually printed. {SAVE_FILE_NOTE}</p>
-            <div className="sh-actions">
-              <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy || !canPrintDoc} onClick={printNowAction}>{acting === 'printnow' ? 'Opening…' : 'Reopen document'}</button>
-              <button className="sh-btn sh-btn-lg" disabled={busy || deleted} onClick={() => setConfirmOpen(true)}>Confirm printed successfully</button>
-              <button className="sh-btn" disabled={busy || !canPrintDoc} onClick={saveFileAction}>{acting === 'save' ? 'Saving…' : 'Save file'}</button>
-            </div>
-          </>
-        )}
-        {status === 'PRINTED' && (
-          <>
-            <div className="sh-actions">
-              <button className="sh-btn" disabled={busy || docGone} onClick={openDocument}>{acting === 'open' ? 'Opening…' : 'Reprint'}</button>
-              <button className="sh-btn" disabled={busy || docGone} onClick={saveFileAction}>{acting === 'save' ? 'Saving…' : 'Save file'}</button>
-              <button className="sh-btn sh-btn-primary" disabled={busy} onClick={() => transition('ready', 'READY', 'Marked ready for collection')}>{acting === 'ready' ? 'Saving…' : 'Mark ready'}</button>
-            </div>
-            <p className="sh-muted">Reprinting or saving does not extend the deletion timer. {SAVE_FILE_NOTE}</p>
-          </>
-        )}
-        {status === 'READY' && (
-          <div className="sh-actions">
-            <button className="sh-btn sh-btn-primary" disabled={busy} onClick={() => transition('collect', 'COLLECTED', 'Marked as collected')}>{acting === 'collect' ? 'Saving…' : 'Mark collected'}</button>
-          </div>
-        )}
-        {(status === 'COLLECTED' || status === 'CANCELLED' || status === 'EXPIRED') && (
+        ) : status === 'CANCELLED' || status === 'EXPIRED' ? (
           <p className="sh-muted">This order is {status.toLowerCase()}. No further actions.</p>
+        ) : (
+          <p className="sh-muted">The file has been deleted, so it can no longer be printed or saved. Order details are kept.</p>
         )}
       </section>
 
@@ -241,7 +209,7 @@ export default function OrderDetailPage() {
             <span className="sh-muted">at {fmtTime(new Date(deleteAfterMs))}</span>
           </div>
         ) : null}
-        {access && canPrintDoc && (
+        {access && printable && (
           <div className="od-access">
             {accessExpired ? (
               <p>The secure link has expired. Use the button above to open the document again.</p>
@@ -262,8 +230,8 @@ export default function OrderDetailPage() {
           <div><dt>Status</dt><dd>{doc.status}</dd></div>
           {doc.pageCount != null && <div><dt>Pages</dt><dd>{doc.pageCount}</dd></div>}
           <div><dt>Uploaded</dt><dd>{fmtDateTime(doc.uploadedAt)}</dd></div>
-          {!doc.printedAt && !deleted && <div><dt>Expires if unprinted</dt><dd>{fmtDateTime(doc.expiresAt)}</dd></div>}
-          {doc.printedAt && <div><dt>Printed</dt><dd>{fmtDateTime(doc.printedAt)}</dd></div>}
+          {!initiated && !deleted && <div><dt>Expires if not printed</dt><dd>{fmtDateTime(doc.expiresAt)}</dd></div>}
+          {initiated && <div><dt>Print started</dt><dd>{fmtDateTime(doc.printInitiatedAt ?? doc.printedAt)}</dd></div>}
           {doc.deleteAfter && <div><dt>Scheduled deletion</dt><dd>{fmtDateTime(doc.deleteAfter)}</dd></div>}
           {doc.deletedAt && <div><dt>Deleted</dt><dd>{fmtDateTime(doc.deletedAt)}</dd></div>}
           {doc.deletionState && doc.deletionState !== 'OK' && <div><dt>Deletion state</dt><dd>{doc.deletionState}</dd></div>}
@@ -306,26 +274,6 @@ export default function OrderDetailPage() {
         </ol>
       </section>
 
-      {confirmOpen && (
-        <ConfirmPrintModal
-          onClose={() => setConfirmOpen(false)}
-          onConfirm={async (requestId) => {
-            setActing('confirm');
-            try {
-              const r = await confirmPrinted(id, requestId);
-              setConfirmOpen(false);
-              await load();
-              const mins = Math.round((Date.parse(r.document.deleteAfter) - Date.parse(r.document.printedAt)) / 60_000);
-              show(Number.isFinite(mins) && mins > 0
-                ? `Printing confirmed. Document available for reprint for ${mins} minutes.`
-                : 'Printing confirmed. Deletion countdown started.');
-            } catch (e) {
-              setConfirmOpen(false);
-              await handleError(e);
-            } finally { setActing(null); }
-          }}
-        />
-      )}
       {cancelOpen && (
         <Modal title="Cancel this order?" onClose={() => setCancelOpen(false)} busy={acting === 'cancel'}>
           <p>The customer's order #{order.orderNumber} will be cancelled. This cannot be undone.</p>
@@ -342,30 +290,4 @@ export default function OrderDetailPage() {
 
 function BackLink() {
   return <p><Link className="sh-back" to="/shop">← Back to queue</Link></p>;
-}
-
-function ConfirmPrintModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (clientRequestId: string) => Promise<void> }) {
-  const { state } = useAuth();
-  const retentionMinutes = state.status === 'authed' ? state.session.retentionMinutes : undefined;
-  const [requestId] = useState(newRequestId);
-  // Display-only estimate; the authoritative deletion time comes from the server after confirmation.
-  const [deleteAt] = useState(() => fmtTime(new Date(Date.now() + resolveRetentionMinutes(retentionMinutes) * 60_000)));
-  const [submitting, setSubmitting] = useState(false);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const submitted = useRef(false);
-  async function go() {
-    if (submitted.current) return; // double-submit guard
-    submitted.current = true;
-    setSubmitting(true);
-    try { await onConfirm(requestId); } finally { setSubmitting(false); submitted.current = false; }
-  }
-  return (
-    <Modal title="Confirm printed successfully?" onClose={onClose} initialFocusRef={cancelRef} busy={submitting}>
-      <p>{`Confirming starts a ${retentionHyphen(retentionMinutes)} countdown. The customer's file will be permanently deleted at ${deleteAt}. Only confirm after the paper has actually printed.`}</p>
-      <div className="sh-actions">
-        <button ref={cancelRef} className="sh-btn" onClick={onClose} disabled={submitting}>Cancel</button>
-        <button className="sh-btn sh-btn-primary" onClick={go} disabled={submitting}>{submitting ? 'Confirming…' : 'Confirm'}</button>
-      </div>
-    </Modal>
-  );
 }

@@ -192,7 +192,7 @@ describe('vertical slice: upload -> print -> 30 min privacy deletion', () => {
     expect(fetched.headers.get('content-type')).toBe('application/pdf');
     expect(Buffer.compare(Buffer.from(await fetched.arrayBuffer()), pdf)).toBe(0);
     // tampered signature rejected
-    expect((await fetch(new URL(accData.url.replace(/sig=[0-9a-f]/, 'sig=0'), base))).status).toBeGreaterThanOrEqual(400);
+    expect((await fetch(new URL(accData.url.replace(/sig=([0-9a-f])/, (_m: string, c: string) => 'sig=' + (c === '0' ? '1' : '0')), base))).status).toBeGreaterThanOrEqual(400);
     // access never changes timestamps
     expect((await prisma.document.findUniqueOrThrow({ where: { id: doc.documentId } })).printedAt).toBeNull();
 

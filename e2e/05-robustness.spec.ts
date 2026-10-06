@@ -6,7 +6,7 @@ test('empty queue shows guidance (metro, no orders)', async ({ browser }) => {
   const ctx = await newMobileContext(browser);
   const page = await ctx.newPage();
   await uiLogin(page, 'owner@metro.test');
-  await expect(page.getByRole('heading', { name: 'No orders yet' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No new requests' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open counter QR' })).toBeVisible();
   await expectNoOverflow(page, 'empty queue');
   await shot(page, '50-empty-queue');
@@ -47,13 +47,13 @@ test('SSE reconnect, network error banner with retry, session expiry redirect', 
 
   // --- network error banner on the queue
   await page.route('**/api/v1/shop/orders?**', (r) => r.abort());
-  await page.getByRole('tab', { name: 'Ready' }).click();
+  await page.getByRole('tab', { name: 'Cancelled / expired' }).click();
   await expect(page.getByRole('button', { name: /retry|try again/i }).first()).toBeVisible({ timeout: 15_000 });
   await shot(page, '53-network-error');
   await expectNoOverflow(page, 'network error');
   await page.unroute('**/api/v1/shop/orders?**');
   await page.getByRole('button', { name: /retry|try again/i }).first().click();
-  await expect(page.getByRole('heading', { name: /No orders|Nothing finished/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /No new requests|Nothing here yet/ })).toBeVisible();
 
   // --- session expiry: cookies vanish, next protected call sends us to login
   await ctx.clearCookies();

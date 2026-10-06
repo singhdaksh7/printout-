@@ -122,6 +122,8 @@ model Document {
   uploadedAt DateTime?
   expiresAt DateTime?
   printedAt DateTime?
+  /// First successful shop Print action (server time). Starts the retention window; it does NOT prove physical printing.
+  printInitiatedAt DateTime?
   deleteAfter DateTime?
   deletedAt DateTime?
   deletionError String?

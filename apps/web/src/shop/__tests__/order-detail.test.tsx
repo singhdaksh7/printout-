@@ -1,7 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeES, authedSession, session, mockFetch, order, renderShop, type Handler } from './helpers';
+import { FakeES, authedSession, mockFetch, order, renderShop, type Handler } from './helpers';
 import { setCsrfToken } from '../../lib/api';
 import type { OrderDetail, OrderStatus } from '../../lib/shop-api';
 
@@ -11,14 +11,17 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 function detail(status: OrderStatus, doc: Partial<OrderDetail['document']> = {}): OrderDetail {
   return {
     order: { ...order({ status }), originalFilename: 'thesis-final.pdf' },
-    document: { id: 'd1', status: 'AVAILABLE', pageCount: 10, uploadedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600e3).toISOString(), printedAt: null, deleteAfter: null, deletedAt: null, deletionState: 'OK', ...doc },
+    document: { id: 'd1', status: 'AVAILABLE', pageCount: 10, uploadedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600e3).toISOString(), printedAt: null, printInitiatedAt: null, deleteAfter: null, deletedAt: null, deletionState: 'OK', ...doc },
     priceSnapshot: { selectedPageCount: 4, sheetsPerCopy: 2, totalSheets: 4, unitPricePaise: 300, totalPaise: 1250, currency: 'INR' },
     printOptionsSnapshot: { paperSize: 'A4', colourMode: 'bw', sides: 'duplex', copies: 2, pageSelection: { mode: 'ranges', ranges: [{ from: 1, to: 3 }, { from: 7, to: 7 }] } },
     statusHistory: [{ toStatus: 'NEW', createdAt: new Date().toISOString() }]
   };
 }
+const inWindow = (extra: Partial<OrderDetail['document']> = {}) => ({ status: 'PRINTED_RETENTION', deleteAfter: new Date(Date.now() + 600e3).toISOString(), ...extra });
 const getDetail = (store: { d: OrderDetail }): Handler => ({ method, path }) => (method === 'GET' && path === '/shop/orders/o1' ? { data: store.d } : undefined);
 const btn = (name: RegExp | string) => screen.queryByRole('button', { name });
+/** Every lifecycle control the shopkeeper must never need. */
+const HIDDEN_ALWAYS = ['Accept only', 'Accept order', 'Start printing', 'Confirm printed successfully', 'Mark printed', 'Mark ready', 'Mark collected', 'Reopen document'];
 
 describe('order detail', () => {
   it('shows configuration, price breakdown and history', async () => {
@@ -36,41 +39,25 @@ describe('order detail', () => {
   });
 
   it.each([
-    ['NEW', ['Print now', 'Save file', 'Accept only', 'Cancel order'], ['Accept order', 'Start printing', 'Mark ready', 'Mark collected', 'Reopen document', 'Reprint']],
-    ['ACCEPTED', ['Print now', 'Save file', 'Cancel order'], ['Accept only', 'Start printing', 'Mark ready', 'Reprint']],
-    ['PRINTING', ['Reopen document', 'Confirm printed successfully', 'Save file'], ['Print now', 'Accept only', 'Cancel order', 'Mark ready', 'Reprint']],
-    ['PRINTED', ['Reprint', 'Save file', 'Mark ready'], ['Print now', 'Accept only', 'Cancel order', 'Confirm printed successfully', 'Mark collected']],
-    ['READY', ['Mark collected'], ['Mark ready', 'Reprint', 'Print now', 'Cancel order', 'Confirm printed successfully']],
-    ['COLLECTED', [], ['Accept only', 'Print now', 'Mark collected', 'Reprint', 'Cancel order']],
-    ['CANCELLED', [], ['Accept only', 'Print now', 'Mark collected', 'Reprint', 'Save file']],
-    ['EXPIRED', [], ['Accept only', 'Print now', 'Mark collected', 'Reprint', 'Save file']]
-  ] as [OrderStatus, string[], string[]][])('%s offers exactly the allowed actions', async (status, shown, hidden) => {
-    const doc = status === 'PRINTED' || status === 'READY' ? { status: 'PRINTED_RETENTION', deleteAfter: new Date(Date.now() + 600e3).toISOString() } : {};
+    // [label, status, document, shown, hidden-in-addition-to-the-always-hidden]
+    ['new request', 'NEW', {}, ['Print', 'Save file', 'Cancel order'], ['Reprint']],
+    ['legacy ACCEPTED, never printed', 'ACCEPTED', {}, ['Print', 'Save file'], ['Reprint', 'Cancel order']],
+    ['legacy PRINTING, never printed (24h rule)', 'PRINTING', {}, ['Print', 'Save file'], ['Reprint', 'Cancel order']],
+    ['print started, inside the window', 'PRINTING', inWindow({ printInitiatedAt: new Date().toISOString() }), ['Reprint', 'Save file'], ['Print', 'Cancel order']],
+    ['legacy confirmed PRINTED, inside the window', 'PRINTED', inWindow({ printedAt: new Date().toISOString() }), ['Reprint', 'Save file'], ['Print', 'Cancel order']],
+    ['legacy READY, inside the window', 'READY', inWindow({ printedAt: new Date().toISOString() }), ['Reprint', 'Save file'], ['Print']],
+    ['legacy COLLECTED, file deleted', 'COLLECTED', { status: 'DELETED', deletedAt: new Date().toISOString() }, [], ['Print', 'Reprint', 'Save file', 'Cancel order']],
+    ['CANCELLED', 'CANCELLED', {}, [], ['Print', 'Reprint', 'Save file', 'Cancel order']],
+    ['EXPIRED', 'EXPIRED', {}, [], ['Print', 'Reprint', 'Save file', 'Cancel order']]
+  ] as [string, OrderStatus, Partial<OrderDetail['document']>, string[], string[]][])('%s offers exactly the allowed actions', async (_label, status, doc, shown, hidden) => {
     mockFetch(authedSession, getDetail({ d: detail(status, doc) }));
     renderShop('/shop/orders/o1');
     await screen.findByRole('heading', { name: 'Order #CENT-1' });
-    for (const s of shown) expect(btn(s)).toBeInTheDocument();
-    for (const s of hidden) expect(btn(s)).not.toBeInTheDocument();
+    for (const s of shown) expect(btn(new RegExp(`^${s}$`))).toBeInTheDocument();
+    for (const s of [...hidden, ...HIDDEN_ALWAYS]) expect(btn(new RegExp(`^${s}$`))).not.toBeInTheDocument();
   });
 
-  it('accepts an order via the transition API and waits for the server before updating', async () => {
-    const user = userEvent.setup();
-    const store = { d: detail('NEW') };
-    const { calls } = mockFetch(authedSession, getDetail(store), ({ method, path, body }) => {
-      if (method === 'POST' && path === '/shop/orders/o1/transitions') { store.d = detail('ACCEPTED'); return { data: { order: { id: 'o1', status: body.toStatus } } }; }
-      return undefined;
-    });
-    renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Accept only' }));
-    expect(await screen.findByRole('button', { name: 'Print now' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Accept only' })).not.toBeInTheDocument();
-    const post = calls.find((c) => c.path.endsWith('/transitions'))!;
-    expect(post.body.toStatus).toBe('ACCEPTED');
-    expect(post.body.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(post.headers['x-csrf-token']).toBe('csrf-1');
-  });
-
-  it('cancel requires confirmation', async () => {
+  it('cancel requires confirmation (only offered for a request nobody printed)', async () => {
     const user = userEvent.setup();
     const { calls } = mockFetch(authedSession, getDetail({ d: detail('NEW') }), ({ method, path }) => (method === 'POST' && path.endsWith('/transitions') ? { data: { order: {} } } : undefined));
     renderShop('/shop/orders/o1');
@@ -84,149 +71,87 @@ describe('order detail', () => {
     await waitFor(() => expect(calls.find((c) => c.path.endsWith('/transitions'))?.body.toStatus).toBe('CANCELLED'));
   });
 
-  it.each([[1, '1-minute'], [45, '45-minute']])('confirm modal wording follows the session retentionMinutes=%s', async (n, word) => {
-    const user = userEvent.setup();
-    const sess: Handler = ({ method, path }) => (method === 'GET' && path === '/auth/session' ? { data: session({ retentionMinutes: n }) } : undefined);
-    mockFetch(sess, getDetail({ d: detail('PRINTING') }));
+  it('before Print the page says the 30-minute countdown starts on Print; opening the page itself starts nothing', async () => {
+    const { calls } = mockFetch(authedSession, getDetail({ d: detail('NEW') }));
     renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Confirm printed successfully' }));
-    expect(screen.getByRole('dialog')).toHaveTextContent(`Confirming starts a ${word} countdown.`);
+    await screen.findByRole('button', { name: 'Print' });
+    expect(screen.getByText(/starts a 30-minute countdown/i)).toBeInTheDocument();
+    expect(screen.getByText('Expires if not printed')).toBeInTheDocument();
+    expect(screen.queryByTestId('countdown')).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method !== 'GET')).toHaveLength(0);
   });
 
-  it('opening the document never marks printed; confirmation needs an explicit click in a modal with the privacy copy', async () => {
-    const user = userEvent.setup();
-    const openSpy = vi.fn(() => null);
-    vi.stubGlobal('open', openSpy);
-    const store = { d: detail('PRINTING') };
-    const deleteAfter = new Date(Date.now() + 30 * 60_000).toISOString();
-    const { calls } = mockFetch(authedSession, getDetail(store), ({ method, path }) => {
-      if (method === 'POST' && path.endsWith('/print-now')) return { data: { order: { id: 'o1', orderNumber: 'CENT-1', status: 'PRINTING' }, transitioned: false, access: { url: '/api/v1/internal/documents/k?sig=1', expiresAt: new Date(Date.now() + 300e3).toISOString(), contentDisposition: 'inline' } } };
-      if (method === 'POST' && path.endsWith('/print-confirmation')) {
-        store.d = detail('PRINTED', { status: 'PRINTED_RETENTION', printedAt: new Date().toISOString(), deleteAfter });
-        return { data: { order: { id: 'o1', status: 'PRINTED' }, document: { status: 'PRINTED_RETENTION', printedAt: new Date().toISOString(), deleteAfter } } };
-      }
-      return undefined;
-    });
-    renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Reopen document' }));
-    expect(await screen.findByRole('link', { name: /open document in a new tab/i })).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(calls.some((c) => c.path.endsWith('/print-confirmation'))).toBe(false); // opening is not confirming
-
-    await user.click(screen.getByRole('button', { name: 'Confirm printed successfully' }));
-    const dlg = screen.getByRole('dialog');
-    expect(dlg).toHaveTextContent(/Confirming starts a 30-minute countdown\. The customer's file will be permanently deleted at \d{1,2}:\d{2}.*\. Only confirm after the paper has actually printed\./);
-    expect(calls.some((c) => c.path.endsWith('/print-confirmation'))).toBe(false);
-    await user.click(within(dlg).getByRole('button', { name: 'Confirm' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(calls.filter((c) => c.path.endsWith('/print-confirmation'))).toHaveLength(1);
-    expect(await screen.findByTestId('countdown')).toHaveTextContent(/^(29|30):\d\d$/);
-  });
-
-  it('Esc closes the confirmation modal without confirming and focus starts on Cancel', async () => {
-    const user = userEvent.setup();
-    const { calls } = mockFetch(authedSession, getDetail({ d: detail('PRINTING') }));
-    renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Confirm printed successfully' }));
-    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' })).toHaveFocus();
-    await user.tab(); await user.tab(); await user.tab(); // trap: never leaves the dialog
-    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(calls.some((c) => c.path.endsWith('/print-confirmation'))).toBe(false);
-  });
-
-  it('prevents double submit of the confirmation', async () => {
-    const user = userEvent.setup();
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => { release = r; });
-    const { calls } = mockFetch(authedSession, getDetail({ d: detail('PRINTING') }), ({ method, path }) => (method === 'POST' && path.endsWith('/print-confirmation') ? { data: { order: { status: 'PRINTED' }, document: {} } } : undefined));
-    const real = globalThis.fetch;
-    vi.stubGlobal('fetch', async (...a: Parameters<typeof fetch>) => { if (String(a[0]).includes('print-confirmation')) await gate; return real(...a); });
-    renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Confirm printed successfully' }));
-    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm' });
-    await user.dblClick(confirm);
-    expect(await screen.findByRole('button', { name: 'Confirming…' })).toBeDisabled();
-    release();
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(calls.filter((c) => c.path.endsWith('/print-confirmation'))).toHaveLength(1);
-  });
-
-  it('PRINTED: shows a countdown from the server deleteAfter; reprint does not change it', async () => {
+  it('after Print: countdown from the server deleteAfter, "Print started" row, and Reprint does not change it', async () => {
     const user = userEvent.setup();
     vi.stubGlobal('open', vi.fn(() => null));
     const deleteAfter = new Date(Date.now() + 17 * 60_000 + 30_000).toISOString();
     const { calls } = mockFetch(authedSession,
-      getDetail({ d: detail('PRINTED', { status: 'PRINTED_RETENTION', printedAt: new Date().toISOString(), deleteAfter }) }),
-      ({ method, path }) => (method === 'POST' && path.endsWith('/document-access') ? { data: { url: '/x', expiresAt: new Date(Date.now() + 999e3).toISOString() } } : undefined));
+      getDetail({ d: detail('PRINTING', { status: 'PRINTED_RETENTION', printInitiatedAt: new Date().toISOString(), deleteAfter }) }),
+      ({ method, path }) => (method === 'POST' && path.endsWith('/print-now')
+        ? { data: { order: { id: 'o1', orderNumber: 'CENT-1', status: 'PRINTING' }, transitioned: false, firstPrint: false, document: { status: 'PRINTED_RETENTION', printInitiatedAt: null, deleteAfter }, access: { url: '/x', expiresAt: new Date(Date.now() + 999e3).toISOString() } } }
+        : undefined));
     renderShop('/shop/orders/o1');
-    const before = (await screen.findByTestId('countdown')).textContent;
-    expect(before).toMatch(/^17:\d\d$/);
+    expect((await screen.findByTestId('countdown')).textContent).toMatch(/^17:\d\d$/);
+    expect(screen.getByText('Print started', { selector: 'dt' })).toBeInTheDocument();
     expect(screen.getByText(/does not extend the deletion timer/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reprint' }));
     await screen.findByRole('link', { name: /open document in a new tab/i });
-    expect(calls.filter((c) => c.path.endsWith('/document-access'))).toHaveLength(1);
+    expect(calls.filter((c) => c.path.endsWith('/print-now'))).toHaveLength(1);
     expect(screen.getByTestId('countdown').textContent).toMatch(/^17:\d\d$/);
     expect(calls.some((c) => c.path.endsWith('/print-confirmation'))).toBe(false);
   });
 
-  it('at countdown zero disables preview/print/reprint but keeps Mark ready; refetches', async () => {
+  it('at countdown zero: no Print/Reprint/Save left, "file deleted" explanation, refetches until the server says DELETED', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const deleteAfter = new Date(Date.now() + 3_000).toISOString();
-    const store = { d: detail('PRINTED', { status: 'PRINTED_RETENTION', printedAt: new Date().toISOString(), deleteAfter }) };
+    const store = { d: detail('PRINTING', { status: 'PRINTED_RETENTION', printInitiatedAt: new Date().toISOString(), deleteAfter }) };
     const { calls } = mockFetch(authedSession, getDetail(store));
     renderShop('/shop/orders/o1');
     expect(await screen.findByRole('button', { name: 'Reprint' })).toBeEnabled();
     const fetchesBefore = calls.filter((c) => c.path === '/shop/orders/o1').length;
-    store.d = detail('PRINTED', { status: 'DELETED', printedAt: new Date().toISOString(), deleteAfter, deletedAt: new Date().toISOString() });
+    store.d = detail('PRINTING', { status: 'DELETED', printInitiatedAt: new Date().toISOString(), deleteAfter, deletedAt: new Date().toISOString() });
     await act(async () => { await vi.advanceTimersByTimeAsync(4_500); });
-    expect(screen.getByRole('button', { name: 'Reprint' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Mark ready' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /print|reprint|save file/i })).not.toBeInTheDocument();
     expect(screen.getByText('Document deleted.')).toBeInTheDocument();
+    expect(screen.getByText(/can no longer be printed or saved/i)).toBeInTheDocument();
     expect(calls.filter((c) => c.path === '/shop/orders/o1').length).toBeGreaterThan(fetchesBefore);
     expect(screen.queryByTestId('countdown')).not.toBeInTheDocument();
-  });
-
-  it('server-reported DELETED document: deleted state, Mark collected still available', async () => {
-    mockFetch(authedSession, getDetail({ d: detail('READY', { status: 'DELETED', printedAt: new Date(Date.now() - 3600e3).toISOString(), deleteAfter: new Date(Date.now() - 1800e3).toISOString(), deletedAt: new Date(Date.now() - 1700e3).toISOString() }) }));
-    renderShop('/shop/orders/o1');
-    expect(await screen.findByText('Document deleted.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Mark collected' })).toBeEnabled();
-    expect(btn('Reprint')).not.toBeInTheDocument();
   });
 
   it.each([
     ['INVALID_STATUS_TRANSITION', 409, /already moved on/i],
     ['RATE_LIMITED', 429, /too many requests/i],
     ['DOCUMENT_UNAVAILABLE', 404, /no longer available/i]
-  ])('handles %s with a readable banner', async (code, status, text) => {
+  ])('handles %s from Print with a readable banner', async (code, status, text) => {
     const user = userEvent.setup();
-    const { calls } = mockFetch(authedSession, getDetail({ d: detail('NEW') }), ({ method, path }) => (method === 'POST' && path.endsWith('/transitions') ? { status, error: { code } } : undefined));
+    vi.stubGlobal('open', vi.fn(() => null));
+    const { calls } = mockFetch(authedSession, getDetail({ d: detail('NEW') }), ({ method, path }) => (method === 'POST' && path.endsWith('/print-now') ? { status, error: { code } } : undefined));
     renderShop('/shop/orders/o1');
-    await user.click(await screen.findByRole('button', { name: 'Accept only' }));
+    await user.click(await screen.findByRole('button', { name: 'Print' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
     if (code === 'INVALID_STATUS_TRANSITION') expect(calls.filter((c) => c.path === '/shop/orders/o1').length).toBeGreaterThan(1); // refetched
   });
 
   it('shows a network error banner', async () => {
     const user = userEvent.setup();
+    vi.stubGlobal('open', vi.fn(() => null));
     const { fn } = mockFetch(authedSession, getDetail({ d: detail('NEW') }));
     renderShop('/shop/orders/o1');
-    const accept = await screen.findByRole('button', { name: 'Accept only' });
+    const print = await screen.findByRole('button', { name: 'Print' });
     fn.mockImplementation(async () => { throw new TypeError('fail'); });
-    await user.click(accept);
+    await user.click(print);
     expect(await screen.findByRole('alert')).toHaveTextContent(/cannot reach the server/i);
   });
 
-  it('refetches the order when a realtime event arrives', async () => {
+  it('refetches the order when a realtime event arrives (Print here -> Reprint on another device)', async () => {
     const store = { d: detail('NEW') };
     mockFetch(authedSession, getDetail(store));
     renderShop('/shop/orders/o1');
-    await screen.findByRole('button', { name: 'Accept only' });
-    store.d = detail('ACCEPTED');
+    await screen.findByRole('button', { name: 'Print' });
+    store.d = detail('PRINTING', { status: 'PRINTED_RETENTION', printInitiatedAt: new Date().toISOString(), deleteAfter: new Date(Date.now() + 600e3).toISOString() });
     const es = FakeES.open[0]!;
-    act(() => es.emit('order.statusChanged', { id: 'o1', status: 'ACCEPTED' }));
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Accept only' })).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Print now' })).toBeInTheDocument();
+    act(() => es.emit('order.statusChanged', { id: 'o1', status: 'PRINTING' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Reprint' })).toBeInTheDocument();
   });
 });

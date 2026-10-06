@@ -66,7 +66,7 @@ export function TrackingPage() {
   const idx = STEPS.findIndex((s) => s.status === order.status);
   const times = stepTimes(order);
   const cancelled = order.status === 'CANCELLED', expired = order.status === 'EXPIRED';
-  const afterPrint = idx >= 3;
+  const afterPrint = idx >= 2; // Print (PRINTING) starts the retention clock
   const showRetention = hasClock && afterPrint;
   const opts = order.printOptions ? describeOptions(order.printOptions) : null;
 

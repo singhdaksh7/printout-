@@ -2,7 +2,7 @@ import { Component, createContext, useCallback, useContext, useEffect, useId, us
 import type { OrderStatus } from '../lib/shop-api';
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
-  NEW: 'New', ACCEPTED: 'Accepted', PRINTING: 'Printing', PRINTED: 'Printed', READY: 'Ready',
+  NEW: 'New', ACCEPTED: 'Accepted', PRINTING: 'Print started', PRINTED: 'Printed', READY: 'Ready',
   COLLECTED: 'Collected', CANCELLED: 'Cancelled', EXPIRED: 'Expired'
 };
 
@@ -103,3 +103,9 @@ export function useUnsavedGuard(dirty: boolean, key = 'page') {
   useEffect(() => () => setDirty(key, false), [key, setDirty]);
 }
 export const UNSAVED_PROMPT = 'You have unsaved changes. Leave without saving?';
+
+/** "All pages" / "Pages 1–3, 5" for the shop's print-settings display. */
+export function pageSelectionText(sel: { mode: 'all' } | { mode: 'ranges'; ranges: { from: number; to: number }[] } | null | undefined): string {
+  if (!sel || sel.mode === 'all') return 'All pages';
+  return `Pages ${sel.ranges.map((r) => (r.from === r.to ? `${r.from}` : `${r.from}–${r.to}`)).join(', ')}`;
+}
