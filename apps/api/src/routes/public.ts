@@ -172,6 +172,12 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
         status: order.status,
         updatedAt: order.updatedAt
       });
+      try {
+        // Fire-and-forget device signal (order id only); must never affect the customer response.
+        ctx.notifier.notifyNewPrintRequest(shop.id, order.id);
+      } catch {
+        /* ignored */
+      }
       return orderResponse(order);
     } catch (error) {
       const raceLost =
