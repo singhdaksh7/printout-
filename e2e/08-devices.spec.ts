@@ -100,6 +100,7 @@ test('Printing Devices: add via pairing code, device appears Online, rename, dis
 test('Add device dialog fits a 390px phone without horizontal overflow', async ({ page }) => {
   await page.setViewportSize(VIEWPORTS.mobile);
   await uiLogin(page, 'owner@central.test');
+  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
   await page.goto('/shop/devices');
   await expect(page.getByRole('heading', { level: 1, name: 'Printing Devices' })).toBeVisible();
   await page.getByRole('button', { name: 'Add device' }).click();
