@@ -398,6 +398,20 @@ describe('ShopNotificationHub', () => {
     expect(errors).toHaveLength(1);
   });
 
+  it('a stream opened later is never pushed backlog as if it were live, even when the shared poller lags', async () => {
+    const hub = new ShopNotificationHub(prisma, 300);
+    const first: NotificationDto[] = [];
+    const second: NotificationDto[] = [];
+    await hub.subscribe(world.a.shopId, { deliver: (i) => first.push(...i) });
+    await prisma.shopNotification.create({ data: { shopId: world.a.shopId, type: 'order.created', dedupeKey: 'old', payload: { orderId: 'o1', orderNumber: 'A-1' } } });
+    await hub.subscribe(world.a.shopId, { deliver: (i) => second.push(...i) }); // opens after the row exists
+    await prisma.shopNotification.create({ data: { shopId: world.a.shopId, type: 'order.created', dedupeKey: 'new', payload: { orderId: 'o2', orderNumber: 'A-2' } } });
+    await eventually(() => first.length === 2, 4000);
+    expect(first.map((n) => n.data.orderNumber)).toEqual(['A-1', 'A-2']);
+    expect(second.map((n) => n.data.orderNumber)).toEqual(['A-2']);
+    hub.close();
+  });
+
   it('poller picks up rows written by another process and survives a database error', async () => {
     const errors: unknown[] = [];
     let failNext = true;

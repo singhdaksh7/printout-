@@ -119,6 +119,15 @@ export class ShopNotificationHub {
     set.add(entry);
     this.entries.set(shopId, set);
     await this.ensurePolling();
+    // Baseline: this subscriber is only pushed rows created AFTER it subscribed. Anything older (including rows the shared
+    // poller has not delivered yet) is history the client reconciles through the cursor list, never a "live" push.
+    try {
+      const max = await this.prisma.shopNotification.aggregate({ _max: { seq: true } });
+      const newest = max._max.seq ?? 0n;
+      if (newest > entry.last) entry.last = newest;
+    } catch (err) {
+      this.onError(err);
+    }
     return () => {
       const current = this.entries.get(shopId);
       if (!current) return;

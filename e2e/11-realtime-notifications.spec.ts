@@ -36,6 +36,8 @@ const toast = (p: Page, orderNumber: string) => p.locator('.pb-toast', { hasText
 const orderIdOf = (orderNumber: string) => dbQuery(`select id from "Order" where "orderNumber" = '${orderNumber}'`);
 
 test.beforeAll(async ({ browser }) => {
+  // Earlier specs create orders too: start this spec from an empty unread inbox so counts are exact.
+  dbQuery(`update "ShopNotification" set "readAt" = now() where "readAt" is null`);
   a = await browser.newContext({ viewport: VIEWPORTS.desktop });
   b = await browser.newContext({ viewport: VIEWPORTS.desktop });
   await a.addInitScript(COUNT_AUDIO);
@@ -51,6 +53,7 @@ test.beforeAll(async ({ browser }) => {
 test.afterAll(async () => { await a?.close(); await b?.close(); });
 
 test('a new order in shop A notifies shop A instantly without a refresh, and shop B receives nothing', async () => {
+  const bBefore = (await (await b.request.get('/api/v1/shop/notifications')).json()).data as { items: { id: string }[]; unreadCount: number };
   await expect(pa.getByRole('button', { name: 'Notifications' })).toBeVisible();
   const order = await createOrderViaApi('central-print', { name: 'Asha', fileName: 'private-thesis.pdf' });
   await expect(toast(pa, order.orderNumber)).toBeVisible({ timeout: 10_000 });
@@ -65,7 +68,9 @@ test('a new order in shop A notifies shop A instantly without a refresh, and sho
   const forB = await b.request.get('/api/v1/shop/notifications');
   expect(forB.status()).toBe(200);
   const bodyB = JSON.stringify(await forB.json());
-  expect((JSON.parse(bodyB) as { data: { items: unknown[] } }).data.items).toHaveLength(0);
+  const bAfter = JSON.parse(bodyB).data as { items: { id: string }[]; unreadCount: number };
+  expect(bAfter.items.map((i) => i.id)).toEqual(bBefore.items.map((i) => i.id)); // B's own history only, nothing new from A
+  expect(bAfter.unreadCount).toBe(bBefore.unreadCount);
   expect(bodyB).not.toContain(order.orderNumber);
 
   // No document data in what A is sent.
@@ -197,7 +202,7 @@ test('accessibility and layout: desktop panel passes axe; phone layouts do not o
     await expect(p.getByRole('dialog', { name: 'Notifications' })).toBeVisible();
     await expectNoOverflow(p, `notification panel ${label}`);
     const box = await p.getByRole('dialog').boundingBox();
-    expect(box!.width).toBeLessThanOrEqual(vp.width);
+    expect(box!.width).toBeLessThanOrEqual(vp.width + 0.5); // sub-pixel rounding only
     if (label === '390') {
       const phone = await new AxeBuilder({ page: p }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
       expect(phone.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(' ')}`), 'axe (phone, panel open)').toEqual([]);
@@ -217,5 +222,5 @@ test('existing queue and Order History keep working with notifications present',
   await expect(pa.getByRole('heading', { name: 'Print queue' })).toBeVisible();
   await pb.goto('/shop');
   await expect(pb.getByRole('heading', { name: 'Print queue' })).toBeVisible();
-  await expect(pb.getByTestId('order-card')).toHaveCount(0);
+  await expect(pb.getByText(/CENTRA-\d+/)).toHaveCount(0); // never shows the other shop's job codes
 });

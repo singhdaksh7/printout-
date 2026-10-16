@@ -46,7 +46,7 @@ const RECONCILE_MIN_GAP_MS = 5000;
  * The Print queue is refreshed independently by the existing realtime refresh (order.created / notification.created).
  */
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const { subscribe, reconnects } = useRealtime();
+  const { subscribe, reconnects, state: conn } = useRealtime();
   const toast = useToast(9000);
   const [items, setItems] = useState<ShopNotification[]>([]);
   // Last server-reported unread count (adjusted locally for live pushes and optimistic reads). See `unread` below.
@@ -166,6 +166,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   // Live pushes from the shared realtime connection.
   useEffect(() => subscribe((e) => { if (e.type === 'notification.created') onLive(e.data); }), [subscribe, onLive]);
+
+  // First time the stream is open: close the small window between the initial list fetch and the stream opening.
+  const openedOnce = useRef(false);
+  useEffect(() => {
+    if (conn !== 'live' || openedOnce.current) return;
+    openedOnce.current = true;
+    void catchUp();
+  }, [conn, catchUp]);
 
   // Reconnected after a gap => reconcile from the database.
   const firstReconnect = useRef(true);
