@@ -23,6 +23,7 @@ import { publicRoutes } from './routes/public.js';
 import { shopConfigRoutes } from './routes/shop-config.js';
 import { shopEventRoutes } from './routes/shop-events.js';
 import { shopOrderRoutes } from './routes/shop-orders.js';
+import { shopRevenueRoutes } from './routes/shop-revenue.js';
 import { internalStorageRoutes } from './internal-storage.js';
 import { createStorage, type Storage } from './storage/index.js';
 import { uploadRoutes } from './uploads.js';
@@ -149,6 +150,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));
+      await api.register((i) => shopRevenueRoutes(i, ctx));
       await api.register((i) => shopEventRoutes(i, ctx));
       await api.register((i) => adminRoutes(i, ctx));
       await api.register((i) => adminAccountRoutes(i, ctx));

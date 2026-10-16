@@ -107,3 +107,28 @@
 .pb-stats--queue { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 899px) { .pb-stats--queue { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); } }
 @media (max-width: 599px) { .pb-stats--queue .pb-stat__hint { display: none; } }
+
+/* ---- Analytics: order value report (estimated quotes, never payments) ---- */
+.pb-ov { display: grid; gap: var(--pb-space-4); min-width: 0; }
+.pb-ov > * { min-width: 0; }
+.pb-ov__stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pb-ov__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-4); }
+.pb-ov__compare, .pb-ov__defs { margin: 0; overflow-wrap: anywhere; }
+.pb-ov__defs { font-size: 0.85em; }
+.pb-ov__table { margin-top: var(--pb-space-3); }
+.pb-ov__table summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; border-radius: 8px; }
+.pb-ov__table summary:focus-visible { outline: 2px solid var(--pb-orange); outline-offset: 2px; }
+.pb-ov__scroll { overflow-x: auto; max-width: 100%; }
+.pb-ov__scroll table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.pb-ov__scroll th, .pb-ov__scroll td { padding: var(--pb-space-2) var(--pb-space-3); text-align: right; border-bottom: 1px solid var(--pb-n200); white-space: nowrap; }
+.pb-ov__scroll th:first-child { text-align: left; }
+.pb-ov__scroll tfoot th, .pb-ov__scroll tfoot td { font-weight: 700; }
+@media (max-width: 899px) { .pb-ov__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); } .pb-ov__grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 479px) { .pb-ov__stats { grid-template-columns: minmax(0, 1fr); } }
+.pb-ov .pb-hbars__row { grid-template-columns: minmax(5rem, 9rem) minmax(2rem, 1fr) auto; }
+.pb-ov .pb-hbars__label { overflow-wrap: anywhere; }
+.pb-ov .pb-hbars__value { white-space: nowrap; }
+@media (max-width: 479px) {
+  .pb-ov .pb-hbars__row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .pb-ov .pb-hbars__track { grid-column: 1 / -1; grid-row: 2; }
+}
