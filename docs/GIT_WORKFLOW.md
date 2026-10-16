@@ -11,7 +11,7 @@ feature/<dev>-<topic>  --PR-->  development  --release PR-->  production
 | `development` | shared integration; always green | pull requests from feature, fix and hotfix back-merge branches |
 | `production` | stable, releasable | release pull requests from `development`, and hotfix pull requests; always through a PR with green CI |
 
-Temporary branches: `feature/daksh-<topic>`, `feature/bhaiya-<topic>`, `fix/daksh-<topic>`, `fix/bhaiya-<topic>`, `hotfix/<topic>`. Use lowercase words and hyphens.
+Temporary branches: `feature/<developer>-<topic>` (for example `feature/daksh-rate-card-export`, `feature/amardeep-history-api`), `fix/<developer>-<topic>`, `hotfix/<topic>`. The names are flexible: any developer, including a future contributor, picks a short descriptive name that includes their own name; use lowercase words and hyphens.
 
 ## Current state (verify before relying on it)
 
@@ -41,7 +41,7 @@ Rules: one logical feature per branch; keep it small enough to review; rebase or
 - No approval is required (see Merge policy); asking the other developer for a review is optional and encouraged for risky changes.
 - All CI jobs green (below). Resolve review conversations.
 - Prefer squash merge for a single-topic branch; use a merge commit if the individual commits are worth keeping.
-- After merge, delete the remote feature branch (`gh pr merge --delete-branch`, or the button). Local branches and worktrees are yours to keep or remove.
+- Merged feature and fix branches are deleted remotely automatically (repository setting "Automatically delete head branches", see Branch cleanup). Local branches and worktrees are yours to keep or remove.
 
 ## CI (`.github/workflows/ci.yml`)
 
@@ -94,6 +94,17 @@ Not enabled yet. Reference payloads are in `.github/rulesets/`; required check n
 | Bypass actors | none (failing CI cannot be bypassed) | none |
 
 Direct pushes are blocked as a consequence of "require pull request" (rulesets have no separate push switch). The author may merge their own PR because zero approvals are required. GitHub plan notes: the repository is public and owned by a personal account, so rulesets, required checks and required pull requests are available at no cost. Because there are no bypass actors, even the owner cannot push straight to a protected branch or merge with red checks; an emergency must go through a hotfix PR with green CI.
+
+## Branch cleanup
+
+Only temporary branches are ever deleted. `development` and `production` are permanent: the rulesets block their deletion and force-pushes, and the repository setting **Automatically delete head branches** is only safe once those rulesets are active, because a release PR has `development` as its head branch; GitHub does not delete a head branch that a ruleset protects from deletion, but without the ruleset it would. So the order is fixed: enable the rulesets first, then the setting.
+
+```bash
+# after the rulesets are active (needs owner approval; not enabled yet)
+gh api -X PATCH repos/singhdaksh7/printout- -F delete_branch_on_merge=true
+# verify a permanent branch survives: merge a throwaway PR from a test branch, then
+gh api repos/singhdaksh7/printout-/branches --jq '.[].name'
+```
 
 ## Release: `development` to `production`
 

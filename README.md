@@ -56,7 +56,7 @@ Security findings and accepted risks: `docs/SECURITY_REVIEW.md`.
 
 ## Development workflow
 
-Two long-lived branches: `development` (integration) and `production` (stable; still named `main` until the owner approves the rename). Work happens on short-lived branches such as `feature/daksh-<topic>` or `feature/bhaiya-<topic>`, always created from the latest `development`, merged by pull request once CI passes (either developer may merge, including their own PR; reviews are optional, and `.github/CODEOWNERS` offers each developer as reviewer of the other) (`.github/workflows/ci.yml`). Releases are a reviewed pull request from `development` to `production`; merging does not deploy or migrate anything. Commands, hotfixes, protection settings and troubleshooting: `docs/GIT_WORKFLOW.md`.
+Two long-lived branches: `development` (integration) and `production` (stable; still named `main` until the owner approves the rename). Work happens on short-lived branches such as `feature/<your-name>-<topic>` (any developer uses their own name; names are flexible), always created from the latest `development`, merged by pull request once CI passes (either developer may merge, including their own PR; reviews are optional, and `.github/CODEOWNERS` offers each developer as reviewer of the other) (`.github/workflows/ci.yml`). Releases are a reviewed pull request from `development` to `production`; merging does not deploy or migrate anything. Commands, hotfixes, protection settings and troubleshooting: `docs/GIT_WORKFLOW.md`.
 
 ```bash
 git fetch origin && git switch development && git pull --ff-only
