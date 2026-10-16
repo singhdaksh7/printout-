@@ -83,6 +83,10 @@ The new address is **not** verified (no confirmation link or code). Reviewed 202
 - **Typo lockout is the realistic risk** (the admin signs out on all devices and cannot sign in with a mistyped address). Mitigations: the UI requires the address to be typed twice and warns that there is no email-based recovery; the operator CLI repairs it.
 - **Revisit before** any feature that emails admins or resets passwords by email (for example merging the transactional email work): at that point the email becomes a recovery channel and changes must require verification of the new address (and a notice to the old one).
 
+### Secret scanner entry
+
+`.gitleaks.toml` allowlists exactly one more path, `^apps/api/src/password-policy\.ts$`, because the common-password denylist (moved there from the already allowlisted `bootstrap-admin.ts`) trips the generic secret rule and CI scans every commit of a PR. No regex or inline exclusions. Verified with the CI scanner version (8.24.3): real-looking tokens in any other file, including siblings of that file, are still reported, and the same content at another path is reported. The scoped `[[allowlists]]` form (path AND line) is not honoured by 8.24.3, so a secret added *inside* that file would not be flagged by the scanner; `apps/api/test/password-policy.test.ts` closes that gap by failing if the file contains any string literal other than the known denylist entries.
+
 Other limitations (accepted): failed-password counters are per API process like the login throttle; an authenticated, re-authenticated admin can still learn whether an address is taken from the generic 409 (throttled); other devices learn their session ended only on their next API call (no push); 2FA/OTP is out of scope.
 
 ## Dependency advisories
