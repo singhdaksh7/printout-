@@ -1,0 +1,80 @@
+/* PrintoutBuddy design tokens. Source: docs/design/1.pdf page 2 (Design system). Do not tweak values here
+   without a design change: every hex below is from the approved PDF unless marked DERIVED.
+
+   Tokens are plain custom properties (unique --pb- names, so they never collide with the legacy blue theme).
+   Screens opt in to the new look by rendering inside <div class="pb-theme"> (see base.css). */
+:root {
+  /* Brand */
+  --pb-navy: #14213D;          /* text, structure, sidebar */
+  --pb-orange: #E8772E;        /* primary button, brand tile. Never used for text (2.9:1 on white). */
+  --pb-orange-ink: #B04E17;    /* orange text on light backgrounds, links */
+  --pb-orange-soft: #FCEBDD;   /* printing chip, highlights */
+  --pb-paper: #FBFBF8;         /* app background */
+  --pb-white: #FFFFFF;         /* cards, inputs (the design uses plain white surfaces) */
+
+  /* Neutral (tinted towards navy) */
+  --pb-n50: #F6F7F9;           /* dashboard canvas */
+  --pb-n100: #EDEFF3;          /* disabled, segmented track */
+  --pb-n200: #DADFE7;          /* card borders */
+  --pb-n300: #B9C1CE;          /* input borders */
+  --pb-n500: #6A7487;          /* secondary text. 4.71:1 on white, 4.39:1 on n50 (do not use for small text on n50/n100) */
+  --pb-n700: #3B4558;          /* labels */
+
+  /* Status. Always shown with a text label; colour is a second signal. */
+  --pb-ok: #1F7A4D;            /* printed, online, deleted */
+  --pb-warn: #9A6200;          /* degraded, pilot ending */
+  --pb-err: #B42318;           /* failed, offline, rejected */
+  --pb-info: #2456C9;          /* queued, focus ring */
+
+  /* DERIVED soft tints for chips and banners (not in the PDF). Each is contrast-checked against its text colour:
+     ok 4.63:1, warn 4.63:1, err 5.59:1, info 5.45:1 (WCAG 2.1, all >= 4.5:1). Documented in docs/UI_COMPONENT_SYSTEM.md. */
+  --pb-ok-soft: #E3F3EA;
+  --pb-warn-soft: #FDF3DF;
+  --pb-err-soft: #FDE8E6;
+  --pb-info-soft: #E5ECFB;
+  --pb-scrim: rgba(20, 33, 61, 0.55);   /* DERIVED: navy at 55% behind modals and drawers */
+
+  /* Typography */
+  --pb-font-display: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Devanagari', sans-serif;
+  --pb-font-body: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Devanagari', sans-serif;
+  --pb-font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --pb-text-display: 32px;     /* Rubik 700 */
+  --pb-text-h1: 24px;          /* Rubik 600 */
+  --pb-text-h2: 18px;          /* Rubik 600 */
+  --pb-text-body: 15px;        /* DM Sans 400 */
+  --pb-text-label: 13px;       /* DM Sans 600 */
+  --pb-text-caption: 12px;     /* DM Sans 400 */
+  --pb-text-mono: 13px;        /* JetBrains Mono 500 */
+  --pb-lh-hindi: 1.6;
+
+  /* Spacing scale (px): 4 8 12 16 (phone gutter) 24 (card gap) 32 48 (section) */
+  --pb-space-1: 4px;
+  --pb-space-2: 8px;
+  --pb-space-3: 12px;
+  --pb-space-4: 16px;
+  --pb-space-5: 24px;
+  --pb-space-6: 32px;
+  --pb-space-7: 48px;
+
+  /* Radius and elevation. Shadow is for overlays only. */
+  --pb-radius-sm: 6px;         /* chips, skeleton */
+  --pb-radius-md: 10px;        /* buttons, inputs */
+  --pb-radius-lg: 16px;        /* cards, modals */
+  --pb-shadow-2: 0 8px 28px rgba(20, 33, 61, 0.18);   /* DERIVED: the PDF shows the shadow, not its values */
+
+  /* Layout */
+  --pb-sidebar-w: 232px;
+  --pb-content-max: 1200px;
+  --pb-gutter: 16px;           /* mobile; 24px from 768px up (see base.css) */
+  --pb-target: 44px;           /* minimum touch target */
+
+  /* Motion */
+  --pb-dur-fast: 150ms;        /* state changes */
+  --pb-dur-slow: 250ms;        /* sheets and drawers */
+  --pb-ease: ease-out;
+  --pb-row-highlight-ms: 4000ms;  /* new queue row fades in once with an orange-soft background */
+}
+
+@media (min-width: 768px) {
+  :root { --pb-gutter: 24px; }
+}

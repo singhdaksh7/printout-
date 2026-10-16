@@ -1,20 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { listOrders } from '../lib/shop-api';
 import { useAuth } from './auth';
-import { Banner, ShopErrorBoundary, UnsavedContext, UNSAVED_PROMPT } from './components';
+import { AppShell, Banner, BottomNav, Button, Chip, Sidebar, TopBar, type ChipTone, type NavItem } from '../ui';
+import { ShopErrorBoundary, UnsavedContext, UNSAVED_PROMPT } from './components';
 import { useAutoRefresh, useDebounced } from './hooks';
 import { useRealtime, useRealtimeRefresh } from './realtime';
 
-const NAV = [
-  { to: '/shop', label: 'Queue', end: true, icon: 'M4 6h16M4 12h16M4 18h10' },
-  { to: '/shop/pricing', label: 'Pricing', end: false, icon: 'M12 3v18M16 7.5c0-1.7-1.8-3-4-3s-4 1.3-4 3 1.8 2.5 4 3 4 1.3 4 3-1.8 3-4 3-4-1.3-4-3' },
-  { to: '/shop/qr', label: 'QR', end: false, icon: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h3v3h-3zM19 19h1' },
-  { to: '/shop/analytics', label: 'Analytics', end: false, icon: 'M5 20V10M12 20V4M19 20v-7' },
-  { to: '/shop/settings', label: 'Settings', end: false, icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12h2M3 12h2M12 3v2M12 19v2' }
+/** Sidebar (desktop and tablet) destinations. Staff and Reports have no backend yet, so they are labelled Coming soon and are not links. */
+const NAV_ITEMS: NavItem[] = [
+  { to: '/shop', label: 'Print queue', end: true, icon: 'list-ordered' },
+  { to: '/shop/analytics', label: 'Analytics', icon: 'chart-column' },
+  { to: '/shop/devices', label: 'Devices', icon: 'printer' },
+  { to: '/shop/pricing', label: 'Rate card', icon: 'indian-rupee' },
+  { to: '/shop/qr', label: 'QR & standee', icon: 'qr-code' },
+  { to: '/shop/settings', label: 'Settings', icon: 'settings' },
+  { to: '/shop/staff', label: 'Staff', icon: 'users', comingSoon: true },
+  { to: '/shop/reports', label: 'Reports', icon: 'receipt', comingSoon: true }
 ];
+/** Phone tab bar: the same destinations minus Devices (reached from Settings) so the five labels fit 360px. */
+const PHONE_PATHS = ['/shop', '/shop/pricing', '/shop/qr', '/shop/analytics', '/shop/settings'];
 
 const CONN_LABEL = { live: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', offline: 'Offline' } as const;
+const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'err' };
 
 function useNewOrderBadge() {
   const [count, setCount] = useState(0);
@@ -63,30 +71,26 @@ export default function Shell() {
   }
 
   const shopName = state.status === 'authed' ? (state.session.shop?.displayName ?? 'Printout') : 'Printout';
+  const items = NAV_ITEMS.map((i) => (i.to === '/shop' ? { ...i, count: newCount } : i));
+  const phoneItems = items.filter((i) => PHONE_PATHS.includes(i.to));
   return (
     <UnsavedContext.Provider value={guard}>
-      <div className="shop-shell">
-        <header className="shop-chrome shop-header">
-          <div className="shop-header-name" title={shopName}>{shopName}</div>
-          <div className={`shop-conn shop-conn-${conn}`} role="status" aria-live="polite" aria-label={`Connection: ${CONN_LABEL[conn]}`}>
-            <span className="shop-conn-dot" aria-hidden="true" />{CONN_LABEL[conn]}
-          </div>
-          <button className="sh-btn sh-btn-sm" onClick={doLogout} disabled={leaving}>Log out</button>
-        </header>
-        <nav className="shop-chrome shop-nav" aria-label="Shop sections">
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} onClick={onNavClick} className={({ isActive }) => `shop-nav-link${isActive ? ' active' : ''}`}>
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={n.icon} /></svg>
-              <span>{n.label}</span>
-              {n.label === 'Queue' && newCount > 0 && <span className="shop-nav-badge" aria-label={`${newCount} new orders`}>{newCount}</span>}
-            </NavLink>
-          ))}
-        </nav>
-        <main className="shop-main" id="shop-main">
-          {(!online || conn === 'offline') && <Banner kind="warn">You are offline. Orders may be out of date until the connection returns.</Banner>}
-          <ShopErrorBoundary><Outlet /></ShopErrorBoundary>
-        </main>
-      </div>
+      <AppShell
+        notice={(!online || conn === 'offline') ? <Banner tone="warn" layout="bar">You are offline. Orders may be out of date until the connection returns.</Banner> : undefined}
+        sidebar={<Sidebar label="Shop sections" brand={<span className="pb-brandmark">PrintoutBuddy</span>} items={items} onNavigate={onNavClick} />}
+        topbar={
+          <TopBar
+            start={<span className="pb-shopname" title={shopName}>{shopName}</span>}
+            end={<>
+              <Chip tone={CONN_TONE[conn]} className="shop-conn" role="status" aria-live="polite" aria-label={`Connection: ${CONN_LABEL[conn]}`}>{CONN_LABEL[conn]}</Chip>
+              <Button variant="outline" size="sm" iconStart="log-out" onClick={doLogout} disabled={leaving}>Log out</Button>
+            </>}
+          />
+        }
+        bottomNav={<BottomNav label="Shop sections, phone" items={phoneItems} onNavigate={onNavClick} />}
+      >
+        <ShopErrorBoundary><Outlet /></ShopErrorBoundary>
+      </AppShell>
     </UnsavedContext.Provider>
   );
 }

@@ -20,7 +20,7 @@ test('desktop queue: one real click on Print starts retention, moves the card to
   page.on('download', (d) => downloads.push(d.suggestedFilename()));
   const popupP = page.context().waitForEvent('page');
   const print = card.getByRole('button', { name: 'Print', exact: true });
-  await expect(print).toHaveClass(/sh-btn-primary/);
+  await expect(print).toHaveClass(/pb-btn--(dark|primary)/);
   await print.click(); // fails with "intercepts pointer events" if an overlay covers the button
   const popup = await popupP;
   await popup.close();
@@ -31,7 +31,7 @@ test('desktop queue: one real click on Print starts retention, moves the card to
 
   await page.getByRole('tab', { name: 'Recent' }).click();
   const recent = page.getByTestId('order-card').filter({ hasText: 'save-me.pdf' }).first();
-  await expect(recent.getByRole('button', { name: 'Reprint' })).toHaveClass(/sh-btn-primary/);
+  await expect(recent.getByRole('button', { name: 'Reprint' })).toHaveClass(/pb-btn--(dark|primary)/);
   await expect(recent.getByTestId('reprint-window')).toContainText('Available for reprint for');
   await expect(recent.getByRole('button', { name: /confirm|accept|ready|collected/i })).toHaveCount(0);
 

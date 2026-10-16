@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '../shop/auth';
+import { Button } from '../ui';
 import AuditPage from './AuditPage';
 import DashboardPage from './DashboardPage';
 import LoginPage from './LoginPage';
@@ -19,7 +20,7 @@ class AdminErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
   componentDidCatch(error: Error, info: ErrorInfo) { console.error('Admin area crashed', error, info.componentStack); }
   render() {
     if (!this.state.failed) return this.props.children;
-    return <div className="shop-boot" role="alert"><p>Something went wrong.</p><button className="sh-btn" onClick={() => location.reload()}>Reload</button></div>;
+    return <div className="shop-boot" role="alert"><p>Something went wrong.</p><Button variant="outline" onClick={() => location.reload()}>Reload</Button></div>;
   }
 }
 

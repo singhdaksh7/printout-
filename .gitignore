@@ -13,3 +13,6 @@ Thumbs.db
 .vscode/
 .data/
 uploads/
+
+# Approved design PDFs stay outside Git (large binaries); keep local copies in docs/design/
+docs/design/

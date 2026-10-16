@@ -1,0 +1,88 @@
+/* Shopkeeper pages migrated to the design system (stage 1: print queue and order detail).
+   Component styles live in src/ui; this file only lays the pages out with --pb-* tokens. Design reference: docs/design/3.pdf p7-p14, p23-p24. */
+
+
+
+/* ---- queue: table cells and phone cards ---------------------------------------------------------------- */
+.pb-order-id { display: flex; flex-direction: column; gap: 2px; }
+.pb-order-link { color: var(--pb-navy); text-decoration: none; }
+.pb-order-link .pb-jobcode { white-space: nowrap; }
+.pb-order-link:hover .pb-jobcode { text-decoration: underline; }
+.pb-file { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 30ch; }
+.pb-file__name { font-weight: 600; }
+.pb-file__ref, .pb-file__age { font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
+.pb-specs { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 6px; white-space: nowrap; }
+/* Settings wrap as whole items; the separator dot stays at the END of the previous item, never at the start of a line. */
+.pb-settings > span { display: inline-block; white-space: nowrap; margin-right: 6px; }
+.pb-settings > span:not(:last-child)::after { content: '·'; margin-left: 6px; color: var(--pb-text-secondary); }
+.pb-specs__x { color: var(--pb-text-secondary); }
+.pb-statuscell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.pb-statuscell__line { font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
+.pb-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--pb-space-2); }
+.pb-actions--stacked { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+.pb-actions--stacked .pb-btn { width: 100%; }
+.pb-table td:has(.pb-actions) { min-width: 17rem; }
+.pb-table td:has(.pb-settings) { min-width: 11rem; }
+.pb-page > .pb-tabs { align-self: flex-start; }
+.pb-ordercard { display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.pb-ordercard__top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2) var(--pb-space-3); }
+.pb-ordercard__top .pb-order-id { flex-direction: row; align-items: baseline; gap: var(--pb-space-3); }
+.pb-ordercard__specs { display: flex; flex-direction: column; gap: 2px; }
+.pb-ordercard .pb-specs { white-space: normal; flex-wrap: wrap; }
+.pb-ordercard .pb-file { max-width: none; }
+
+/* ---- order detail -------------------------------------------------------------------------------------- */
+.pb-od { max-width: 760px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--pb-space-4); }
+.pb-od-head__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-3); }
+.pb-od-amount { margin: var(--pb-space-2) 0 var(--pb-space-3); font: 700 var(--pb-text-display)/1.1 var(--pb-font-display); font-variant-numeric: tabular-nums; }
+.pb-od-actions__row { display: flex; flex-wrap: wrap; gap: var(--pb-space-3); }
+.pb-od-actions__row .pb-btn { flex: 1 1 10rem; }
+.pb-od-note { margin: var(--pb-space-3) 0 0; }
+.pb-countdown {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--pb-space-2) var(--pb-space-3);
+  margin-bottom: var(--pb-space-3); padding: var(--pb-space-3) var(--pb-space-4);
+  border-radius: var(--pb-radius-md); background: var(--pb-orange-soft); color: var(--pb-orange-ink);
+}
+.pb-countdown__label { font-weight: 600; }
+.pb-countdown__time { font: 700 var(--pb-text-display)/1.1 var(--pb-font-display); font-variant-numeric: tabular-nums; }
+.pb-od-access { display: flex; flex-direction: column; gap: var(--pb-space-3); margin-bottom: var(--pb-space-3); }
+.pb-od-preview { width: 100%; height: 60vh; border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-md); background: var(--pb-white); }
+.pb-od .pb-card + .pb-card, .pb-od .pb-banner + .pb-card { margin-top: 0; }
+
+/* ---- rate card ----------------------------------------------------------------------------------------- */
+.pb-ratecard { display: flex; flex-direction: column; gap: var(--pb-space-4); max-width: 760px; }
+.pb-ratecard__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--pb-space-4); }
+.pb-ratecard__row { display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.pb-ratecard__row.is-dirty { border-color: var(--pb-orange); }
+.pb-ratecard__foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-3); }
+.pb-ratecard__actions { display: flex; flex-wrap: wrap; gap: var(--pb-space-3); }
+@media (max-width: 767px) { .pb-ratecard__actions { position: sticky; bottom: 0; background: var(--pb-paper); padding: var(--pb-space-3) 0; } .pb-ratecard__actions .pb-btn { flex: 1 1 auto; } }
+
+/* ---- QR & standee (poster markup and its print rules stay in shop.css) ----------------------------------- */
+.qr-page.pb-page { max-width: 1100px; width: 100%; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pb-space-5); }
+@media (min-width: 900px) { .qr-page.pb-page { grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); align-items: start; } }
+.qr-controls { display: flex; flex-direction: column; gap: var(--pb-space-4); }
+.qr-card.pb-card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--pb-space-3); }
+.qr-card .qr-url { margin: 0; }
+.pb-qr-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--pb-space-3); }
+.pb-qr-actions--main { justify-content: flex-start; }
+.qr-page .qr-poster-wrap { margin-top: 0; }
+.qr-page .qr-poster { border-top: 6px solid var(--pb-orange); font-family: var(--pb-font-display); }
+
+/* ---- settings, analytics -------------------------------------------------------------------------------- */
+.pb-settings-page { max-width: 760px; width: 100%; margin: 0 auto; }
+.pb-settings-form { display: flex; flex-direction: column; gap: var(--pb-space-4); }
+.pb-linkcard { display: flex; align-items: center; justify-content: space-between; gap: var(--pb-space-3); color: inherit; text-decoration: none; }
+.pb-linkcard:hover { border-color: var(--pb-orange); }
+.pb-linkcard:focus-visible { outline: 2px solid var(--pb-navy); outline-offset: 2px; }
+.pb-swatch { display: inline-block; width: 1.25rem; height: 1.25rem; border-radius: var(--pb-radius-sm); border: 1px solid var(--pb-n300); }
+.pb-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pb-recent li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-3); padding: var(--pb-space-3) 0; border-top: 1px solid var(--pb-n100); }
+.pb-recent li:first-child { border-top: 0; }
+
+/* ---- shell ---------------------------------------------------------------------------------------------- */
+
+
+/* Five phone tabs must fit 360px: keep each label on one line. */
+.pb-bottomnav__link { font-size: 11px; }
+.pb-bottomnav__link > span:last-child { white-space: nowrap; }

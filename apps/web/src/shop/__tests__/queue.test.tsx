@@ -45,7 +45,7 @@ describe('queue', () => {
     expect(c.getByText('Pages 1–3, 7')).toBeInTheDocument();
     expect(c.getByText('A4')).toBeInTheDocument();
     expect(c.getByText('3 min ago')).toBeInTheDocument();
-    expect(c.getByRole('button', { name: 'Print' }).className).toContain('sh-btn-primary');
+    expect(c.getByRole('button', { name: 'Print' }).className).toMatch(/pb-btn--(dark|primary)/); // emphasised: dark in table rows, orange on phone cards
     expect(c.getByRole('button', { name: 'Save file' })).toBeInTheDocument();
     expect(c.getByRole('link', { name: 'View' })).toHaveAttribute('href', '/shop/orders/o1');
     // none of the old lifecycle steps are offered
@@ -53,11 +53,18 @@ describe('queue', () => {
     expect(screen.getByRole('link', { name: 'Order #CENT-1' })).toHaveAttribute('href', '/shop/orders/o1');
   });
 
+  it('does not repeat a "New" status chip on rows of the New tab', async () => {
+    mockFetch(authedSession, orders({ items: [order()] }));
+    renderShop('/shop');
+    const c = within(await screen.findByTestId('order-card'));
+    expect(c.queryByText('New')).not.toBeInTheDocument();
+  });
+
   it('long filenames are truncated with the full name in a title', async () => {
     const long = `${'a'.repeat(200)}.pdf`;
     mockFetch(authedSession, orders({ items: [order({ originalFilename: long })] }));
     renderShop('/shop');
-    expect(await screen.findByTitle(long)).toHaveClass('sh-ellip');
+    expect(await screen.findByTitle(long)).toHaveClass('pb-ellipsis');
   });
 
   it('shows a friendly empty state', async () => {

@@ -18,9 +18,11 @@
     "dev:api": "corepack pnpm --filter @printout/api dev",
     "dev:web": "corepack pnpm --filter @printout/web dev",
     "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e:ui": "playwright test -c e2e-ui/playwright.config.ts",
     "dev:worker": "corepack pnpm --filter @printout/api worker"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.63.0",
     "concurrently": "^9.1.0",
     "pdf-lib": "^1.17.1"

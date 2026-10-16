@@ -19,16 +19,16 @@ test('desktop 1440: shop queue, pricing persistence, QR poster, analytics, setti
   await expect(page.getByRole('heading', { name: 'Print queue' })).toBeVisible();
   await expectNoOverflow(page, 'desktop queue');
 
-  await page.getByRole('link', { name: 'Pricing' }).click();
-  await expect(page.getByRole('heading', { name: 'Pricing' })).toBeVisible();
-  const input = page.locator('#price-bw-single');
+  await page.getByRole('link', { name: 'Rate card' }).click();
+  await expect(page.getByRole('heading', { name: 'Rate card' })).toBeVisible();
+  const input = page.getByRole('textbox', { name: 'B&W · Single-sided' });
   await expect(input).toHaveValue(/^2(\.00)?$/);
   await input.fill('3.50');
   await page.getByRole('button', { name: 'Save prices' }).click();
   await expect(page.getByRole('button', { name: 'Save prices' })).toBeDisabled();
   await shot(page, '41-desktop-pricing');
   await page.reload();
-  await expect(page.locator('#price-bw-single')).toHaveValue(/^3\.5(0)?$/);
+  await expect(page.getByRole('textbox', { name: 'B&W · Single-sided' })).toHaveValue(/^3\.5(0)?$/);
   // server really uses it: customer quote for metro
   const quoted = await (async () => {
     const p2 = await page.context().newPage();
@@ -49,7 +49,7 @@ test('desktop 1440: shop queue, pricing persistence, QR poster, analytics, setti
   const pdf = await page.pdf({ format: 'A4', printBackground: true });
   const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page\b(?!s)/g) ?? []).length;
   expect(pages, 'poster must print on exactly one A4 page').toBe(1);
-  await expect(page.locator('.shop-nav')).toBeHidden();
+  await expect(page.locator('.pb-sidebar')).toBeHidden();
   await page.emulateMedia({ media: 'screen' });
 
   await page.getByRole('link', { name: 'Analytics' }).click();

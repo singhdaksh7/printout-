@@ -107,8 +107,8 @@ describe('Print (one primary action)', () => {
     renderShop('/shop');
     const card = within(await screen.findByTestId('order-card'));
     const pn = card.getByRole('button', { name: 'Print' });
-    expect(pn.className).toContain('sh-btn-primary');
-    expect(card.getByRole('button', { name: 'Save file' }).className).not.toContain('sh-btn-primary');
+    expect(pn.className).toMatch(/pb-btn--(dark|primary)/);
+    expect(card.getByRole('button', { name: 'Save file' }).className).not.toMatch(/pb-btn--(dark|primary)/);
     expect(card.getByRole('link', { name: 'View' })).toHaveAttribute('href', '/shop/orders/o1');
     expect(card.queryByRole('button', { name: /accept|start printing/i })).not.toBeInTheDocument();
     await user.click(pn);
@@ -119,7 +119,7 @@ describe('Print (one primary action)', () => {
     mockFetch(authedSession, listOf([order({ status: 'PRINTING', documentStatus: 'PRINTED_RETENTION', printInitiatedAt: new Date().toISOString(), deleteAfter: new Date(Date.now() + 26.5 * 60_000).toISOString() })]));
     renderShop('/shop');
     const card = within(await screen.findByTestId('order-card'));
-    expect(card.getByRole('button', { name: 'Reprint' }).className).toContain('sh-btn-primary');
+    expect(card.getByRole('button', { name: 'Reprint' }).className).toMatch(/pb-btn--(dark|primary)/);
     expect(card.getByTestId('reprint-window')).toHaveTextContent('Available for reprint for 27 min');
     expect(card.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument();
     expect(card.queryByRole('button', { name: /confirm|ready|collected|accept/i })).not.toBeInTheDocument();

@@ -81,7 +81,7 @@ describe('printing devices list', () => {
     await screen.findByTestId('device-card');
     expect(container.querySelector('ul.dev-list')).not.toBeNull();
     expect(container.querySelector('table')).toBeNull();
-    expect(container.querySelector('.dev-name.sh-wrap')).not.toBeNull();
+    expect(container.querySelector('.dev-name.pb-wrap')).not.toBeNull();
   });
 });
 
@@ -283,10 +283,12 @@ describe('wiring', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/shop/settings');
   });
 
-  it('the shell nav is unchanged (devices live under Settings)', async () => {
+  it('Devices is a sidebar destination; Staff and Reports are labelled Coming soon and are not links', async () => {
     mockFetch(authedSession, emptyList, list([]));
     renderShop('/shop/devices');
     const nav = await screen.findByRole('navigation', { name: 'Shop sections' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(5);
+    expect(within(nav).getAllByRole('link').map((l) => l.textContent?.replace(/\d+ items?$/, '').trim())).toEqual(['Print queue', 'Analytics', 'Devices', 'Rate card', 'QR & standee', 'Settings']);
+    expect(within(nav).queryByRole('link', { name: /staff|reports/i })).toBeNull();
+    expect(within(nav).getByText(/Staff/)).toBeInTheDocument();
   });
 });

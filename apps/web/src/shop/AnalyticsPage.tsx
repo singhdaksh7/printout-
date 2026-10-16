@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { formatPaise } from '../lib/format';
 import { describeError, getAnalytics, type OrderStatus } from '../lib/shop-api';
-import { Banner, Skeleton, StatusChip } from './components';
+import { Banner, Button, Card, CardHeader, OrderStatusChip, SegmentedBar, Skeleton, StatTile } from '../ui';
 import { ageLabel } from './hooks';
 
 type Raw = Record<string, unknown>;
@@ -28,8 +28,8 @@ export default function AnalyticsPage() {
   }, []);
   useEffect(load, [load]);
 
-  if (error) return <section><h1>Analytics</h1><Banner onRetry={load}>{error}</Banner></section>;
-  if (!data) return <section><h1>Analytics</h1><Skeleton lines={5} label="Loading analytics" /></section>;
+  if (error) return <section className="pb-theme pb-page"><h1 className="pb-h1">Analytics</h1><Banner tone="err" actions={<Button size="sm" variant="dark" onClick={load}>Retry</Button>}>{error}</Banner></section>;
+  if (!data) return <section className="pb-theme pb-page"><h1 className="pb-h1">Analytics</h1><Skeleton lines={5} label="Loading analytics" /></section>;
 
   const orders = num(data, 'ordersToday', 'orderCountToday');
   const ordersAll = num(data, 'orderCount');
@@ -47,57 +47,47 @@ export default function AnalyticsPage() {
   const recent = Array.isArray(data.recentActivity) ? (data.recentActivity as Activity[]) : [];
 
   return (
-    <section aria-labelledby="an-title">
-      <div className="sh-pagehead"><h1 id="an-title">Analytics</h1><button className="sh-btn sh-btn-sm" onClick={load}>Refresh</button></div>
-      <div className="an-cards">
-        <Stat label={orders != null ? 'Orders today' : 'Orders'} value={String(orders ?? ordersAll ?? 0)} />
-        {pages != null && <Stat label="Pages" value={String(pages)} />}
-        {value != null && <Stat label="Estimated order value" value={formatPaise(value)} hint="Sum of quoted order totals. Not confirmed payments." />}
-        {newReq != null && <Stat label="New print requests" value={String(newReq)} hint="Waiting for you to press Print." />}
-        {initiated != null && <Stat label="Prints initiated" value={String(initiated)} hint="Times Print was pressed. Does not confirm paper came out." />}
-        {autoDeleted != null && <Stat label="Files deleted automatically" value={String(autoDeleted)} />}
+    <section aria-labelledby="an-title" className="pb-theme pb-page">
+      <div className="pb-pagehead">
+        <h1 id="an-title" className="pb-h1">Analytics</h1>
+        <Button variant="outline" size="sm" iconStart="refresh-cw" onClick={load}>Refresh</Button>
+      </div>
+      <div className="pb-stats">
+        <StatTile label={orders != null ? 'Orders today' : 'Orders'} value={String(orders ?? ordersAll ?? 0)} />
+        {pages != null && <StatTile label="Pages" value={String(pages)} />}
+        {value != null && <StatTile label="Estimated order value" value={formatPaise(value)} hint="Sum of quoted order totals. Not confirmed payments." />}
+        {newReq != null && <StatTile label="New print requests" value={String(newReq)} hint="Waiting for you to press Print." />}
+        {initiated != null && <StatTile label="Prints initiated" value={String(initiated)} hint="Times Print was pressed. Does not confirm paper came out." />}
+        {autoDeleted != null && <StatTile label="Files deleted automatically" value={String(autoDeleted)} />}
       </div>
 
       {colour && (
-        <div className="sh-card">
-          <h2>B&amp;W vs Colour</h2>
+        <Card as="section" aria-labelledby="an-colour">
+          <CardHeader id="an-colour" title="B&W vs Colour" />
           {colTotal > 0 ? (
-            <>
-              <div className="an-bar" role="img" aria-label={`B&W ${bw} orders, Colour ${col} orders`}>
-                <div className="an-bar-bw" style={{ width: `${(bw / colTotal) * 100}%` }} />
-                <div className="an-bar-colour" style={{ width: `${(col / colTotal) * 100}%` }} />
-              </div>
-              <div className="an-legend"><span><i className="an-dot an-bar-bw" /> B&amp;W {bw}</span><span><i className="an-dot an-bar-colour" /> Colour {col}</span></div>
-            </>
-          ) : <p className="sh-muted">No orders yet.</p>}
-        </div>
+            <SegmentedBar
+              summary={`B&W ${bw} orders, Colour ${col} orders`}
+              segments={[{ label: 'B&W', value: bw, tone: 'neutral' }, { label: 'Colour', value: col, tone: 'warn' }]}
+            />
+          ) : <p className="pb-muted">No orders yet.</p>}
+        </Card>
       )}
 
       {recent.length > 0 && (
-        <div className="sh-card">
-          <h2>Recent activity</h2>
-          <ul className="an-recent">
-            {recent.map((a, i) => (
-              <li key={a.id ?? `${a.orderId}-${i}`}>
-                <span>{a.orderNumber ? `#${a.orderNumber}` : 'Order'}</span>
-                {(a.toStatus ?? a.status) && <StatusChip status={(a.toStatus ?? a.status)!} />}
-                {a.totalPaise != null && <span className="tnum">{formatPaise(a.totalPaise)}</span>}
-                {a.at && <span className="sh-muted">{ageLabel(a.at)}</span>}
+        <Card as="section" aria-labelledby="an-recent">
+          <CardHeader id="an-recent" title="Recent activity" />
+          <ul className="pb-recent">
+            {recent.map((r, i) => (
+              <li key={r.id ?? `${r.orderId}-${i}`}>
+                <span>{r.orderNumber ? `#${r.orderNumber}` : 'Order'}</span>
+                {(r.toStatus ?? r.status) && <OrderStatusChip status={(r.toStatus ?? r.status)!} size="sm" />}
+                {r.totalPaise != null && <span className="pb-order-amount">{formatPaise(r.totalPaise)}</span>}
+                {r.at && <span className="pb-muted">{ageLabel(r.at)}</span>}
               </li>
             ))}
           </ul>
-        </div>
+        </Card>
       )}
     </section>
-  );
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="sh-card an-stat">
-      <div className="an-stat-label">{label}</div>
-      <div className="an-stat-value tnum">{value}</div>
-      {hint && <div className="sh-muted an-stat-hint">{hint}</div>}
-    </div>
   );
 }

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type DependencyList, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
 import { ApiError } from '../lib/api';
 import { describeError } from '../lib/shop-api';
-import { Banner, Skeleton } from '../shop/components';
+import { Banner, Button, LoadMore as UiLoadMore, Skeleton } from '../ui';
+
+export { ShopStatusChip } from '../ui';
 
 export const MANUAL_NOTE = 'Commercial details are recorded manually. There is no billing automation: nothing is charged or renewed automatically.';
 
@@ -29,7 +31,11 @@ export function useLoad<T>(fn: (signal: AbortSignal) => Promise<T>, deps: Depend
 }
 
 export function LoadError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  return <Banner kind="error" {...(onRetry ? { onRetry } : {})}>{adminError(error)}</Banner>;
+  return (
+    <Banner tone="err" actions={onRetry ? <Button size="sm" variant="dark" onClick={onRetry}>Retry</Button> : undefined}>
+      {adminError(error)}
+    </Banner>
+  );
 }
 
 export function Loading({ label = 'Loading' }: { label?: string }) {
@@ -69,27 +75,7 @@ export function useCursorList<T>(fetchPage: (cursor: string | undefined, signal:
   return { items, hasMore: !!next, loading, more, error, moreError, loadMore, reload: useCallback(() => setN((x) => x + 1), []) };
 }
 
+/** Admin wrapper over the shared LoadMore: same props as before, error rendered as a Banner. */
 export function LoadMore({ hasMore, more, onClick, error }: { hasMore: boolean; more: boolean; onClick: () => void; error?: unknown }) {
-  return (
-    <div className="sh-center" style={{ flexDirection: 'column', gap: '.5rem' }}>
-      {error != null && <LoadError error={error} />}
-      {hasMore ? <button className="sh-btn" onClick={onClick} disabled={more}>{more ? 'Loading…' : 'Load more'}</button> : <span className="sh-muted">End of list</span>}
-    </div>
-  );
-}
-
-export function Field({ label, error, hint, children }: { label: string; error?: string | null | undefined; hint?: string; children: ReactNode }) {
-  return (
-    <label className="sh-field">
-      <span>{label}</span>
-      {children}
-      {hint && !error && <span className="sh-muted" style={{ fontWeight: 400 }}>{hint}</span>}
-      {error && <span className="sh-field-error" role="alert">{error}</span>}
-    </label>
-  );
-}
-
-export function ShopStatusChip({ status }: { status: string }) {
-  const cls = status === 'ACTIVE' ? 'sh-chip-printed' : status === 'SUSPENDED' ? 'sh-chip-warn' : 'sh-chip-cancelled';
-  return <span className={`sh-chip ${cls}`}>{status.charAt(0) + status.slice(1).toLowerCase()}</span>;
+  return <UiLoadMore hasMore={hasMore} loading={more} onClick={onClick} error={error != null ? <LoadError error={error} /> : undefined} />;
 }

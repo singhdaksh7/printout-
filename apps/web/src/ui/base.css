@@ -1,0 +1,55 @@
+/* Base rules for the PrintoutBuddy design system. Scoped to .pb-theme so unmigrated screens are untouched. */
+.pb-theme {
+  font-family: var(--pb-font-body);
+  font-size: var(--pb-text-body);
+  line-height: 1.45;
+  color: var(--pb-navy);
+  background: var(--pb-paper);
+  -webkit-font-smoothing: antialiased;
+}
+.pb-theme *, .pb-theme *::before, .pb-theme *::after { box-sizing: border-box; }
+.pb-theme *:where(:not(svg, svg *)) { min-width: 0; }
+.pb-theme :lang(hi), .pb-theme :lang(mr) { line-height: var(--pb-lh-hindi); }
+
+/* Secondary text colour. The design system's n500 is 4.71:1 on white but only 4.39:1 on the n50 canvas and about 4:1 on tinted
+   rows, so secondary text is n500 on white surfaces and n700 everywhere else. Components use var(--pb-text-secondary). */
+:root { --pb-text-secondary: var(--pb-n700); }
+.pb-card, .pb-table-card, .pb-cardlist__item, .pb-modal, .pb-drawer, .pb-control, .pb-choice { --pb-text-secondary: var(--pb-n500); }
+.pb-table tr.is-selected, .pb-table tr.is-new, .pb-table tr.is-clickable:hover,
+.pb-cardlist__item.is-selected, .pb-cardlist__item.is-new { --pb-text-secondary: var(--pb-n700); }
+.pb-banner { --pb-text-secondary: currentColor; }
+
+/* Type roles (design system: Typography) */
+.pb-display { font: 700 var(--pb-text-display)/1.15 var(--pb-font-display); letter-spacing: -0.01em; }
+.pb-h1 { font: 600 var(--pb-text-h1)/1.25 var(--pb-font-display); margin: 0; }
+.pb-h2 { font: 600 var(--pb-text-h2)/1.3 var(--pb-font-display); margin: 0; }
+.pb-body { font: 400 var(--pb-text-body)/1.45 var(--pb-font-body); }
+.pb-label { font: 600 var(--pb-text-label)/1.3 var(--pb-font-body); color: var(--pb-n700); }
+.pb-caption { font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
+.pb-mono { font: 500 var(--pb-text-mono)/1.4 var(--pb-font-mono); }
+.pb-tnum { font-variant-numeric: tabular-nums; }
+.pb-muted { color: var(--pb-text-secondary); }
+.pb-wrap { overflow-wrap: anywhere; }
+.pb-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Accessibility conventions */
+.pb-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+/* One focus treatment everywhere: info-blue ring, 3px, offset 2px. */
+.pb-theme :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible,
+.pb-focusable:focus-visible {
+  outline: 3px solid var(--pb-info);
+  outline-offset: 2px;
+}
+
+/* All motion turns off with the reduced-motion setting. */
+@media (prefers-reduced-motion: reduce) {
+  .pb-theme *, .pb-theme *::before, .pb-theme *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

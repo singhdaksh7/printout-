@@ -4,10 +4,10 @@ import {
   SUB_STATUSES, fmtDate, getShop, inr, listPlans, updateShop, updateSubscription,
   type ShopDetail, type ShopStatus, type SubStatus
 } from '../lib/admin-api';
-import { Banner, Modal, useToast } from '../shop/components';
+import { Banner, Button, Card, CardHeader, KeyValueList, Modal, Select, ShopStatusChip, TextField, buttonClass, useToast } from '../ui';
 import { AuditList } from './AuditPage';
 import { AdminOrderRows } from './OrdersPage';
-import { Field, LoadError, Loading, MANUAL_NOTE, ShopStatusChip, adminError, useLoad } from './ui';
+import { LoadError, Loading, MANUAL_NOTE, adminError, useLoad } from './ui';
 
 function StatusCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) => void }) {
   const [confirm, setConfirm] = useState<ShopStatus | null>(null);
@@ -27,31 +27,36 @@ function StatusCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) 
     setBusy(false);
   }
   return (
-    <section className="sh-card" aria-labelledby="st-h">
-      <h2 id="st-h">Shop status</h2>
-      <p>Currently <ShopStatusChip status={d.shop.status} /></p>
-      <div className="sh-actions">
-        <button className={`sh-btn ${suspended ? 'sh-btn-primary' : 'sh-btn-danger'}`} onClick={() => { setErr(null); setConfirm(target); }}>
+    <Card as="section" aria-labelledby="st-h">
+      <CardHeader id="st-h" title="Shop status" />
+      <p>Currently <ShopStatusChip status={d.shop.status} size="sm" /></p>
+      <div className="ad-actions">
+        <Button variant={suspended ? 'primary' : 'danger'} onClick={() => { setErr(null); setConfirm(target); }}>
           {suspended ? 'Activate shop' : 'Suspend shop'}
-        </button>
+        </Button>
       </div>
       {confirm && (
-        <Modal title={confirm === 'SUSPENDED' ? `Suspend ${d.shop.displayName}?` : `Activate ${d.shop.displayName}?`} onClose={() => setConfirm(null)} busy={busy}>
+        <Modal
+          title={confirm === 'SUSPENDED' ? `Suspend ${d.shop.displayName}?` : `Activate ${d.shop.displayName}?`}
+          tone={confirm === 'SUSPENDED' ? 'danger' : 'default'}
+          onClose={() => setConfirm(null)}
+          busy={busy}
+          footer={<>
+            <Button variant="outline" onClick={() => setConfirm(null)} disabled={busy}>Cancel</Button>
+            <Button variant={confirm === 'SUSPENDED' ? 'danger' : 'primary'} onClick={apply} disabled={busy} loading={busy}>
+              {busy ? 'Working…' : confirm === 'SUSPENDED' ? 'Yes, suspend' : 'Yes, activate'}
+            </Button>
+          </>}
+        >
           {confirm === 'SUSPENDED' ? (
             <p>The shop will stop accepting new customer orders and every signed-in session of its staff is ended immediately. Existing data is kept. You can activate it again at any time.</p>
           ) : (
             <p>The shop will be able to sign in and accept customer orders again.</p>
           )}
-          {err && <Banner kind="error">{err}</Banner>}
-          <div className="sh-actions">
-            <button className="sh-btn" onClick={() => setConfirm(null)} disabled={busy}>Cancel</button>
-            <button className={`sh-btn ${confirm === 'SUSPENDED' ? 'sh-btn-danger' : 'sh-btn-primary'}`} onClick={apply} disabled={busy}>
-              {busy ? 'Working…' : confirm === 'SUSPENDED' ? 'Yes, suspend' : 'Yes, activate'}
-            </button>
-          </div>
+          {err && <Banner tone="err">{err}</Banner>}
         </Modal>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -82,30 +87,28 @@ function SubscriptionCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: st
     setBusy(false);
   }
   return (
-    <section className="sh-card" aria-labelledby="sub-h">
-      <h2 id="sub-h">Plan and subscription</h2>
-      <Banner kind="info">{MANUAL_NOTE}</Banner>
-      <dl className="sh-dl">
-        <div><dt>Plan</dt><dd>{sub ? `${sub.plan.name} (${inr(sub.plan.pricePaise)}/month)` : 'None'}</dd></div>
-        <div><dt>Subscription</dt><dd>{sub ? sub.status.charAt(0) + sub.status.slice(1).toLowerCase() : 'None'}</dd></div>
-        <div><dt>Renewal date</dt><dd>{fmtDate(sub?.renewsAt)}</dd></div>
-      </dl>
-      {err && <Banner kind="error">{err}</Banner>}
-      {plans.error != null && <LoadError error={plans.error} onRetry={plans.reload} />}
-      <Field label="Plan">
-        <select className="ad-select" value={planId} onChange={(e) => setPlanId(e.target.value)}>
+    <Card as="section" aria-labelledby="sub-h">
+      <CardHeader id="sub-h" title="Plan and subscription" />
+      <div className="ad-form">
+        <Banner tone="info">{MANUAL_NOTE}</Banner>
+        <KeyValueList items={[
+          { label: 'Plan', value: sub ? `${sub.plan.name} (${inr(sub.plan.pricePaise)}/month)` : 'None' },
+          { label: 'Subscription', value: sub ? sub.status.charAt(0) + sub.status.slice(1).toLowerCase() : 'None' },
+          { label: 'Renewal date', value: fmtDate(sub?.renewsAt) }
+        ]} />
+        {err && <Banner tone="err">{err}</Banner>}
+        {plans.error != null && <LoadError error={plans.error} onRetry={plans.reload} />}
+        <Select label="Plan" value={planId} onChange={(e) => setPlanId(e.target.value)}>
           {!sub && <option value="">Select a plan</option>}
           {(plans.data ?? []).filter((p) => p.active || p.id === sub?.plan.id).map((p) => <option key={p.id} value={p.id}>{p.name} — {inr(p.pricePaise)}/month</option>)}
-        </select>
-      </Field>
-      <Field label="Subscription status">
-        <select className="ad-select" value={status} onChange={(e) => setStatus(e.target.value as SubStatus)}>
+        </Select>
+        <Select label="Subscription status" value={status} onChange={(e) => setStatus(e.target.value as SubStatus)}>
           {SUB_STATUSES.map((s) => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-        </select>
-      </Field>
-      <Field label="Renewal date (informational)"><input type="date" value={renews} onChange={(e) => setRenews(e.target.value)} /></Field>
-      <div className="sh-actions"><button className="sh-btn sh-btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : sub ? 'Save subscription' : 'Create subscription'}</button></div>
-    </section>
+        </Select>
+        <TextField label="Renewal date (informational)" type="date" value={renews} onChange={(e) => setRenews(e.target.value)} />
+        <div className="ad-actions"><Button variant="primary" onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : sub ? 'Save subscription' : 'Create subscription'}</Button></div>
+      </div>
+    </Card>
   );
 }
 
@@ -116,59 +119,57 @@ export default function ShopDetailPage() {
   const changed = (m: string) => { toast.show(m); reload(); };
   return (
     <>
-      <Link className="sh-back" to="/admin/shops">← Shops</Link>
+      <Link className={buttonClass({ variant: 'ghost', size: 'sm', className: 'pb-back' })} to="/admin/shops">← Shops</Link>
       {loading && !data && <Loading label="Loading shop" />}
       {error != null && <LoadError error={error} onRetry={reload} />}
       {data && (
         <>
-          <h1 className="sh-wrap">{data.shop.displayName}</h1>
-          <section className="sh-card" aria-labelledby="meta-h">
-            <h2 id="meta-h">Details</h2>
-            <dl className="sh-dl">
-              <div><dt>Slug</dt><dd>/{data.shop.slug}</dd></div>
-              <div><dt>Address</dt><dd>{data.shop.address || '—'}</dd></div>
-              <div><dt>Accepting orders</dt><dd>{data.shop.acceptsOrders ? 'Yes' : 'No'}</dd></div>
-              <div><dt>Created</dt><dd>{fmtDate(data.shop.createdAt)}</dd></div>
-              {data.owners.map((o) => <div key={o.id}><dt>Owner</dt><dd className="sh-wrap">{o.displayName} · {o.email}</dd></div>)}
-            </dl>
-          </section>
-          <section className="sh-card" aria-labelledby="use-h">
-            <h2 id="use-h">Usage</h2>
-            <dl className="sh-dl">
-              <div><dt>Total orders</dt><dd>{data.usage.orderCount}</dd></div>
-              <div><dt>Orders, last 30 days</dt><dd>{data.usage.ordersLast30Days}</dd></div>
-              <div><dt>Pricing rules</dt><dd>{data.usage.pricingRuleCount}</dd></div>
-              <div><dt>Last order</dt><dd>{fmtDate(data.usage.lastOrderAt)}</dd></div>
-            </dl>
-          </section>
-          <section className="sh-card" aria-labelledby="os-h">
-            <h2 id="os-h">Orders by status</h2>
-            <dl className="sh-dl">{Object.entries(data.ordersByStatus).map(([k, v]) => <div key={k}><dt>{k.charAt(0) + k.slice(1).toLowerCase()}</dt><dd>{v}</dd></div>)}</dl>
-          </section>
-          <section className="sh-card" aria-labelledby="pr-h">
-            <h2 id="pr-h">Pricing (read only)</h2>
-            {data.pricingRules.length === 0 ? <p className="sh-muted">No pricing rules configured.</p> : (
-              <dl className="sh-dl">
-                {data.pricingRules.map((r) => (
-                  <div key={r.id}>
-                    <dt>{r.colourMode === 'colour' ? 'Colour' : 'B&W'} · {r.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · {r.paperSize}{r.active ? '' : ' (inactive)'}</dt>
-                    <dd>{inr(r.pricePerSheetPaise)} / sheet</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </section>
-          <section className="sh-card" aria-labelledby="ro-h">
-            <h2 id="ro-h">Recent orders</h2>
-            {data.recentOrders.length === 0 ? <p className="sh-muted">No orders yet.</p> : <AdminOrderRows items={data.recentOrders} showShop={false} />}
-            <p className="sh-muted">Operational metadata only. Customer documents are not accessible to platform administrators.</p>
-          </section>
+          <h1 className="pb-h1 pb-wrap">{data.shop.displayName}</h1>
+          <div className="ad-grid">
+            <Card as="section" aria-labelledby="meta-h">
+              <CardHeader id="meta-h" title="Details" />
+              <KeyValueList items={[
+                { label: 'Slug', value: `/${data.shop.slug}`, mono: true },
+                { label: 'Address', value: data.shop.address || '—' },
+                { label: 'Accepting orders', value: data.shop.acceptsOrders ? 'Yes' : 'No' },
+                { label: 'Created', value: fmtDate(data.shop.createdAt) },
+                ...data.owners.map((o) => ({ label: 'Owner', value: <span className="pb-wrap">{o.displayName} · {o.email}</span> }))
+              ]} />
+            </Card>
+            <Card as="section" aria-labelledby="use-h">
+              <CardHeader id="use-h" title="Usage" />
+              <KeyValueList items={[
+                { label: 'Total orders', value: data.usage.orderCount },
+                { label: 'Orders, last 30 days', value: data.usage.ordersLast30Days },
+                { label: 'Pricing rules', value: data.usage.pricingRuleCount },
+                { label: 'Last order', value: fmtDate(data.usage.lastOrderAt) }
+              ]} />
+            </Card>
+            <Card as="section" aria-labelledby="os-h">
+              <CardHeader id="os-h" title="Orders by status" />
+              <KeyValueList items={Object.entries(data.ordersByStatus).map(([k, v]) => ({ label: k.charAt(0) + k.slice(1).toLowerCase(), value: v }))} />
+            </Card>
+            <Card as="section" aria-labelledby="pr-h">
+              <CardHeader id="pr-h" title="Pricing (read only)" />
+              {data.pricingRules.length === 0 ? <p className="pb-muted">No pricing rules configured.</p> : (
+                <KeyValueList items={data.pricingRules.map((r) => ({
+                  label: `${r.colourMode === 'colour' ? 'Colour' : 'B&W'} · ${r.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · ${r.paperSize}${r.active ? '' : ' (inactive)'}`,
+                  value: `${inr(r.pricePerSheetPaise)} / sheet`
+                }))} />
+              )}
+            </Card>
+          </div>
+          <Card as="section" aria-labelledby="ro-h">
+            <CardHeader id="ro-h" title="Recent orders" />
+            {data.recentOrders.length === 0 ? <p className="pb-muted">No orders yet.</p> : <AdminOrderRows items={data.recentOrders} showShop={false} />}
+            <p className="pb-muted">Operational metadata only. Customer documents are not accessible to platform administrators.</p>
+          </Card>
           <StatusCard d={data} onChanged={changed} />
           <SubscriptionCard key={`${data.subscription?.updatedAt ?? 'none'}`} d={data} onChanged={changed} />
-          <section className="sh-card" aria-labelledby="aud-h">
-            <h2 id="aud-h">Recent audit entries</h2>
+          <Card as="section" aria-labelledby="aud-h">
+            <CardHeader id="aud-h" title="Recent audit entries" />
             <AuditList shopId={data.shop.id} pageSize={10} />
-          </section>
+          </Card>
         </>
       )}
       {toast.node}

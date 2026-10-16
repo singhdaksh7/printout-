@@ -1,0 +1,85 @@
+/* Actions: Button, IconButton, SegmentedControl. Design reference: docs/design/1.pdf p2 (Buttons, Choices). */
+
+.pb-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--pb-space-2);
+  min-height: var(--pb-target); padding: 0 var(--pb-space-4);
+  border: 1px solid transparent; border-radius: var(--pb-radius-md);
+  font: 600 var(--pb-text-body)/1.2 var(--pb-font-body);
+  text-decoration: none; white-space: nowrap; cursor: pointer;
+  transition: background-color var(--pb-dur-fast) var(--pb-ease), border-color var(--pb-dur-fast) var(--pb-ease), color var(--pb-dur-fast) var(--pb-ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.pb-btn--sm { min-height: 36px; padding: 0 var(--pb-space-3); font-size: 14px; }
+.pb-btn--lg { min-height: 52px; padding: 0 var(--pb-space-5); font-size: 16px; }
+/* Small controls keep a 44px touch target: the hit area extends beyond the visual box. */
+.pb-btn--sm::after { content: ''; position: absolute; inset: -4px 0; }
+.pb-btn--block { display: flex; width: 100%; }
+
+/* One orange button per screen. Label is navy, never white (5.4:1). */
+.pb-btn--primary { background: var(--pb-orange); color: var(--pb-navy); }
+.pb-btn--dark { background: var(--pb-navy); color: var(--pb-white); }
+.pb-btn--outline { background: var(--pb-white); border-color: var(--pb-n300); color: var(--pb-navy); }
+.pb-btn--ghost { background: transparent; color: var(--pb-navy); }
+.pb-btn--danger { background: var(--pb-err); color: var(--pb-white); }
+
+.pb-btn--primary:hover:not(:disabled):not([aria-busy='true']) { background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)); }
+.pb-btn--dark:hover:not(:disabled):not([aria-busy='true']) { background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)); }
+.pb-btn--danger:hover:not(:disabled):not([aria-busy='true']) { background-image: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1)); }
+.pb-btn--outline:hover:not(:disabled):not([aria-busy='true']) { background: var(--pb-n50); border-color: var(--pb-n500); }
+.pb-btn--ghost:hover:not(:disabled):not([aria-busy='true']) { background: var(--pb-n100); }
+.pb-btn:active:not(:disabled) { background-image: linear-gradient(rgba(20, 33, 61, 0.12), rgba(20, 33, 61, 0.12)); }
+
+/* Disabled: grey with a text label nearby explaining why (content rule). */
+.pb-btn:disabled { background: var(--pb-n100); border-color: transparent; color: var(--pb-n500); cursor: not-allowed; background-image: none; }
+
+/* Loading keeps width and label (label stays in the accessibility tree), spinner overlays the centre. */
+.pb-btn--loading { cursor: progress; }
+.pb-btn--loading .pb-btn__label, .pb-btn--loading .pb-icon { opacity: 0; }
+.pb-btn__spinner { position: absolute; top: 50%; left: 50%; margin: -9px 0 0 -9px; }
+
+/* Icon button */
+.pb-iconbtn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--pb-target); height: var(--pb-target); padding: 0;
+  border: 1px solid transparent; border-radius: var(--pb-radius-md);
+  background: transparent; color: var(--pb-navy); cursor: pointer;
+  transition: background-color var(--pb-dur-fast) var(--pb-ease);
+}
+.pb-iconbtn--sm { width: 36px; height: 36px; }
+.pb-iconbtn--sm::after { content: ''; position: absolute; inset: -4px; }
+.pb-iconbtn--outline { border-color: var(--pb-n300); background: var(--pb-white); }
+.pb-iconbtn:hover:not(:disabled) { background: var(--pb-n100); }
+.pb-iconbtn:disabled { color: var(--pb-n300); cursor: not-allowed; }
+
+/* Segmented control: pill track on n100, selected segment is a white pill. */
+.pb-seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--pb-n100); border-radius: 999px; }
+.pb-seg__opt { position: relative; display: inline-flex; cursor: pointer; }
+.pb-seg__opt.is-disabled { cursor: not-allowed; opacity: 0.55; }
+.pb-seg__opt::after { content: ''; position: absolute; inset: -6px 0; } /* 44px hit area */
+.pb-seg__input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: inherit; }
+.pb-seg__text {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 var(--pb-space-3); border-radius: 999px;
+  font: 600 var(--pb-text-label)/1 var(--pb-font-body); color: var(--pb-n700);
+  transition: background-color var(--pb-dur-fast) var(--pb-ease), color var(--pb-dur-fast) var(--pb-ease);
+}
+.pb-seg--sm .pb-seg__text { min-height: 28px; }
+.pb-seg--md .pb-seg__text { min-height: 34px; padding: 0 var(--pb-space-4); font-size: 14px; }
+.pb-seg__input:checked + .pb-seg__text { background: var(--pb-white); color: var(--pb-navy); box-shadow: 0 1px 2px rgba(20, 33, 61, 0.12); }
+.pb-seg__input:focus-visible + .pb-seg__text { outline: 3px solid var(--pb-info); outline-offset: 2px; }
+.pb-seg__count { font-weight: 500; color: var(--pb-n700); }
+.pb-seg__input:checked + .pb-seg__text .pb-seg__count { color: var(--pb-n700); }
+
+/* Tabs: same pill track as SegmentedControl, but real tab buttons controlling one panel. */
+.pb-tabs { max-width: 100%; overflow-x: auto; }
+.pb-tab {
+  display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: var(--pb-target); padding: 0 var(--pb-space-4);
+  border: 0; border-radius: 999px; background: transparent; color: var(--pb-n700); cursor: pointer; white-space: nowrap;
+  font: 600 14px/1 var(--pb-font-body);
+  transition: background-color var(--pb-dur-fast) var(--pb-ease), color var(--pb-dur-fast) var(--pb-ease);
+}
+.pb-tab:hover:not(:disabled):not([aria-selected='true']) { background: rgba(255, 255, 255, 0.6); }
+.pb-tab[aria-selected='true'] { background: var(--pb-white); color: var(--pb-navy); box-shadow: 0 1px 2px rgba(20, 33, 61, 0.12); }
+.pb-tab:disabled { opacity: 0.55; cursor: not-allowed; }
+.pb-tab[aria-selected='true'] .pb-seg__count { color: var(--pb-n700); }
