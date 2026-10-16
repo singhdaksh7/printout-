@@ -58,3 +58,12 @@
 .pb-od-preview { width: 100%; height: 60vh; border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-md); background: var(--pb-white); }
 .pb-od .pb-card + .pb-card, .pb-od .pb-banner + .pb-card { margin-top: 0; }
 .pb-wrap { overflow-wrap: anywhere; }
+
+/* ---- rate card ----------------------------------------------------------------------------------------- */
+.pb-ratecard { display: flex; flex-direction: column; gap: var(--pb-space-4); max-width: 760px; }
+.pb-ratecard__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--pb-space-4); }
+.pb-ratecard__row { display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.pb-ratecard__row.is-dirty { border-color: var(--pb-orange); }
+.pb-ratecard__foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-3); }
+.pb-ratecard__actions { display: flex; flex-wrap: wrap; gap: var(--pb-space-3); }
+@media (max-width: 767px) { .pb-ratecard__actions { position: sticky; bottom: 0; background: var(--pb-paper); padding: var(--pb-space-3) 0; } .pb-ratecard__actions .pb-btn { flex: 1 1 auto; } }

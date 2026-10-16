@@ -96,7 +96,7 @@ describe('pricing editor', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     await user.click(screen.getByRole('link', { name: /queue/i }));
     expect(confirmSpy).toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: 'Pricing' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Rate card' })).toBeInTheDocument();
     confirmSpy.mockReturnValue(true);
     await user.click(screen.getByRole('link', { name: /queue/i }));
     expect(await screen.findByRole('heading', { name: 'Print queue' })).toBeInTheDocument();

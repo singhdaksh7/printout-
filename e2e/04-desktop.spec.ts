@@ -20,7 +20,7 @@ test('desktop 1440: shop queue, pricing persistence, QR poster, analytics, setti
   await expectNoOverflow(page, 'desktop queue');
 
   await page.getByRole('link', { name: 'Pricing' }).click();
-  await expect(page.getByRole('heading', { name: 'Pricing' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rate card' })).toBeVisible();
   const input = page.locator('#price-bw-single');
   await expect(input).toHaveValue(/^2(\.00)?$/);
   await input.fill('3.50');

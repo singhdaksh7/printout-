@@ -4,7 +4,9 @@ import {
 } from '../lib/shop-api';
 import { ApiError } from '../lib/api';
 import { paiseToRupeesInput, parseRupeesToPaise } from '../lib/shop-money';
-import { Banner, Skeleton, useToast, useUnsavedGuard } from './components';
+import { Banner, Button, Card, CardHeader, Checkbox, Chip, Skeleton, TextField, useToast } from '../ui';
+import { useUnsavedGuard } from './components';
+import { formatPaise } from '../lib/format';
 
 type Colour = 'bw' | 'colour';
 type Sides = 'single' | 'duplex';
@@ -131,56 +133,63 @@ export default function PricingPage() {
     }
   }
 
+  /** A worked example from the price typed in the field (never a stored or sample value): 10 pages, duplex prints 2 pages per sheet. */
+  function example(c: (typeof COMBOS)[number], value: string): string | null {
+    const p = parseRupeesToPaise(value);
+    if (!p.ok) return null;
+    const sheets = c.sides === 'duplex' ? 5 : 10;
+    return `Example: 10 pages ${c.sides === 'duplex' ? 'double-sided' : 'single-sided'} = ${sheets} sheets = ${formatPaise(p.paise * sheets)}.`;
+  }
+
   return (
-    <section aria-labelledby="pricing-title">
-      <div className="sh-pagehead">
-        <h1 id="pricing-title">Pricing</h1>
-        {dirty && <span className="sh-chip sh-chip-warn" role="status">Unsaved changes</span>}
+    <section aria-labelledby="pricing-title" className="pb-theme pb-page">
+      <div className="pb-pagehead">
+        <div>
+          <h1 id="pricing-title" className="pb-h1">Rate card</h1>
+          <p className="pb-muted pb-pagehead__sub">Price per sheet for A4 printing, in rupees. Duplex is charged per physical sheet (2 pages per sheet). Orders are priced by the server using these saved prices.</p>
+        </div>
+        {dirty && <Chip tone="warn" role="status">Unsaved changes</Chip>}
       </div>
-      <p className="sh-muted">Price per sheet for A4 printing, in rupees. Duplex is charged per physical sheet (2 pages per sheet). Orders are priced by the server using these saved prices.</p>
-      {loadError && <Banner onRetry={() => void load()}>{loadError}</Banner>}
-      {globalError && <Banner>{globalError}</Banner>}
+      {loadError && <Banner tone="err" actions={<Button size="sm" variant="dark" onClick={() => void load()}>Retry</Button>}>{loadError}</Banner>}
+      {globalError && <Banner tone="err">{globalError}</Banner>}
       {loading && rules.length === 0 && !loadError ? <Skeleton lines={4} label="Loading prices" /> : null}
       {(!loading || rules.length > 0) && !loadError && (
-        <form className="price-grid" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
-          {COMBOS.map((c) => {
-            const row = rows[c.key] ?? { value: '', active: true };
-            const hasRule = rules.some((r) => comboKey(r.colourMode, r.sides) === c.key);
-            const err = rowErrors[c.key];
-            const inputId = `price-${c.key}`;
-            return (
-              <div key={c.key} className={`sh-card price-row${isDirty(c.key) ? ' is-dirty' : ''}`}>
-                <div className="price-row-head">
-                  <label htmlFor={inputId}><strong>{c.label}</strong></label>
-                  {!hasRule && <span className="sh-chip">Not set</span>}
-                </div>
-                <div className="price-inputs">
-                  <span className="price-prefix" aria-hidden="true">₹</span>
-                  <input
-                    id={inputId} inputMode="decimal" autoComplete="off" placeholder="0.00" value={row.value}
-                    aria-invalid={!!err} aria-describedby={err ? `${inputId}-err` : undefined}
+        <form className="pb-ratecard" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
+          <div className="pb-ratecard__grid">
+            {COMBOS.map((c) => {
+              const row = rows[c.key] ?? { value: '', active: true };
+              const hasRule = rules.some((r) => comboKey(r.colourMode, r.sides) === c.key);
+              const err = rowErrors[c.key];
+              return (
+                <Card key={c.key} className={isDirty(c.key) ? 'pb-ratecard__row is-dirty' : 'pb-ratecard__row'}>
+                  <TextField
+                    label={c.label}
+                    startAdornment="₹"
+                    endAdornment={<span className="pb-muted">per sheet</span>}
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder="0.00"
+                    value={row.value}
+                    error={err ?? null}
+                    helperText={example(c, row.value)}
                     onChange={(e) => setRow(c.key, { value: e.target.value })}
                   />
-                  <span className="sh-muted">per sheet</span>
-                </div>
-                <div className="price-row-foot">
-                  <label className="sh-switch">
-                    <input type="checkbox" checked={row.active} onChange={(e) => setRow(c.key, { active: e.target.checked })} />
-                    <span>Active</span>
-                  </label>
-                  {hasRule && (
-                    <button type="button" className="sh-btn sh-btn-sm sh-btn-ghost" onClick={() => void remove(c.key)} aria-label={`Remove price for ${c.label}`}>
-                      {removing === c.key ? 'Tap again to remove' : 'Remove'}
-                    </button>
-                  )}
-                </div>
-                {err && <div id={`${inputId}-err`} className="sh-field-error" role="alert">{err}</div>}
-              </div>
-            );
-          })}
-          <div className="sh-actions sh-sticky-actions">
-            <button type="submit" className="sh-btn sh-btn-primary" disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save prices'}</button>
-            <button type="button" className="sh-btn" onClick={reset} disabled={!dirty || saving}>Reset</button>
+                  <div className="pb-ratecard__foot">
+                    {!hasRule && <Chip size="sm" dot={false}>Not set</Chip>}
+                    <Checkbox label="Active" checked={row.active} onChange={(e) => setRow(c.key, { active: e.target.checked })} />
+                    {hasRule && (
+                      <Button variant="ghost" size="sm" onClick={() => void remove(c.key)} aria-label={`Remove price for ${c.label}`}>
+                        {removing === c.key ? 'Tap again to remove' : 'Remove'}
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+          <div className="pb-ratecard__actions">
+            <Button type="submit" variant="primary" disabled={!dirty || saving} loading={saving}>{saving ? 'Saving…' : 'Save prices'}</Button>
+            <Button variant="ghost" onClick={reset} disabled={!dirty || saving}>Reset</Button>
           </div>
         </form>
       )}

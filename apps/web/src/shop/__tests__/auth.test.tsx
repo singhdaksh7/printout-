@@ -25,7 +25,7 @@ describe('shop auth', () => {
     await user.type(screen.getByLabelText('Email'), 'owner@central.test');
     await user.type(screen.getByLabelText('Password'), 'password123');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByRole('heading', { name: 'Pricing' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Rate card' })).toBeInTheDocument();
     expect(calls.find((c) => c.path === '/auth/login')?.body).toEqual({ email: 'owner@central.test', password: 'password123' });
     expect(getCsrfToken()).toBe('csrf-1');
   });
