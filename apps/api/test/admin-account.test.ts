@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { Writable } from 'node:stream';
 import path from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { hashPassword, verifyPassword } from '../src/auth.js';
 import { buildApp, call, login, PASSWORD, seedWorld, testConfig, type World } from './api-helpers.js';
@@ -216,15 +216,107 @@ describe('admin account self-service', () => {
       expect(await ctx.prisma.auditLog.count({ where: { action: 'admin.account.email_changed' } })).toBe(0);
     });
 
-    it('surfaces a database-level unique race as the same generic conflict', async () => {
-      const admin = await asAdmin();
-      // The pre-check passes, then another user takes the address before the update: simulate with a trigger-free double insert.
-      const [r1] = await Promise.all([
-        call(ctx.app, admin, 'POST', '/admin/account/email', { currentPassword: PASSWORD, newEmail: NEW_EMAIL }),
-        ctx.prisma.user.create({ data: { email: NEW_EMAIL, displayName: 'Racer', passwordHash: await hashPassword(PASSWORD), role: 'SHOP_OWNER', shopId: world.b.shopId } }).catch(() => undefined)
-      ]);
-      expect([200, 409]).toContain(r1.statusCode);
+    it('maps a unique violation hit AFTER the pre-check to the same generic conflict and leaves everything unchanged', async () => {
+      const before = await adminUser();
+      const racerHash = await hashPassword(PASSWORD);
+      // Deterministic race: the duplicate pre-check for NEW_EMAIL sees nothing, but the address is taken just before the update.
+      // A separate app instance gets a wrapper around the client, so the shared test client is never patched.
+      let raced = false;
+      const userDelegate = new Proxy(ctx.prisma.user, {
+        get(target, prop) {
+          if (prop === 'findUnique') {
+            return (args: { where?: { email?: string } }) => {
+              if (args?.where?.email === NEW_EMAIL && !raced) {
+                raced = true;
+                return ctx.prisma.user
+                  .create({ data: { email: NEW_EMAIL, displayName: 'Racer', passwordHash: racerHash, role: 'SHOP_OWNER', shopId: world.b.shopId } })
+                  .then(() => null);
+              }
+              return target.findUnique(args as never);
+            };
+          }
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        }
+      });
+      const racing = new Proxy(ctx.prisma, {
+        get(target, prop) {
+          if (prop === 'user') return userDelegate;
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        }
+      });
+      const raceApp = createApp({ config: testConfig(), prisma: racing as never }).app;
+      await raceApp.ready();
+      let res;
+      let admin;
+      try {
+        admin = await login(raceApp, world.adminEmail);
+        res = await call(raceApp, admin, 'POST', '/admin/account/email', { currentPassword: PASSWORD, newEmail: NEW_EMAIL });
+      } finally {
+        await raceApp.close();
+      }
+      expect(raced).toBe(true);
+      // Same status, code and wording as the ordinary duplicate answer; no leak of the colliding row.
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe('EMAIL_UNAVAILABLE');
+      expect(res.json().error.message).toBe('This email address cannot be used. Choose a different one.');
+      expect(res.body).not.toMatch(/Racer|P2002|Unique constraint/i);
+      // Database consistency: the transaction rolled back completely.
+      const after = await adminUser();
+      expect(after).toMatchObject({ id: before.id, email: world.adminEmail, passwordHash: before.passwordHash, role: 'PLATFORM_ADMIN' });
       expect(await ctx.prisma.user.count({ where: { email: NEW_EMAIL } })).toBe(1);
+      const racer = await ctx.prisma.user.findUniqueOrThrow({ where: { email: NEW_EMAIL } });
+      expect(racer).toMatchObject({ displayName: 'Racer', role: 'SHOP_OWNER', shopId: world.b.shopId });
+      expect(await activeSessions(before.id)).toBe(1);
+      expect((await call(ctx.app, admin, 'GET', '/admin/account')).statusCode).toBe(200);
+      expect(await ctx.prisma.auditLog.count({ where: { action: 'admin.account.email_changed' } })).toBe(0);
+    });
+
+    it('lets exactly one of two admins claim the same new email; the loser keeps their account and sessions', async () => {
+      await ctx.prisma.user.create({ data: { email: 'second-admin@x.test', displayName: 'Second', passwordHash: await hashPassword(PASSWORD), role: 'PLATFORM_ADMIN' } });
+      const first = await asAdmin();
+      const second = await login(ctx.app, 'second-admin@x.test');
+      const [r1, r2] = await Promise.all([
+        call(ctx.app, first, 'POST', '/admin/account/email', { currentPassword: PASSWORD, newEmail: NEW_EMAIL }),
+        call(ctx.app, second, 'POST', '/admin/account/email', { currentPassword: PASSWORD, newEmail: NEW_EMAIL })
+      ]);
+      expect([r1.statusCode, r2.statusCode].sort()).toEqual([200, 409]);
+      const [winnerRes, loserRes, loserSession, loserOldEmail] = r1.statusCode === 200 ? [r1, r2, second, 'second-admin@x.test'] : [r2, r1, first, world.adminEmail];
+      expect(winnerRes.json().data).toEqual({ email: NEW_EMAIL, signedOut: true });
+      expect(loserRes.json().error.code).toBe('EMAIL_UNAVAILABLE');
+      expect(await ctx.prisma.user.count({ where: { email: NEW_EMAIL } })).toBe(1);
+      // The loser is untouched: old email, working session, no audit row for them.
+      const loser = await ctx.prisma.user.findUniqueOrThrow({ where: { email: loserOldEmail } });
+      expect(await activeSessions(loser.id)).toBe(1);
+      expect((await call(ctx.app, loserSession, 'GET', '/admin/account')).statusCode).toBe(200);
+      const rows = await ctx.prisma.auditLog.findMany({ where: { action: 'admin.account.email_changed' } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.targetId).not.toBe(loser.id);
+      // Exactly one user in the database owns the address, and it is the winner.
+      const owner = await ctx.prisma.user.findUniqueOrThrow({ where: { email: NEW_EMAIL } });
+      expect(owner.id).toBe(rows[0]!.targetId);
+    });
+
+    it('after an email change every old session is dead and ONLY the new address signs in, with the unchanged password', async () => {
+      const admin = await asAdmin();
+      const other = await asAdmin();
+      const id = (await adminUser()).id;
+      expect((await call(ctx.app, admin, 'POST', '/admin/account/email', { currentPassword: PASSWORD, newEmail: NEW_EMAIL })).statusCode).toBe(200);
+      for (const session of [admin, other]) {
+        expect((await call(ctx.app, session, 'GET', '/admin/account')).statusCode).toBe(401);
+        expect((await call(ctx.app, session, 'GET', '/auth/session')).statusCode).toBe(401);
+        expect((await call(ctx.app, session, 'GET', '/admin/dashboard')).statusCode).toBe(401);
+      }
+      expect(await ctx.prisma.session.count({ where: { userId: id, invalidatedAt: null } })).toBe(0);
+      expect((await ctx.app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: world.adminEmail, password: PASSWORD } })).statusCode).toBe(401);
+      const fresh = await login(ctx.app, NEW_EMAIL);
+      expect(fresh.userId).toBe(id);
+      const account = await call(ctx.app, fresh, 'GET', '/admin/account');
+      expect(account.statusCode).toBe(200);
+      expect(account.json().data).toMatchObject({ id, email: NEW_EMAIL, role: 'PLATFORM_ADMIN' });
+      expect(account.json().data.session.otherActiveSessions).toBe(0);
+      expect((await call(ctx.app, fresh, 'GET', '/admin/dashboard')).statusCode).toBe(200);
     });
 
     it('validates the new email and rejects an unchanged one', async () => {
@@ -292,24 +384,114 @@ describe('admin account self-service', () => {
     });
   });
 
-  it('does not log passwords, even on rejected requests', async () => {
+  it('never writes credentials, hashes, session or CSRF tokens to logs, console or audit metadata on any route outcome', async () => {
     const lines: string[] = [];
+    const consoleOutput: string[] = [];
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation((...a: unknown[]) => void consoleOutput.push(a.map(String).join(' ')))
+    );
     const app = createApp({
-      config: testConfig({ NODE_ENV: 'development' }),
+      config: testConfig({ NODE_ENV: 'development' }), // info-level request logging is on (it is silent only under NODE_ENV=test)
       prisma: ctx.prisma,
       logStream: new Writable({ write: (chunk, _enc, done) => (lines.push(String(chunk)), done()) })
     }).app;
     await app.ready();
+
+    const WRONG = 'wrong-secret-attempt-91';
+    const WEAK = 'weak-pw-9'; // 9 chars: rejected by the policy
+    const PW_TWO = 'second-new-long-passphrase-58';
+    const originalHash = (await adminUser()).passwordHash;
+    const statuses: Record<string, number> = {};
+    const tokens: string[] = [];
+    const secrets = [PASSWORD, NEW_PASSWORD, PW_TWO, WRONG, WEAK];
+    const trigger = async (on: boolean) => {
+      if (on) {
+        await ctx.prisma.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION test_fail_audit() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$ LANGUAGE plpgsql`);
+        await ctx.prisma.$executeRawUnsafe(`CREATE TRIGGER test_fail_audit BEFORE INSERT ON "AuditLog" FOR EACH ROW WHEN (NEW.action = 'admin.account.password_changed') EXECUTE FUNCTION test_fail_audit()`);
+      } else {
+        await ctx.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS test_fail_audit ON "AuditLog"`);
+        await ctx.prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS test_fail_audit()`);
+      }
+    };
     try {
-      const admin = await login(app, world.adminEmail);
-      await call(app, admin, 'POST', '/admin/account/password', { currentPassword: 'wrong-wrong-wrong', newPassword: NEW_PASSWORD });
-      await call(app, admin, 'POST', '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+      const s1 = await login(app, world.adminEmail);
+      tokens.push(s1.cookie.split('=')[1]!, s1.csrf);
+      const post = async (name: string, s: typeof s1 | null, url: string, body: unknown, extra = {}) => {
+        statuses[name] = (await call(app, s, 'POST', url, body, extra)).statusCode;
+      };
+      await post('wrongCurrent', s1, '/admin/account/password', { currentPassword: WRONG, newPassword: NEW_PASSWORD });
+      await post('policy', s1, '/admin/account/password', { currentPassword: PASSWORD, newPassword: WEAK });
+      await post('unknownField', s1, '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD, extra: WRONG });
+      await post('csrf', { ...s1, csrf: 'bad-csrf-value' }, '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+      await post('anonymous', null, '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+      await post('duplicateEmail', s1, '/admin/account/email', { currentPassword: PASSWORD, newEmail: world.a.ownerEmail });
+      await post('wrongCurrentEmail', s1, '/admin/account/email', { currentPassword: WRONG, newEmail: NEW_EMAIL });
+      await trigger(true);
+      try {
+        await post('serverError', s1, '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+      } finally {
+        await trigger(false);
+      }
+      await post('emailOk', s1, '/admin/account/email', { currentPassword: PASSWORD, newEmail: NEW_EMAIL });
+      const s2 = await login(app, NEW_EMAIL);
+      tokens.push(s2.cookie.split('=')[1]!, s2.csrf);
+      await post('passwordOk', s2, '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+      const s3 = await login(app, NEW_EMAIL, NEW_PASSWORD);
+      tokens.push(s3.cookie.split('=')[1]!, s3.csrf);
+      await post('passwordOkAgain', s3, '/admin/account/password', { currentPassword: NEW_PASSWORD, newPassword: PW_TWO });
     } finally {
+      await trigger(false);
       await app.close();
+      spies.forEach((s) => s.mockRestore());
     }
-    const all = lines.join('\n');
-    expect(all.length).toBeGreaterThan(0);
-    for (const secret of [PASSWORD, NEW_PASSWORD, 'wrong-wrong-wrong']) expect(all).not.toContain(secret);
+
+    // Every outcome we meant to exercise actually happened (so the absence of secrets below is meaningful).
+    expect(statuses).toEqual({
+      wrongCurrent: 403, policy: 400, unknownField: 400, csrf: 403, anonymous: 401, duplicateEmail: 409,
+      wrongCurrentEmail: 403, serverError: 500, emailOk: 200, passwordOk: 200, passwordOkAgain: 200
+    });
+
+    // The logging path is live: request lines for the sensitive routes, rejections and the 5xx failure were all written.
+    const entries = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+    const text = JSON.stringify(entries);
+    expect(entries.length).toBeGreaterThan(20);
+    expect(text).toContain('/api/v1/admin/account/password');
+    expect(text).toContain('/api/v1/admin/account/email');
+    expect(text).toContain('request rejected');
+    expect(text).toContain('request failed');
+    expect(text).toContain('INVALID_CURRENT_PASSWORD');
+
+    const everything = [...lines, ...consoleOutput].join('\n');
+    for (const secret of [...secrets, ...tokens, originalHash]) expect(everything, `leaked ${secret.slice(0, 8)}…`).not.toContain(secret);
+    expect(everything).not.toMatch(/\$argon2/);
+    expect(everything).not.toMatch(/audit unavailable/); // internal DB error text must not reach the log either
+    expect(everything).not.toMatch(/printout_session=[A-Za-z0-9_-]{20,}/);
+
+    // Audit rows written by these flows carry ids and counters only.
+    const rows = await ctx.prisma.auditLog.findMany({ where: { action: { startsWith: 'admin.account' } } });
+    expect(rows.length).toBeGreaterThanOrEqual(5);
+    for (const row of rows) {
+      expect(Object.keys((row.metadata ?? {}) as object).every((k) => k === 'sessionsEnded' || k === 'operation'), `${row.action} metadata keys`).toBe(true);
+    }
+    const auditDump = JSON.stringify(await ctx.prisma.auditLog.findMany());
+    for (const secret of [...secrets, ...tokens, originalHash, world.adminEmail, NEW_EMAIL, world.a.ownerEmail]) expect(auditDump).not.toContain(secret);
+    expect(auditDump).not.toMatch(/\$argon2/);
+  });
+
+  it('after a password change every old session is dead on every endpoint, and the changed account signs in again', async () => {
+    const admin = await asAdmin();
+    const other = await asAdmin();
+    const id = (await adminUser()).id;
+    expect((await call(ctx.app, admin, 'POST', '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD })).statusCode).toBe(200);
+    for (const session of [admin, other]) {
+      for (const url of ['/admin/account', '/auth/session', '/admin/dashboard']) expect((await call(ctx.app, session, 'GET', url)).statusCode).toBe(401);
+      expect((await call(ctx.app, session, 'POST', '/admin/account/password', { currentPassword: NEW_PASSWORD, newPassword: 'yet-another-passphrase-31' })).statusCode).toBe(401);
+    }
+    expect((await ctx.app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: world.adminEmail, password: PASSWORD } })).statusCode).toBe(401);
+    const fresh = await login(ctx.app, world.adminEmail, NEW_PASSWORD);
+    expect(fresh.userId).toBe(id);
+    expect((await call(ctx.app, fresh, 'GET', '/admin/account')).json().data).toMatchObject({ id, email: world.adminEmail });
+    expect((await call(ctx.app, fresh, 'GET', '/admin/dashboard')).statusCode).toBe(200);
   });
 });
 
