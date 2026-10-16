@@ -94,8 +94,23 @@ describe('Admin account settings page', () => {
 
       await user.clear(form.getByLabelText('New email'));
       await user.type(form.getByLabelText('New email'), 'new@printout.test');
+      await user.type(form.getByLabelText('Confirm new email'), 'new@printout.test');
       await user.click(form.getByRole('button', { name: 'Change email' }));
       expect(form.getByLabelText('Current password')).toHaveFocus();
+      expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+    });
+
+    it('requires the new email to be typed twice and focuses the confirmation field on a mismatch', async () => {
+      const { calls } = mockFetch(authed, accountGet);
+      const user = await ready();
+      const form = within(emailForm());
+      await user.type(form.getByLabelText('New email'), 'new@printout.test');
+      await user.type(form.getByLabelText('Confirm new email'), 'nwe@printout.test');
+      await user.type(form.getByLabelText('Current password'), 'my-current-pass');
+      await user.click(form.getByRole('button', { name: 'Change email' }));
+      expect(form.getByText('The email addresses do not match.')).toBeInTheDocument();
+      expect(form.getByLabelText('Confirm new email')).toHaveFocus();
+      expect(form.getByLabelText('Confirm new email')).toHaveAttribute('aria-invalid', 'true');
       expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
     });
 
@@ -104,6 +119,7 @@ describe('Admin account settings page', () => {
       const user = await ready();
       const form = within(emailForm());
       await user.type(form.getByLabelText('New email'), '  New@Printout.test ');
+      await user.type(form.getByLabelText('Confirm new email'), 'new@printout.test');
       await user.type(form.getByLabelText('Current password'), 'my-current-pass{Enter}');
       expect(await screen.findByRole('heading', { name: 'Admin sign in' })).toBeInTheDocument();
       expect(screen.getByRole('status')).toHaveTextContent(/email was changed and you were signed out on all devices/i);
@@ -118,6 +134,7 @@ describe('Admin account settings page', () => {
       const user = await ready();
       const form = within(emailForm());
       await user.type(form.getByLabelText('New email'), 'new@printout.test');
+      await user.type(form.getByLabelText('Confirm new email'), 'new@printout.test');
       await user.type(form.getByLabelText('Current password'), 'wrong-one');
       await user.click(form.getByRole('button', { name: 'Change email' }));
       expect(await form.findByText('Current password is incorrect.')).toBeInTheDocument();
@@ -133,6 +150,7 @@ describe('Admin account settings page', () => {
       const user = await ready();
       const form = within(emailForm());
       await user.type(form.getByLabelText('New email'), 'taken@printout.test');
+      await user.type(form.getByLabelText('Confirm new email'), 'taken@printout.test');
       await user.type(form.getByLabelText('Current password'), 'my-current-pass');
       await user.click(form.getByRole('button', { name: 'Change email' }));
       expect(await form.findByText('This email address cannot be used. Choose a different one.')).toBeInTheDocument();
@@ -144,6 +162,7 @@ describe('Admin account settings page', () => {
       const user = await ready();
       const form = within(emailForm());
       await user.type(form.getByLabelText('New email'), 'new@printout.test');
+      await user.type(form.getByLabelText('Confirm new email'), 'new@printout.test');
       await user.type(form.getByLabelText('Current password'), 'my-current-pass');
       await user.click(form.getByRole('button', { name: 'Change email' }));
       const alert = await form.findByRole('alert');
@@ -163,6 +182,7 @@ describe('Admin account settings page', () => {
       const user = await ready();
       const form = within(emailForm());
       await user.type(form.getByLabelText('New email'), 'new@printout.test');
+      await user.type(form.getByLabelText('Confirm new email'), 'new@printout.test');
       await user.type(form.getByLabelText('Current password'), 'my-current-pass{Enter}');
       await waitFor(() => expect(form.getByLabelText('New email')).toBeDisabled());
       await user.keyboard('{Enter}');

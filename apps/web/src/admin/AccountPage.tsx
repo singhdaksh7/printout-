@@ -68,26 +68,31 @@ function FormError({ message }: { message: string | null }) {
 
 function EmailForm({ account, onChanged }: { account: AdminAccount; onChanged: () => void }) {
   const [newEmail, setNewEmail] = useState('');
+  const [confirmEmail, setConfirmEmail] = useState('');
   const [current, setCurrent] = useState('');
-  const [errors, setErrors] = useState<FieldErrors<'email' | 'current'>>({});
+  const [errors, setErrors] = useState<FieldErrors<'email' | 'confirm' | 'current'>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
   const currentRef = useRef<HTMLInputElement>(null);
   const focusWhenIdle = useFocusAfterBusy(busy);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    const next: FieldErrors<'email' | 'current'> = {};
+    const next: FieldErrors<'email' | 'confirm' | 'current'> = {};
     const trimmed = newEmail.trim();
     if (!trimmed) next.email = 'Enter the new email address.';
     else if (trimmed.length > 254 || !EMAIL_RE.test(trimmed)) next.email = 'Enter a valid email address.';
     else if (trimmed.toLowerCase() === account.email.toLowerCase()) next.email = 'This is already your email address.';
+    // Typing the address twice guards against a typo that would lock the admin out (there is no email-based recovery).
+    if (!next.email && trimmed.toLowerCase() !== confirmEmail.trim().toLowerCase()) next.confirm = 'The email addresses do not match.';
     if (!current) next.current = 'Enter your current password to confirm.';
     setErrors(next);
     setFormError(null);
     if (next.email) return void emailRef.current?.focus();
+    if (next.confirm) return void confirmRef.current?.focus();
     if (next.current) return void currentRef.current?.focus();
     setBusy(true);
     try {
@@ -106,9 +111,10 @@ function EmailForm({ account, onChanged }: { account: AdminAccount; onChanged: (
     <Card as="section" aria-labelledby="ad-email-title">
       <form onSubmit={submit} noValidate className="ad-form" aria-labelledby="ad-email-title">
         <CardHeader id="ad-email-title" title="Change email" />
-        <p className="pb-muted">You will use the new address to sign in. For safety you are signed out on all devices after the change.</p>
+        <p className="pb-muted">You will use the new address to sign in, so check it carefully: there is no email-based recovery. You are signed out on all devices after the change.</p>
         <FormError message={formError} />
-        <TextField ref={emailRef} label="New email" type="email" autoComplete="off" value={newEmail} onChange={(e) => { setNewEmail(e.target.value); setErrors((x) => ({ ...x, email: undefined })); }} error={errors.email} disabled={busy} required />
+        <TextField ref={emailRef} label="New email" type="email" autoComplete="off" value={newEmail} onChange={(e) => { setNewEmail(e.target.value); setErrors((x) => ({ ...x, email: undefined, confirm: undefined })); }} error={errors.email} disabled={busy} required />
+        <TextField ref={confirmRef} label="Confirm new email" type="email" autoComplete="off" value={confirmEmail} onChange={(e) => { setConfirmEmail(e.target.value); setErrors((x) => ({ ...x, confirm: undefined })); }} error={errors.confirm} disabled={busy} required />
         <PasswordField ref={currentRef} label="Current password" autoComplete="current-password" value={current} onChange={(e) => { setCurrent(e.target.value); setErrors((x) => ({ ...x, current: undefined })); }} error={errors.current} disabled={busy} required />
         <div className="ad-actions"><Button type="submit" variant="primary" loading={busy}>{busy ? 'Changing email…' : 'Change email'}</Button></div>
       </form>

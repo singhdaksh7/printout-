@@ -79,8 +79,14 @@ test.describe('admin account settings', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Account settings' })).toBeVisible();
     await scan(page, 'account desktop with server error');
 
-    // Duplicate email gives the generic message (the seeded shop owner exists).
+    // Email confirmation, then the generic duplicate-email message (the seeded shop owner exists).
     await emailRegion(page).getByLabel('New email', { exact: true }).fill('owner@central.test');
+    await emailRegion(page).getByLabel('Confirm new email', { exact: true }).fill('owner@central.tset');
+    await emailRegion(page).getByLabel('Current password', { exact: true }).fill(PASSWORD);
+    await emailRegion(page).getByRole('button', { name: 'Change email' }).click();
+    await expect(emailRegion(page).getByText('The email addresses do not match.')).toBeVisible();
+    await expect(emailRegion(page).getByLabel('Confirm new email', { exact: true })).toBeFocused();
+    await emailRegion(page).getByLabel('Confirm new email', { exact: true }).fill('owner@central.test');
     await emailRegion(page).getByLabel('Current password', { exact: true }).fill(PASSWORD);
     await emailRegion(page).getByRole('button', { name: 'Change email' }).click();
     await expect(emailRegion(page).getByText('This email address cannot be used. Choose a different one.')).toBeVisible();
@@ -158,6 +164,7 @@ test.describe('admin account settings', () => {
     await adminLogin(page, email);
     await page.goto('/admin/account');
     await emailRegion(page).getByLabel('New email', { exact: true }).fill(renamed);
+    await emailRegion(page).getByLabel('Confirm new email', { exact: true }).fill(renamed);
     await emailRegion(page).getByLabel('Current password', { exact: true }).fill(PASSWORD);
     await emailRegion(page).getByRole('button', { name: 'Change email' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Admin sign in' })).toBeVisible();
