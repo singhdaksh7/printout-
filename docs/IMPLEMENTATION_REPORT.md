@@ -73,7 +73,7 @@ Not ready to deploy from this report alone: the work is unpushed, the migration 
 ## 15. Follow-up actions for the project owner
 
 1. Review and approve pushing `development`.
-2. Approve the `main` to `production` rename and branch protections (`docs/GIT_WORKFLOW.md`), after checking hosting auto-deploy branch settings.
+2. (Superseded) `main` stays as the production branch and is not renamed; branch protections are active (`docs/GIT_WORKFLOW.md`).
 3. Decide the open schema questions (`docs/SCHEMA_ALIGNMENT.md`).
 4. Decide whether a History endpoint (date and status filters, export) should be built.
 5. Apply the migration to staging, then production, when ready.
