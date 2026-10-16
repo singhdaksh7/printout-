@@ -58,6 +58,8 @@ git clone <your repo url> /opt/printout && cd /opt/printout
 git checkout <release tag or commit>
 ```
 
+**Release and CI.** Production is deployed by hand: the server checks out a reviewed release (a tag or a commit on `production`) and you run `bash deploy/deploy.sh`. GitHub Actions (`.github/workflows/ci.yml`) only tests; it has no deploy step, no secrets and no access to any real database. Merging into `production` therefore changes nothing on the server until you deploy, and migrations run only inside `deploy.sh` after its backup. Release steps: `docs/GIT_WORKFLOW.md`.
+
 (Alternative with no build on the VPS: build and push images from CI, set `PRINTOUT_API_IMAGE` / `PRINTOUT_WEB_IMAGE` in the env file, and use `bash deploy/deploy.sh --pull`.)
 
 ## 6. Cloudflare R2 bucket (private document storage)

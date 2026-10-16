@@ -1,0 +1,165 @@
+# Continuous integration only. This workflow never deploys, never touches a real database and holds no secrets.
+# Deployment is a separate, manual, reviewed procedure (docs/DEPLOYMENT.md, docs/GIT_WORKFLOW.md).
+name: CI
+
+on:
+  pull_request:
+    # `main` is listed only until it is renamed to `production`; remove it after the rename.
+    branches: [development, production, main]
+  push:
+    branches: [development, production, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '22'
+  PGUSER: printout
+  PGPASSWORD: ci-disposable-password
+
+jobs:
+  web:
+    name: Web (types, tests, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @printout/web check
+      - run: pnpm --filter @printout/web test
+      - run: pnpm --filter @printout/web build
+      - name: Showcase must not ship in the production bundle
+        run: pnpm --filter @printout/web verify:bundle
+
+  api:
+    name: API (types, schema, migrations, tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: printout
+          POSTGRES_PASSWORD: ci-disposable-password
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U printout"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://printout:ci-disposable-password@localhost:5432/printout_migrate?schema=public
+      TEST_DATABASE_URL: postgresql://printout:ci-disposable-password@localhost:5432/printout_test?schema=public
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Create disposable databases (migration check and tests are separate)
+        run: |
+          psql -h localhost -d postgres -c 'CREATE DATABASE printout_migrate'
+          psql -h localhost -d postgres -c 'CREATE DATABASE printout_test'
+      - run: pnpm --filter @printout/api db:generate
+      - run: pnpm --filter @printout/api check
+      - name: Prisma schema validation
+        run: pnpm --filter @printout/api exec prisma validate
+      - name: Apply every migration to an empty database
+        run: pnpm --filter @printout/api exec prisma migrate deploy
+      - name: Migrated database must match schema.prisma (no drift)
+        run: pnpm --filter @printout/api exec prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - name: Prepare the test database
+        run: pnpm --filter @printout/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+      - run: pnpm --filter @printout/api test
+
+  e2e:
+    name: End-to-end (isolated database and ports)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      E2E_DB_PORT: '54871'
+      E2E_PG_CONTAINER: printout-e2e-pg
+      E2E_API_PORT: '3187'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Start a disposable PostgreSQL (the suite resets printout_e2e through docker exec)
+        run: |
+          docker run -d --name "$E2E_PG_CONTAINER" -e POSTGRES_USER=printout -e POSTGRES_PASSWORD=change-me \
+            -e POSTGRES_DB=printout_e2e -p "127.0.0.1:${E2E_DB_PORT}:5432" postgres:16-alpine
+          for _ in $(seq 1 30); do docker exec "$E2E_PG_CONTAINER" pg_isready -U printout -d printout_e2e && break; sleep 2; done
+      - run: pnpm --filter @printout/api db:generate
+      - name: Apply migrations to the e2e database
+        run: pnpm --filter @printout/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://printout:change-me@localhost:54871/printout_e2e?schema=public
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-failure
+          path: |
+            e2e/test-results
+            e2e/artifacts
+            e2e/.data/worker.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  ui:
+    name: UI quality (axe, focus, overflow)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e:ui
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-failure
+          path: |
+            e2e-ui/test-results
+            e2e-ui/artifacts
+          retention-days: 7
+          if-no-files-found: ignore
+
+  security:
+    name: Security (secret scan, dependency audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: Scan the repository history for committed secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - name: "Dependency audit (production dependencies) - fail on critical"
+        run: pnpm audit --prod --audit-level=critical
+      - name: "Dependency audit - report high and moderate findings (known items are tracked in docs/GIT_WORKFLOW.md)"
+        run: pnpm audit --prod --audit-level=moderate || echo "::warning::pnpm audit reports moderate/high advisories; see the log and docs/GIT_WORKFLOW.md"

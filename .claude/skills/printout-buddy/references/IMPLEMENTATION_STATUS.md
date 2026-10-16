@@ -48,7 +48,7 @@ E2E_DB_PORT=<port> E2E_PG_CONTAINER=<disposable postgres container> E2E_API_PORT
 
 ## Git workflow
 
-Work on `development`; target branches are `development` and `production` (`docs/GIT_WORKFLOW.md`). Commit one logical stage at a time. Never push, rename branches, force-push, delete unmerged work or run production migrations without explicit approval. Preserve unpublished worktrees and branches.
+Work on a feature branch from `development`; long-lived branches are `development` and `production` (`docs/GIT_WORKFLOW.md`); CI is `.github/workflows/ci.yml`, secrets scanning is configured in `.gitleaks.toml`. Commit one logical stage at a time. Never push, rename branches, force-push, delete unmerged work or run production migrations without explicit approval. Preserve unpublished worktrees and branches.
 
 ## Deliberately deferred (show as Coming soon or not at all, never as working)
 
