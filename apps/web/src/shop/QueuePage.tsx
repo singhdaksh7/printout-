@@ -2,8 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import { retentionPhrase } from '../lib/retention';
-import { listOrders, describeError, type OrderSummary } from '../lib/shop-api';
-import { Banner, Button, Card, Checkbox, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, Tabs, buttonClass, cx, type Column } from '../ui';
+import { getAnalytics, listOrders, describeError, type OrderSummary } from '../lib/shop-api';
+import { Banner, Button, Card, Checkbox, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Tabs, buttonClass, cx, type Column } from '../ui';
 import { pageSelectionText } from './components';
 import { useAuth } from './auth';
 import { ageLabel, safeStorage, useAutoRefresh, useDebounced, useTick } from './hooks';
@@ -284,9 +284,23 @@ export default function QueuePage() {
   const { state: auth } = useAuth();
   const retentionMinutes = auth.status === 'authed' ? auth.session.retentionMinutes : undefined;
 
-  const debounced = useDebounced(q.refresh, 300);
+  // Summary strip from the real analytics endpoint (approved design: waiting / today / pages). Best effort: the queue works without it.
+  const [stats, setStats] = useState<{ waiting: number; orders: number; pages: number; initiated: number } | null>(null);
+  const loadStats = useCallback(() => {
+    void Promise.resolve()
+      .then(() => getAnalytics())
+      .then((d) => {
+        const n = (k: string) => (typeof d?.[k] === 'number' ? (d[k] as number) : 0);
+        setStats({ waiting: n('newPrintRequests'), orders: n('ordersToday'), pages: n('pagesToday'), initiated: n('printsInitiated') });
+      })
+      .catch(() => setStats(null));
+  }, []);
+  useEffect(loadStats, [loadStats]);
+  const refreshAll = useCallback(() => { q.refresh(); loadStats(); }, [q.refresh, loadStats]);
+
+  const debounced = useDebounced(refreshAll, 300);
   useRealtimeRefresh(debounced);
-  useAutoRefresh(q.refresh, 45_000);
+  useAutoRefresh(refreshAll, 45_000);
 
   // beep for a newly arrived NEW order (only if the user switched sound on; never autoplays otherwise)
   const lastTick = useRef(0);
@@ -322,6 +336,14 @@ export default function QueuePage() {
         </div>
         <Checkbox label="Sound for new orders" checked={sound.on} onChange={sound.toggle} />
       </div>
+      {stats && (
+        <div className="pb-stats pb-stats--queue" aria-label="Today at a glance" role="group" data-testid="queue-stats">
+          <StatTile label="Waiting for print" value={String(stats.waiting)} hint="New requests you have not printed yet." />
+          <StatTile label="Orders today" value={String(stats.orders)} />
+          <StatTile label="Pages today" value={String(stats.pages)} hint="Pages x copies, excluding cancelled and expired." />
+          <StatTile label="Prints started today" value={String(stats.initiated)} hint="Times Print was pressed." />
+        </div>
+      )}
       <Tabs label="Order filters" idPrefix="queue" panelId="queue-panel" tabs={TABS.map((t) => ({ key: t.key, label: t.label }))} value={tabKey} onChange={setTabKey} />
       <div id="queue-panel" role="tabpanel" aria-labelledby={`queue-tab-${tabKey}`} className="pb-page">
         {q.error && <Banner tone="err" actions={<Button size="sm" variant="dark" onClick={q.refresh}>Retry</Button>}>{q.error}</Banner>}

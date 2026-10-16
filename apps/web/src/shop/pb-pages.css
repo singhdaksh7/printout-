@@ -102,3 +102,8 @@
   .pb-historyfilters > * { flex: 1 1 100%; max-width: none; }
   .pb-historyfilters .pb-seg { width: 100%; overflow-x: auto; }
 }
+
+/* Queue summary strip: four tiles in one row on desktop, a compact 2x2 grid on phones (hints are hidden there to keep the queue above the fold). */
+.pb-stats--queue { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 899px) { .pb-stats--queue { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); } }
+@media (max-width: 599px) { .pb-stats--queue .pb-stat__hint { display: none; } }
