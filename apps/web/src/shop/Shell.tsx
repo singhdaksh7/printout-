@@ -10,6 +10,7 @@ import { useRealtime, useRealtimeRefresh } from './realtime';
 /** Sidebar (desktop and tablet) destinations. Staff and Reports have no backend yet, so they are labelled Coming soon and are not links. */
 const NAV_ITEMS: NavItem[] = [
   { to: '/shop', label: 'Print queue', end: true, icon: 'list-ordered' },
+  { to: '/shop/history', label: 'History', icon: 'clock' },
   { to: '/shop/analytics', label: 'Analytics', icon: 'chart-column' },
   { to: '/shop/devices', label: 'Devices', icon: 'printer' },
   { to: '/shop/pricing', label: 'Rate card', icon: 'indian-rupee' },
@@ -18,8 +19,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/shop/staff', label: 'Staff', icon: 'users', comingSoon: true },
   { to: '/shop/reports', label: 'Reports', icon: 'receipt', comingSoon: true }
 ];
-/** Phone tab bar: the same destinations minus Devices (reached from Settings) so the five labels fit 360px. */
-const PHONE_PATHS = ['/shop', '/shop/pricing', '/shop/qr', '/shop/analytics', '/shop/settings'];
+/** Phone tab bar: the same destinations minus Devices (reached from Settings) and Analytics (linked from History) so the five labels fit 360px. */
+const PHONE_PATHS = ['/shop', '/shop/history', '/shop/pricing', '/shop/qr', '/shop/settings'];
 
 const CONN_LABEL = { live: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', offline: 'Offline' } as const;
 const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'err' };

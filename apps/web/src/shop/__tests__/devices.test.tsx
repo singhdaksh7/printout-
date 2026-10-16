@@ -287,7 +287,7 @@ describe('wiring', () => {
     mockFetch(authedSession, emptyList, list([]));
     renderShop('/shop/devices');
     const nav = await screen.findByRole('navigation', { name: 'Shop sections' });
-    expect(within(nav).getAllByRole('link').map((l) => l.textContent?.replace(/\d+ items?$/, '').trim())).toEqual(['Print queue', 'Analytics', 'Devices', 'Rate card', 'QR & standee', 'Settings']);
+    expect(within(nav).getAllByRole('link').map((l) => l.textContent?.replace(/\d+ items?$/, '').trim())).toEqual(['Print queue', 'History', 'Analytics', 'Devices', 'Rate card', 'QR & standee', 'Settings']);
     expect(within(nav).queryByRole('link', { name: /staff|reports/i })).toBeNull();
     expect(within(nav).getByText(/Staff/)).toBeInTheDocument();
   });

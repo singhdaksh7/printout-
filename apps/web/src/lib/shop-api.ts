@@ -157,6 +157,51 @@ export const deletePricingRule = (id: string) =>
   shopRequest<void>(`/shop/pricing-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 export const getQr = () => shopRequest<QrInfo>('/shop/qr');
+// ---- order history (metadata only; dates are Asia/Kolkata calendar days, YYYY-MM-DD, inclusive) -------------------
+export interface HistoryItem {
+  id: string; orderNumber: string; status: OrderStatus; createdAt: string; originalFilename: string;
+  pageCount: number | null; selectedPageCount: number | null; copies: number | null;
+  colourMode: 'bw' | 'colour' | null; sides: 'single' | 'duplex' | null; paperSize: string | null; totalPaise: number;
+  /** First Print press (server time). Does NOT prove paper came out. */
+  printInitiatedAt: string | null; documentStatus: string; fileDeletedAt: string | null; handledBy: string | null;
+}
+export interface HistoryPage { range: { from: string; to: string; timezone: string }; items: HistoryItem[]; nextCursor?: string | undefined }
+export interface HistorySummary {
+  timezone: string; range: { from: string; to: string }; total: number; byStatus: Record<OrderStatus, number>; printInitiated: number; filesDeleted: number;
+}
+export interface HistoryQuery { from: string; to: string; status?: string; q?: string; cursor?: string | undefined; limit?: number }
+
+function historyParams(p: HistoryQuery, withPaging: boolean): string {
+  const q = new URLSearchParams({ from: p.from, to: p.to });
+  if (p.status) q.set('status', p.status);
+  if (p.q?.trim()) q.set('q', p.q.trim());
+  if (withPaging && p.cursor) q.set('cursor', p.cursor);
+  if (withPaging && p.limit) q.set('limit', String(p.limit));
+  return q.toString();
+}
+export const listHistory = (p: HistoryQuery, signal?: AbortSignal) =>
+  shopRequest<HistoryPage>(`/shop/orders/history?${historyParams(p, true)}`, signal ? { signal } : {});
+export const getHistorySummary = (p: HistoryQuery, signal?: AbortSignal) =>
+  shopRequest<HistorySummary>(`/shop/orders/history/summary?${historyParams(p, false)}`, signal ? { signal } : {});
+
+/** Fetches the CSV with the session cookie (an authenticated GET), so failures surface as ApiError instead of a broken download. */
+export async function fetchHistoryCsv(p: HistoryQuery): Promise<{ blob: Blob; filename: string; truncated: boolean }> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1/shop/orders/history/export.csv?${historyParams(p, false)}`, { credentials: 'include' });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.');
+  }
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    const err = new ApiError(res.status, json?.error?.code ?? 'REQUEST_ERROR', json?.error?.message ?? `Request failed (${res.status})`, json?.error?.details, json?.error?.requestId);
+    if (res.status === 401) onUnauthorized?.();
+    throw err;
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1];
+  return { blob: await res.blob(), filename: name ?? `order-history-${p.from}_to_${p.to}.csv`, truncated: res.headers.get('x-export-truncated') === 'true' };
+}
+
 export const getAnalytics = () => shopRequest<Record<string, unknown>>('/shop/analytics');
 export const getSettings = () => shopRequest<ShopSettings | null>('/shop/settings');
 export const putSettings = (s: ShopSettings) => shopRequest<ShopSettings>('/shop/settings', { method: 'PUT', body: s });
