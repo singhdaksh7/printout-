@@ -19,3 +19,10 @@
 .pb-bottomnav__link { font-size: 11px; }
 .pb-bottomnav__link > span:last-child { white-space: nowrap; }
 @media (max-width: 767px) { .ad-right { align-items: flex-start; text-align: left; } }
+
+/* Account settings */
+.ad-accountlink { color: var(--pb-text-secondary); text-decoration: none; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: var(--pb-radius-sm); }
+.ad-accountlink:hover { color: var(--pb-navy); text-decoration: underline; text-underline-offset: 2px; }
+.ad-account { display: flex; flex-direction: column; gap: var(--pb-space-4); max-width: 44rem; }
+.ad-pwfield { position: relative; }
+.ad-formerr { outline: none; }
