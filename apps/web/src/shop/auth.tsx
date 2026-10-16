@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Navigate, useLocation } from 'react-router-dom';
 import { ApiError, setCsrfToken } from '../lib/api';
 import { fetchSession, login as apiLogin, logout as apiLogout, setUnauthorizedHandler, type SessionData } from '../lib/shop-api';
+import { Button } from '../ui';
 
 type AuthState =
   | { status: 'loading' }
@@ -71,9 +72,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (state.status === 'loading') return <div className="shop-boot" role="status" aria-live="polite">Loading…</div>;
   if (state.status === 'error') {
     return (
-      <div className="shop-boot" role="alert">
+      <div className="shop-boot pb-theme" role="alert">
         <p>{state.message}</p>
-        <button className="sh-btn" onClick={retry}>Try again</button>
+        <Button variant="outline" onClick={retry}>Try again</Button>
       </div>
     );
   }

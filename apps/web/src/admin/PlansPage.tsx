@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { inr, listPlans, paiseToRupees, rupeesToPaise, updatePlan, type Plan } from '../lib/admin-api';
-import { Banner, useToast } from '../shop/components';
-import { Field, LoadError, Loading, MANUAL_NOTE, adminError, useLoad } from './ui';
+import { Banner, Button, Card, CardHeader, Checkbox, EmptyState, TextField, useToast } from '../ui';
+import { LoadError, Loading, MANUAL_NOTE, adminError, useLoad } from './ui';
 
 function PlanRow({ plan, onSaved }: { plan: Plan; onSaved: (msg: string) => void }) {
   const [name, setName] = useState(plan.name);
@@ -26,16 +26,16 @@ function PlanRow({ plan, onSaved }: { plan: Plan; onSaved: (msg: string) => void
     setBusy(false);
   }
   return (
-    <form className="sh-card" onSubmit={submit} noValidate aria-label={`Plan ${plan.name}`}>
-      <h2>{plan.name} <span className="sh-muted">· currently {inr(plan.pricePaise)}/month</span></h2>
-      {err && <Banner kind="error">{err}</Banner>}
-      <Field label="Name" error={nameErr}><input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} aria-invalid={!!nameErr} /></Field>
-      <Field label="Price per month (₹)" error={priceErr} hint="Stored as paise on the server.">
-        <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} aria-invalid={!!priceErr} />
-      </Field>
-      <label className="sh-switch"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Available for new subscriptions</label>
-      <div className="sh-actions"><button className="sh-btn sh-btn-primary" type="submit" disabled={busy || !dirty || !!priceErr || !!nameErr}>{busy ? 'Saving…' : 'Save plan'}</button></div>
-    </form>
+    <Card>
+      <form onSubmit={submit} noValidate aria-label={`Plan ${plan.name}`} className="ad-form">
+        <CardHeader title={<>{plan.name} <span className="pb-muted">· currently {inr(plan.pricePaise)}/month</span></>} />
+        {err && <Banner tone="err">{err}</Banner>}
+        <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} error={nameErr} />
+        <TextField label="Price per month (₹)" helperText="Stored as paise on the server." inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} error={priceErr} />
+        <Checkbox label="Available for new subscriptions" checked={active} onChange={(e) => setActive(e.target.checked)} />
+        <div className="ad-actions"><Button variant="primary" type="submit" disabled={busy || !dirty || !!priceErr || !!nameErr} loading={busy}>{busy ? 'Saving…' : 'Save plan'}</Button></div>
+      </form>
+    </Card>
   );
 }
 
@@ -44,11 +44,11 @@ export default function PlansPage() {
   const toast = useToast();
   return (
     <>
-      <h1>Plans</h1>
-      <Banner kind="info">{MANUAL_NOTE}</Banner>
+      <h1 className="pb-h1">Plans</h1>
+      <Banner tone="info">{MANUAL_NOTE}</Banner>
       {loading && !data && <Loading label="Loading plans" />}
       {error != null && <LoadError error={error} onRetry={reload} />}
-      {data && data.length === 0 && <div className="sh-empty"><p>No plans yet.</p></div>}
+      {data && data.length === 0 && <EmptyState icon="receipt" title="No plans yet" />}
       {data?.map((p) => <PlanRow key={`${p.id}:${p.updatedAt ?? ''}`} plan={p} onSaved={(m) => { toast.show(m); reload(); }} />)}
       {toast.node}
     </>

@@ -2,8 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { createShop, fmtDate, inr, listPlans, listShops, slugHint, type AdminShop, type ShopStatus } from '../lib/admin-api';
-import { Banner } from '../shop/components';
-import { Field, LoadError, LoadMore, Loading, ShopStatusChip, adminError, useCursorList, useLoad } from './ui';
+import { Banner, Button, Card, EmptyState, Select, TextField, buttonClass } from '../ui';
+import { LoadError, LoadMore, Loading, ShopStatusChip, adminError, useCursorList, useLoad } from './ui';
 
 export function ShopsList() {
   const [q, setQ] = useState('');
@@ -13,18 +13,21 @@ export function ShopsList() {
   const list = useCursorList<AdminShop>((cursor, signal) => listShops({ status, q: debounced, cursor, limit: 25 }, signal), [status, debounced]);
   return (
     <>
-      <div className="sh-pagehead"><h1>Shops</h1><Link className="sh-btn sh-btn-primary sh-btn-sm" to="new">Create shop</Link></div>
+      <div className="pb-pagehead">
+        <h1 className="pb-h1">Shops</h1>
+        <Link className={buttonClass({ variant: 'primary', size: 'sm' })} to="new">Create shop</Link>
+      </div>
       <div className="ad-filters" role="search">
-        <Field label="Search name or slug"><input type="search" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
-        <Field label="Status">
-          <select className="ad-select" value={status} onChange={(e) => setStatus(e.target.value as ShopStatus | '')}>
-            <option value="">All</option><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option>
-          </select>
-        </Field>
+        <TextField label="Search name or slug" type="search" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as ShopStatus | '')}>
+          <option value="">All</option><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option>
+        </Select>
       </div>
       {list.loading && <Loading label="Loading shops" />}
       {list.error != null && <LoadError error={list.error} onRetry={list.reload} />}
-      {!list.loading && !list.error && list.items.length === 0 && <div className="sh-empty"><h2>No shops found</h2><p>{q || status ? 'Try different filters.' : 'Create the first shop.'}</p></div>}
+      {!list.loading && !list.error && list.items.length === 0 && (
+        <EmptyState icon="store" title="No shops found">{q || status ? 'Try different filters.' : 'Create the first shop.'}</EmptyState>
+      )}
       {!list.loading && list.items.length > 0 && (
         <>
           <ul className="ad-list" aria-label="Shops">
@@ -32,13 +35,13 @@ export function ShopsList() {
               <li key={s.id} className="ad-row">
                 <div>
                   <Link to={s.id}>{s.displayName}</Link>
-                  <div className="sh-muted">/{s.slug}</div>
-                  {s.owner && <div className="sh-muted sh-wrap">{s.owner.displayName} · {s.owner.email}</div>}
+                  <div className="pb-muted pb-mono">/{s.slug}</div>
+                  {s.owner && <div className="pb-muted pb-wrap">{s.owner.displayName} · {s.owner.email}</div>}
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <ShopStatusChip status={s.status} />
-                  <div className="sh-muted">{s.subscription ? `${s.subscription.plan.name} · ${s.subscription.status.toLowerCase()}` : 'No subscription'}</div>
-                  <div className="sh-muted">{s.orderCount ?? 0} orders · last {fmtDate(s.lastOrderAt)}</div>
+                <div className="ad-right">
+                  <ShopStatusChip status={s.status} size="sm" />
+                  <div className="pb-muted">{s.subscription ? `${s.subscription.plan.name} · ${s.subscription.status.toLowerCase()}` : 'No subscription'}</div>
+                  <div className="pb-muted">{s.orderCount ?? 0} orders · last {fmtDate(s.lastOrderAt)}</div>
                 </div>
               </li>
             ))}
@@ -106,14 +109,14 @@ export function CreateShop() {
   if (done) {
     return (
       <>
-        <h1>Shop created</h1>
-        <Banner kind="ok">Shop /{done.slug} was created. Share these credentials with the owner securely.</Banner>
-        <div className="sh-card">
+        <h1 className="pb-h1">Shop created</h1>
+        <Banner tone="ok">Shop /{done.slug} was created. Share these credentials with the owner securely.</Banner>
+        <Card>
           <p>Owner email: <b>{done.email}</b></p>
           <p>Initial password (shown once; it is not stored and cannot be retrieved later):</p>
           <div className="ad-secret" data-testid="initial-password">{done.password}</div>
-          <div className="sh-actions"><Link className="sh-btn sh-btn-primary" to={`../${done.shopId}`}>Open shop</Link></div>
-        </div>
+          <div className="ad-actions"><Link className={buttonClass({ variant: 'primary' })} to={`../${done.shopId}`}>Open shop</Link></div>
+        </Card>
       </>
     );
   }
@@ -122,29 +125,25 @@ export function CreateShop() {
   const emailErr = serverErr.email || show('ownerEmail');
   return (
     <>
-      <Link className="sh-back" to="..">← Shops</Link>
-      <h1>Create shop</h1>
-      <form onSubmit={submit} noValidate aria-label="Create shop">
-        {serverErr.general && <Banner kind="error">{serverErr.general}</Banner>}
-        <Field label="Shop name" error={show('displayName')}><input value={f.displayName} onChange={set('displayName')} aria-invalid={!!show('displayName')} maxLength={100} /></Field>
-        <Field label="Slug" hint="Used in the customer link (/p/your-slug). Lowercase letters, digits, hyphens." error={slugErr}>
-          <input value={f.slug} onChange={set('slug')} autoCapitalize="none" spellCheck={false} aria-invalid={!!slugErr} maxLength={60} />
-        </Field>
-        <Field label="Owner name" error={show('ownerName')}><input value={f.ownerName} onChange={set('ownerName')} aria-invalid={!!show('ownerName')} maxLength={100} /></Field>
-        <Field label="Owner email" error={emailErr}><input type="email" value={f.ownerEmail} onChange={set('ownerEmail')} aria-invalid={!!emailErr} autoComplete="off" /></Field>
-        <Field label="Initial password" hint="Min 12 characters. Shown once after creation; the owner should change it." error={show('password')}>
-          <input type="text" value={f.password} onChange={set('password')} aria-invalid={!!show('password')} autoComplete="off" spellCheck={false} />
-        </Field>
-        <button type="button" className="sh-btn sh-btn-sm" onClick={() => setF((x) => ({ ...x, password: genPassword() }))}>Generate password</button>
-        <Field label="Plan (optional)">
-          <select className="ad-select" value={f.planId} onChange={set('planId')}>
+      <Link className={buttonClass({ variant: 'ghost', size: 'sm', className: 'pb-back' })} to="..">← Shops</Link>
+      <h1 className="pb-h1">Create shop</h1>
+      <Card>
+        <form onSubmit={submit} noValidate aria-label="Create shop" className="ad-form">
+          {serverErr.general && <Banner tone="err">{serverErr.general}</Banner>}
+          <TextField label="Shop name" value={f.displayName} onChange={set('displayName')} error={show('displayName')} maxLength={100} />
+          <TextField label="Slug" helperText="Used in the customer link (/p/your-slug). Lowercase letters, digits, hyphens." value={f.slug} onChange={set('slug')} autoCapitalize="none" spellCheck={false} error={slugErr} maxLength={60} />
+          <TextField label="Owner name" value={f.ownerName} onChange={set('ownerName')} error={show('ownerName')} maxLength={100} />
+          <TextField label="Owner email" type="email" value={f.ownerEmail} onChange={set('ownerEmail')} error={emailErr} autoComplete="off" />
+          <TextField label="Initial password" helperText="Min 12 characters. Shown once after creation; the owner should change it." value={f.password} onChange={set('password')} error={show('password')} autoComplete="off" spellCheck={false} />
+          <div><Button variant="outline" size="sm" onClick={() => setF((x) => ({ ...x, password: genPassword() }))}>Generate password</Button></div>
+          <Select label="Plan (optional)" value={f.planId} onChange={set('planId')}>
             <option value="">No plan yet</option>
             {(plans.data ?? []).filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} — {inr(p.pricePaise)}/month</option>)}
-          </select>
-        </Field>
-        <p className="sh-muted">Plan and payment are tracked manually; creating a shop never charges anyone.</p>
-        <button className="sh-btn sh-btn-primary sh-btn-block" type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create shop'}</button>
-      </form>
+          </Select>
+          <p className="pb-muted">Plan and payment are tracked manually; creating a shop never charges anyone.</p>
+          <Button variant="primary" type="submit" fullWidth disabled={busy} loading={busy}>{busy ? 'Creating…' : 'Create shop'}</Button>
+        </form>
+      </Card>
     </>
   );
 }

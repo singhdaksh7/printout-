@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { fmtDate, listAuditLogs, type AuditEntry } from '../lib/admin-api';
+import { Card, EmptyState, TextField } from '../ui';
 import { LoadError, LoadMore, Loading, useCursorList } from './ui';
 
 /** Metadata is shown as the server returned it (admin audit entries hold ids and field names only). */
@@ -23,20 +24,19 @@ export function AuditList({ shopId, pageSize = 25 }: { shopId?: string; pageSize
     <>
       {!shopId && (
         <div className="ad-filters">
-          <label className="sh-field"><span>Filter by action (exact, e.g. admin.shop.suspend)</span>
-            <input value={action} onChange={(e) => setAction(e.target.value)} spellCheck={false} /></label>
+          <TextField label="Filter by action (exact, e.g. admin.shop.suspend)" value={action} onChange={(e) => setAction(e.target.value)} spellCheck={false} />
         </div>
       )}
       {list.loading && <Loading label="Loading audit log" />}
       {list.error != null && <LoadError error={list.error} onRetry={list.reload} />}
-      {!list.loading && !list.error && list.items.length === 0 && <div className="sh-empty"><p>No audit entries.</p></div>}
+      {!list.loading && !list.error && list.items.length === 0 && <EmptyState icon="scroll-text" title="No audit entries" />}
       {!list.loading && list.items.length > 0 && (
         <>
           <ul className="ad-list" aria-label="Audit entries">
             {list.items.map((a) => (
-              <li key={a.id} className="ad-row" style={{ display: 'block' }}>
-                <div><b>{a.action}</b></div>
-                <div className="sh-muted">{fmtDate(a.createdAt)}{a.targetType ? ` · ${a.targetType}` : ''}</div>
+              <li key={a.id} className="ad-row ad-row--block">
+                <div><b className="pb-mono">{a.action}</b></div>
+                <div className="pb-muted">{fmtDate(a.createdAt)}{a.targetType ? ` · ${a.targetType}` : ''}</div>
                 <Meta value={a.metadata} />
               </li>
             ))}
@@ -51,8 +51,8 @@ export function AuditList({ shopId, pageSize = 25 }: { shopId?: string; pageSize
 export default function AuditPage() {
   return (
     <>
-      <h1>Audit log</h1>
-      <AuditList />
+      <h1 className="pb-h1">Audit log</h1>
+      <Card><AuditList /></Card>
     </>
   );
 }

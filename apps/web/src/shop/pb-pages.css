@@ -2,18 +2,12 @@
    Component styles live in src/ui; this file only lays the pages out with --pb-* tokens. Design reference: docs/design/3.pdf p7-p14, p23-p24. */
 
 
-.pb-theme.pb-page { background: transparent; display: flex; flex-direction: column; gap: var(--pb-space-4); }
-.pb-page h1.pb-h1 { font: 600 var(--pb-text-h1)/1.25 var(--pb-font-display); margin: 0; }
-.pb-pagehead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pb-space-3); }
-.pb-back { margin: 0; }
-.pb-pagehead__sub { margin: 2px 0 0; font: 400 var(--pb-text-label)/1.4 var(--pb-font-body); }
 
 /* ---- queue: table cells and phone cards ---------------------------------------------------------------- */
 .pb-order-id { display: flex; flex-direction: column; gap: 2px; }
 .pb-order-link { color: var(--pb-navy); text-decoration: none; }
 .pb-order-link .pb-jobcode { white-space: nowrap; }
 .pb-order-link:hover .pb-jobcode { text-decoration: underline; }
-.pb-order-amount { font: 600 13px/1.3 var(--pb-font-body); font-variant-numeric: tabular-nums; color: var(--pb-text-secondary); }
 .pb-file { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 30ch; }
 .pb-file__name { font-weight: 600; }
 .pb-file__ref, .pb-file__age { font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
@@ -54,7 +48,6 @@
 .pb-od-access { display: flex; flex-direction: column; gap: var(--pb-space-3); margin-bottom: var(--pb-space-3); }
 .pb-od-preview { width: 100%; height: 60vh; border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-md); background: var(--pb-white); }
 .pb-od .pb-card + .pb-card, .pb-od .pb-banner + .pb-card { margin-top: 0; }
-.pb-wrap { overflow-wrap: anywhere; }
 
 /* ---- rate card ----------------------------------------------------------------------------------------- */
 .pb-ratecard { display: flex; flex-direction: column; gap: var(--pb-space-4); max-width: 760px; }
@@ -83,19 +76,12 @@
 .pb-linkcard:hover { border-color: var(--pb-orange); }
 .pb-linkcard:focus-visible { outline: 2px solid var(--pb-navy); outline-offset: 2px; }
 .pb-swatch { display: inline-block; width: 1.25rem; height: 1.25rem; border-radius: var(--pb-radius-sm); border: 1px solid var(--pb-n300); }
-.pb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--pb-space-4); }
 .pb-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .pb-recent li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-3); padding: var(--pb-space-3) 0; border-top: 1px solid var(--pb-n100); }
 .pb-recent li:first-child { border-top: 0; }
 
 /* ---- shell ---------------------------------------------------------------------------------------------- */
-.pb-brandmark { font: 700 18px/1.2 var(--pb-font-display); color: var(--pb-white); }
-.pb-shopname { font: 600 var(--pb-text-body)/1.3 var(--pb-font-display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
-/* ---- shop login ----------------------------------------------------------------------------------------- */
-.pb-theme.pb-login { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: var(--pb-space-4); background: var(--pb-n50); }
-.pb-login__card { width: 100%; max-width: 400px; }
-.pb-login__form { display: flex; flex-direction: column; gap: var(--pb-space-4); }
 
 /* Five phone tabs must fit 360px: keep each label on one line. */
 .pb-bottomnav__link { font-size: 11px; }

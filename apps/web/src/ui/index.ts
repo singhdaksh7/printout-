@@ -2,6 +2,7 @@
 import './tokens.css';
 import './fonts.css';
 import './base.css';
+import './pages.css';
 
 export { cx } from './cx';
 export { Icon, ICON_NAMES, type IconName, type IconProps } from './icons/Icon';

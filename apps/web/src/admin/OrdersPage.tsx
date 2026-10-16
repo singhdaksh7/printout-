@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fmtDate, inr, listOrders, type AdminOrder } from '../lib/admin-api';
-import { Field, LoadError, LoadMore, Loading, useCursorList } from './ui';
+import { Button, EmptyState, OrderStatusChip, Select, type LegacyOrderStatus } from '../ui';
+import { LoadError, LoadMore, Loading, useCursorList } from './ui';
 
 const STATUSES = ['NEW', 'ACCEPTED', 'PRINTING', 'PRINTED', 'READY', 'COLLECTED', 'CANCELLED', 'EXPIRED'];
 const label = (k: string) => k.charAt(0) + k.slice(1).toLowerCase();
@@ -24,19 +25,20 @@ export function AdminOrderRows({ items, showShop = true }: { items: AdminOrder[]
   return (
     <ul className="ad-list" aria-label="Orders">
       {items.map((o) => (
-        <li key={o.id} className="ad-row" style={{ display: 'block' }} data-testid="admin-order">
-          <div className="sh-wrap">
-            <b>{o.orderNumber}</b> · <span className="sh-chip sh-chip-printed">{label(o.status)}</span>
-            {showShop && <> · <Link to={`/admin/shops/${o.shopId}`}>{o.shopName}</Link></>}
+        <li key={o.id} className="ad-row ad-row--block" data-testid="admin-order">
+          <div className="pb-wrap ad-order-head">
+            <b className="pb-mono">{o.orderNumber}</b>
+            <OrderStatusChip status={o.status as LegacyOrderStatus} size="sm" />
+            {showShop && <Link to={`/admin/shops/${o.shopId}`}>{o.shopName}</Link>}
           </div>
-          <div className="sh-muted sh-wrap">
+          <div className="pb-muted pb-wrap">
             {fmtDate(o.createdAt)}{o.customerDisplayNameOrReference ? ` · ${o.customerDisplayNameOrReference}` : ''} · {inr(o.totalPaise)}
           </div>
-          <div className="sh-muted sh-wrap">
+          <div className="pb-muted pb-wrap">
             {o.mimeType ?? 'file'} · {o.selectedPageCount ?? o.pageCount ?? '?'}{o.pageCount != null ? `/${o.pageCount}` : ''} pages · {pagesText(o.pageSelection)} ·{' '}
             {o.colourMode === 'colour' ? 'Colour' : 'B&W'} · {o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · {o.copies ?? 1} copies · {o.paperSize ?? 'A4'}
           </div>
-          <div className="sh-muted sh-wrap">
+          <div className="pb-muted pb-wrap">
             Print started: {fmtDate(o.printInitiatedAt ?? o.printedAt)} · {documentState(o)}
           </div>
         </li>
@@ -50,25 +52,28 @@ export default function AdminOrdersPage() {
   const list = useCursorList<AdminOrder>((cursor, signal) => listOrders({ status, cursor, limit: 25 }, signal), [status]);
   return (
     <>
-      <div className="sh-pagehead"><h1>Orders</h1><button className="sh-btn sh-btn-sm" onClick={list.reload}>Refresh</button></div>
+      <div className="pb-pagehead">
+        <div>
+          <h1 className="pb-h1">Orders</h1>
+          <p className="pb-muted pb-pagehead__sub">Operational metadata only. Customer documents are never available to platform administrators.</p>
+        </div>
+        <Button variant="outline" size="sm" iconStart="refresh-cw" onClick={list.reload}>Refresh</Button>
+      </div>
       <div className="ad-filters">
-        <Field label="Status">
-          <select className="ad-select" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
-          </select>
-        </Field>
+        <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">All</option>
+          {STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
+        </Select>
       </div>
       {list.loading && <Loading label="Loading orders" />}
       {list.error != null && <LoadError error={list.error} onRetry={list.reload} />}
-      {!list.loading && !list.error && list.items.length === 0 && <div className="sh-empty"><h2>No orders</h2></div>}
+      {!list.loading && !list.error && list.items.length === 0 && <EmptyState title="No orders" icon="inbox" />}
       {!list.loading && list.items.length > 0 && (
         <>
           <AdminOrderRows items={list.items} />
           <LoadMore hasMore={list.hasMore} more={list.more} onClick={list.loadMore} error={list.moreError} />
         </>
       )}
-      <p className="sh-muted">Operational metadata only. Customer documents are never available to platform administrators.</p>
     </>
   );
 }
