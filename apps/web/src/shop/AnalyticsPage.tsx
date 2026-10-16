@@ -3,6 +3,7 @@ import { formatPaise } from '../lib/format';
 import { describeError, getAnalytics, type OrderStatus } from '../lib/shop-api';
 import { Banner, Button, Card, CardHeader, OrderStatusChip, SegmentedBar, Skeleton, StatTile } from '../ui';
 import { ageLabel } from './hooks';
+import RevenuePanel from './RevenuePanel';
 
 type Raw = Record<string, unknown>;
 const num = (r: Raw, ...keys: string[]): number | null => {
@@ -60,6 +61,8 @@ export default function AnalyticsPage() {
         {initiated != null && <StatTile label="Prints initiated" value={String(initiated)} hint="Times Print was pressed. Does not confirm paper came out." />}
         {autoDeleted != null && <StatTile label="Files deleted automatically" value={String(autoDeleted)} />}
       </div>
+
+      <RevenuePanel />
 
       {colour && (
         <Card as="section" aria-labelledby="an-colour">
