@@ -28,3 +28,7 @@ Then ask Claude Code: `Use the printout-buddy skill to compare our Prisma schema
 These are **prepared documents and starter components**. They have **not** been applied to the GitHub repository, do **not** replace the existing Prisma schema, and do **not** make routes live. Further decisions are required for a production-ready executable schema and OpenAPI spec because the PDF does not specify all fields/payloads. Confirm exact target variants and design tokens before UI integration.
 
 Original inputs: owner-approved `PrintoutBuddy Architecture.pdf` (13 pages) and Codex read-only audit of `development` at c15a47a (2026-10-16).
+
+## Status
+
+`references/IMPLEMENTATION_STATUS.md` records what is built. `templates/ui/` is kept for history only; the real components are in `apps/web/src/ui/`.

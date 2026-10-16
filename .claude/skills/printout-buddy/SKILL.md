@@ -7,7 +7,7 @@ description: Use when planning, implementing, reviewing, or testing Printout Bud
 
 ## Scope and authority
 
-Read `references/ARCHITECTURE_CONTRACT.md`, `references/SCHEMA_TARGET.md`, `references/API_TARGET.md`, and `references/UI_COMPONENTS.md` when the task touches their subject. These are implementation working specifications **derived from** the user-approved `PrintoutBuddy Architecture.pdf` (13 pages). The PDF is the approved conceptual target; where it lacks details, this skill labels proposals rather than inventing binding requirements. The current repository and audit describe the **as-is** system, not the approved target.
+Read `references/IMPLEMENTATION_STATUS.md` first (what is built, commands, deferred features), then `references/ARCHITECTURE_CONTRACT.md`, `references/SCHEMA_TARGET.md`, `references/API_TARGET.md`, and `references/UI_COMPONENTS.md` when the task touches their subject. These are implementation working specifications **derived from** the user-approved `PrintoutBuddy Architecture.pdf` (13 pages). The PDF is the approved conceptual target; where it lacks details, this skill labels proposals rather than inventing binding requirements. The current repository and audit describe the **as-is** system, not the approved target.
 
 ## Mandatory workflow
 
@@ -22,7 +22,7 @@ Read `references/ARCHITECTURE_CONTRACT.md`, `references/SCHEMA_TARGET.md`, `refe
 
 ## Branch policy
 
-Target remote branches: `development` (integration) and `production` (stable). Previous audit showed `development` and `main`. Safely preserve unpublished local histories and untracked work before renaming/deleting. Never assume the remote reflects local Android/UI/email work.
+Target remote branches: `development` (integration) and `production` (stable). The remote still has `main`; the rename awaits owner approval (`docs/GIT_WORKFLOW.md`). Safely preserve unpublished local histories and untracked work before renaming/deleting. Never assume the remote reflects local Android/UI/email work.
 
 ## Source precedence
 
@@ -39,4 +39,4 @@ When current code differs from target, report a gap; do not silently claim imple
 - **Spec:** generate reviewed field-level/API/UI contracts, annotate TBDs.
 - **Implement:** modify only authorized scope, test, and report; stop on unsafe unknowns.
 
-Starter web files in `templates/ui/` demonstrate accessible, dependency-light primitive APIs. They are not installed or integrated until copied into the repository and tested.
+The starter files in `templates/ui/` are superseded by `apps/web/src/ui/`; do not copy them. Always reuse the library components instead of duplicating markup.
