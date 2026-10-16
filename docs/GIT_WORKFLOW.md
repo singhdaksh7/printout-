@@ -1,31 +1,30 @@
 # Git workflow and CI/CD
 
-Two developers, three permanent branches, short-lived feature branches, pull requests, CI on every change. **CI and deployment are separate**: nothing in this repository deploys automatically, and merging into any branch never authorizes a deployment.
+Two developers, **two permanent branches**, short-lived feature branches, pull requests, CI on every change. **CI and deployment are separate**: nothing in this repository deploys automatically, and merging into any branch never authorizes a deployment.
 
 ```
-feature/<dev>-<topic>  --PR-->  development  --release PR-->  production
+feature/<dev>-<topic>  --PR-->  development  --release PR-->  main (production code)
 ```
 
 | Branch | Role | Who changes it |
 |---|---|---|
-| `main` | **legacy/reference, frozen.** Kept unchanged for the existing server checkout and older integrations. Not a merge destination for features or releases and never the source of a new release. Still the GitHub default branch (changing that needs separate owner approval) | nobody, in ordinary work |
+| `main` | **production**: approved, releasable code. The GitHub default branch. There is no branch named `production`; "production" describes what `main` is for | release pull requests from `development`, and hotfix pull requests; always through a PR with green CI |
 | `development` | shared integration; always green | pull requests from feature, fix and hotfix back-merge branches |
-| `production` | stable, releasable | release pull requests from `development`, and hotfix pull requests; always through a PR with green CI |
 
 Temporary branches: `feature/<developer>-<topic>` (for example `feature/daksh-rate-card-export`, `feature/amardeep-history-api`), `fix/<developer>-<topic>`, `hotfix/<topic>`. The names are flexible: any developer, including a future contributor, picks a short descriptive name that includes their own name; use lowercase words and hyphens.
 
 ## Current state (verify before relying on it)
 
-- **Three permanent branches**: `main` (legacy/reference, default branch, frozen, never renamed or deleted), `development` (active integration) and `production` (release branch, to be created from the former stable `main` tip `7809abf`, never from `development`, and not merged with `development` until the first release PR). **`main` is not renamed**; the earlier plan to rename it is cancelled.
-- Rulesets (active, no bypass actors): `development protection` (id 25244979, `refs/heads/development`) and `production protection` (id 25261486, `refs/heads/production` and `refs/heads/main`). Every permanent branch: pull request required, **0** approvals, code-owner review not required, resolved conversations, the five CI checks required with the branch up to date, no force-push, no deletion.
+- **Exactly two permanent branches**: `main` (production/release, default) and `development` (integration). `main` is not renamed and no `production` branch exists or will be created.
+- Rulesets (active, no bypass actors): `development protection` (id 25244979, `refs/heads/development`) and `main protection` (id 25261486, `refs/heads/main` only). Both branches: pull request required, **0** approvals, code-owner review not required, resolved conversations, the five CI checks required with the branch up to date, no force-push, no deletion.
 - Repository setting "Automatically delete head branches" is **on**: merged temporary branches disappear from the remote; the permanent branches cannot be deleted (ruleset), so a release PR never removes `development`.
 - Both developers can merge any eligible PR: `singhdaksh7` (admin) and `AmardeepManav` (write).
-- **Deployment is a fourth, separate concern** (see `docs/DEPLOYMENT.md`): a manually authorized operation on an explicit release commit or tag. No workflow deploys; merging into `production` deploys nothing.
+- **Deployment is a separate concern** (see `docs/DEPLOYMENT.md`): a manually authorized operation on an explicit release commit or tag. No workflow deploys; merging into `main` deploys nothing.
 
 ## Daily developer commands
 
 ```bash
-# start a feature from the latest development (never from production)
+# start a feature from the latest development (never from main)
 git fetch origin
 git switch development && git pull --ff-only
 git switch -c feature/daksh-rate-card-export
@@ -36,7 +35,7 @@ corepack pnpm --filter @printout/api check
 
 # publish the branch and open a PR into development
 git push -u origin feature/daksh-rate-card-export
-gh pr create --base development --fill   # optional: --reviewer AmardeepManav (or singhdaksh7); add --draft while in progress
+gh pr create --base development --fill   # always pass --base: the default branch is main; optional: --reviewer AmardeepManav (or singhdaksh7); add --draft while in progress
 ```
 
 Rules: one logical feature per branch; keep it small enough to review; rebase or merge `development` into your branch if it has moved (never force-push a branch someone else has checked out); do not commit secrets, `.env` files, database dumps or large binaries (design PDFs stay out of Git).
@@ -50,7 +49,7 @@ Rules: one logical feature per branch; keep it small enough to review; rebase or
 
 ## CI (`.github/workflows/ci.yml`)
 
-Runs on pull requests and pushes to `development` and `production` (and `main`, which stays a trigger because it is a protected permanent branch). Least-privilege (`contents: read`), actions pinned to commit SHAs, concurrent PR runs cancel superseded ones, every job has a timeout, pnpm is cached.
+Runs on pull requests and pushes to `development` and `main`, the two permanent branches. Least-privilege (`contents: read`), actions pinned to commit SHAs, concurrent PR runs cancel superseded ones, every job has a timeout, pnpm is cached.
 
 | Job (check name) | What it runs |
 |---|---|
@@ -75,19 +74,19 @@ CI uses disposable databases only and has no secrets. It never deploys and never
 
 ## Merge policy
 
-Two developers with **equal authority**: **singhdaksh7** (Daksh) and **AmardeepManav** (senior, write access). Either of them may merge any pull request, including their own, as soon as the required CI checks pass. There is **no required approval** on `development` or `production`; the safety nets are the mandatory pull request, the five green CI checks and resolved conversations.
+Two developers with **equal authority**: **singhdaksh7** (Daksh) and **AmardeepManav** (senior, write access). Either of them may merge any pull request, including their own, as soon as the required CI checks pass. There is **no required approval** on `development` or `main`; the safety nets are the mandatory pull request, the five green CI checks and resolved conversations.
 
 - Reviews are optional. Ask for one when a change is risky: `gh pr create --reviewer AmardeepManav` (or `--reviewer singhdaksh7`).
 - `.github/CODEOWNERS` lists both developers for the whole repository, only so GitHub offers each as a reviewer of the other's PRs (it requests everyone except the author). Code-owner review is **not** required (`require_code_owner_review: false`), and nobody is required to approve.
 - A PR author can merge their own PR. Nothing can bypass failing CI.
 - A review that requests changes is a human signal, not a technical block here: resolve it before merging.
-- Releases (`development` to `production`) still go through a PR, must be green, and follow the release verification steps below (staging checks, migration and backup readiness) before anyone merges.
+- Releases (`development` to `main`) still go through a PR, must be green, and follow the release verification steps below (staging checks, migration and backup readiness) before anyone merges.
 
 ## Protection settings (active)
 
-Applied from the reference payloads in `.github/rulesets/` (`development.json`, `production.json`); required check names match the contexts reported by real CI runs. Manage them under Settings > Rules > Rulesets, or `gh api -X PUT repos/singhdaksh7/printout-/rulesets/<id> --input .github/rulesets/<file>.json`. The production ruleset targets `refs/heads/production` and `refs/heads/main`; `main` is frozen for ordinary development and exists only for legacy compatibility.
+Applied from the reference payloads in `.github/rulesets/` (`development.json`, `main.json`); required check names match the contexts reported by real CI runs. Manage them under Settings > Rules > Rulesets, or `gh api -X PUT repos/singhdaksh7/printout-/rulesets/<id> --input .github/rulesets/<file>.json`. The `main` ruleset targets only `refs/heads/main`.
 
-| Rule | `development` | `production` |
+| Rule | `development` | `main` |
 |---|---|---|
 | Require pull request | yes | yes |
 | Required approving reviews | 0 | 0 |
@@ -102,7 +101,7 @@ Direct pushes are blocked as a consequence of "require pull request" (rulesets h
 
 ## Branch cleanup
 
-Only temporary branches are ever deleted. `development` and `production` are permanent: the rulesets block their deletion and force-pushes. The repository setting **Automatically delete head branches** (`delete_branch_on_merge`) is **enabled**; it was switched on only after both rulesets were active, because a release PR has `development` as its head branch and GitHub does not delete a head branch that a ruleset protects from deletion. Branches and worktrees that exist locally are never touched by this setting.
+Only temporary branches are ever deleted. `development` and `main` are permanent: the rulesets block their deletion and force-pushes. The repository setting **Automatically delete head branches** (`delete_branch_on_merge`) is **enabled**; it was switched on only after both rulesets were active, because a release PR has `development` as its head branch and GitHub does not delete a head branch that a ruleset protects from deletion. Merging a release PR (`development` into `main`) never deletes `development`. Branches and worktrees that exist locally are never touched by this setting.
 
 ```bash
 # verify after a merge: only permanent and still-open branches remain on the remote
@@ -111,13 +110,13 @@ gh api repos/singhdaksh7/printout-/branches --jq '.[].name'
 git switch development && git pull --ff-only && git fetch --prune
 ```
 
-## Release: `development` to `production`
+## Release: `development` to `main`
 
 1. `development` is green and the staging checklist below passes.
-2. `gh pr create --base production --head development --title "Release YYYY-MM-DD" `; the diff is the release notes. A review from the other developer is optional but recommended for a release.
+2. `gh pr create --base main --head development --title "Release YYYY-MM-DD"`; the diff is the release notes. A review from the other developer is optional but recommended for a release.
 3. All required checks green and the verification steps below complete before merging.
 4. Database: read the target's `_prisma_migrations`, take and trial-restore a backup (`deploy/backup-db.sh`, `deploy/restore-db.sh`), and rehearse the new migrations on a restored copy.
-5. Merge the PR. **Merging does not deploy, does not run migrations and does not authorize a deployment.**
+5. Merge the PR. **Merging does not deploy, does not run migrations and does not authorize a deployment.** `development` stays intact.
 6. Deployment is a separate operation (`docs/DEPLOYMENT.md`, "Release and deployment procedure"). Only after explicit authorization, deploy deliberately from the server: `bash deploy/deploy.sh` (order: backup, migrate, up, health wait). Then run `deploy/smoke.mjs` and watch `/ready`, logs and the uptime monitor.
 7. Rollback: restore the pre-deploy backup and redeploy the previous image tag (migrations are forward-only).
 
@@ -128,21 +127,15 @@ Deploy the branch to a staging stack with a copy of production-like data (never 
 ## Hotfix
 
 ```bash
-git fetch origin && git switch -c hotfix/short-description origin/production
+git fetch origin && git switch -c hotfix/short-description origin/main
 # fix, test, commit
-gh pr create --base production        # CI green, then merge
-# deploy using the release steps above
+gh pr create --base main              # CI green, then merge
+# deploy separately, using the release steps above
 git switch -c hotfix/back-merge origin/development
-git merge origin/production           # bring the released fix back
+git merge origin/main                 # bring the released fix back
 gh pr create --base development
 git branch --contains <fix-sha> -r    # verify both branches contain it
 ```
-
-## `main` stays; it is not renamed
-
-`main` is not renamed, deleted or used for new releases. The existing server checkout and older integrations may still track `origin/main`, so it is preserved as a protected, frozen reference. New releases come only from `production`. The GitHub default branch remains `main` until the owner separately approves a change; a PR opened without `--base` therefore targets `main`, so **always pass `--base development` (or `--base production` for releases)**.
-
-Creating `production` (one time, from the verified `main` tip, never from `development`): `git push origin <main-tip-sha>:refs/heads/production` (no force). The production ruleset requires the five checks even on branch creation (`do_not_enforce_on_create: false`), which a brand-new branch can never satisfy, so the owner must either create the branch in the GitHub UI or temporarily set `do_not_enforce_on_create` to true on ruleset 25261486 and restore it immediately afterwards.
 
 ## Backups
 
