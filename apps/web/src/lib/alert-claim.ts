@@ -4,7 +4,7 @@ import { safeStorage } from '../shop/hooks';
  * Several tabs of the same shop each receive every live notification. Only one of them should toast and sound.
  * The tabs agree through localStorage: the highest notification seq already alerted is stored, and a tab alerts only
  * when it can raise that value. A visible tab claims immediately, hidden tabs wait a moment so the one the user is
- * looking at wins. Best effort (two tabs racing within the same millisecond could both alert); storage failure falls
+ * looking at wins. Atomic via Web Locks where available (older browsers fall back to a best-effort check); storage failure falls
  * back to "alert", never to silence.
  */
 export const CLAIM_KEY = 'printout.shop.lastAlertedSeq';
@@ -23,13 +23,20 @@ function tryClaim(seq: string): boolean {
   }
 }
 
-/** Resolves to true when THIS tab should alert for the notification. Cancel via the returned `cancel`. */
+/** Compare-and-set made atomic across tabs with the Web Locks API when the browser has it. */
+function claimAtomically(seq: string, onResult: (mine: boolean) => void): void {
+  const locks = typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { locks?: LockManager }).locks;
+  if (!locks) return onResult(tryClaim(seq));
+  locks.request('printout-shop-alert-claim', () => tryClaim(seq)).then(onResult, () => onResult(true));
+}
+
+/** Calls back with true when THIS tab should alert for the notification. Cancel via the returned function. */
 export function claimAlert(seq: string, onResult: (mine: boolean) => void): () => void {
   const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
   if (!hidden) {
-    onResult(tryClaim(seq));
+    claimAtomically(seq, onResult);
     return () => undefined;
   }
-  const t = setTimeout(() => onResult(tryClaim(seq)), HIDDEN_DELAY_MS);
+  const t = setTimeout(() => claimAtomically(seq, onResult), HIDDEN_DELAY_MS);
   return () => clearTimeout(t);
 }
