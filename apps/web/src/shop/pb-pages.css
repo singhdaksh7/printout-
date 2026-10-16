@@ -96,3 +96,7 @@
 .pb-theme.pb-login { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: var(--pb-space-4); background: var(--pb-n50); }
 .pb-login__card { width: 100%; max-width: 400px; }
 .pb-login__form { display: flex; flex-direction: column; gap: var(--pb-space-4); }
+
+/* Five phone tabs must fit 360px: keep each label on one line. */
+.pb-bottomnav__link { font-size: 11px; }
+.pb-bottomnav__link > span:last-child { white-space: nowrap; }
