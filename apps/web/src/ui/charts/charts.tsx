@@ -124,7 +124,7 @@ export function HeartbeatStrip({ blocks, summary, axis, className }: HeartbeatSt
       <div className="pb-heartbeat__strip" role="img" aria-label={summary}>
         {blocks.map((b, i) => <span key={i} className={`pb-heartbeat__block pb-heartbeat__block--${b}`} />)}
       </div>
-      {axis && <div className="pb-heartbeat__axis" aria-hidden="true">{axis.map((a) => <span key={a} className="pb-mono">{a}</span>)}</div>}
+      {axis && <div className="pb-heartbeat__axis" aria-hidden="true">{axis.map((a, i) => <span key={`${a}-${i}`} className="pb-mono">{a}</span>)}</div>}
       <ul className="pb-legend">
         {(Object.keys(HB_LABEL) as HeartbeatState[]).map((k) => (
           <li key={k}><span className={`pb-legend__swatch pb-heartbeat__block--${k}`} aria-hidden="true" />{HB_LABEL[k]}</li>

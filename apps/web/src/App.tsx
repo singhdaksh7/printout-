@@ -6,6 +6,9 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 const CustomerRoutes = lazy(() => import('./customer/CustomerRoutes'));
 const ShopRoutes = lazy(() => import('./shop/ShopRoutes'));
 const AdminRoutes = lazy(() => import('./admin/AdminRoutes'));
+// Component showcase: development only. `import.meta.env.DEV` is a build-time constant, so the dynamic import
+// (and the whole ui/showcase chunk) is dropped from production bundles.
+const UiShowcase = import.meta.env.DEV ? lazy(() => import('./ui/showcase/ComponentShowcase')) : null;
 
 export function App() {
   return (
@@ -15,6 +18,7 @@ export function App() {
         <Route path="/t/*" element={<CustomerRoutes />} />
         <Route path="/shop/*" element={<ShopRoutes />} />
         <Route path="/admin/*" element={<AdminRoutes />} />
+        {UiShowcase && <Route path="/ui-showcase/*" element={<UiShowcase />} />}
         <Route path="*" element={<Navigate to="/shop" replace />} />
       </Routes>
     </Suspense>

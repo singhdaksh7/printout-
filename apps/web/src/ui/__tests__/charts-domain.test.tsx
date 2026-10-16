@@ -59,6 +59,13 @@ describe('HBarList, HeartbeatStrip, SegmentedBar', () => {
     expect(screen.getByText('offline in shop hours')).toBeInTheDocument();
   });
 
+  it('HeartbeatStrip tolerates duplicate axis labels (unique React keys)', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<HeartbeatStrip blocks={['online']} summary="s" axis={['18:45', '06:45', '18:45']} />);
+    expect(err).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+
   it('SegmentedBar labels each non-empty segment', () => {
     render(<SegmentedBar summary="3 of 6 on latest" segments={[{ label: 'v1.4.2', value: 3, tone: 'ok' }, { label: 'v1.4.1', value: 1, tone: 'warn' }, { label: 'v0', value: 0 }]} caption="50% on latest" />);
     expect(screen.getByRole('img', { name: '3 of 6 on latest' })).toBeInTheDocument();
