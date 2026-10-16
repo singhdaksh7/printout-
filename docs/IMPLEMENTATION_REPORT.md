@@ -78,3 +78,7 @@ Not ready to deploy from this report alone: the work is unpushed, the migration 
 4. ~~History endpoint~~ built (order history list, summary, CSV). Open: export row cap (5,000) and whether to add a customer-reference column.
 5. Apply the migration to staging, then production, when ready.
 6. Stop the disposable test database when done: `docker rm -f printout-e2e-pg`.
+
+## 16. Real-time order notifications
+
+Added on `feature/daksh-realtime-notifications`: durable shop notifications (transactional outbox table `ShopNotification`, additive migration `20261016195159_shop_notifications`), inbox API (`GET /shop/notifications`, `POST /shop/notifications/:id/read`, `POST /shop/notifications/read-all`), `notification.created` on the existing `/shop/events` stream, a bounded cross-process poller, retention sweep in the worker, and the shop notification bell (unread badge, panel, toast, optional shared sound, multi-tab de-duplication). Design, guarantees and limits: `docs/REALTIME_NOTIFICATIONS.md`. The Print queue's old "beep on any refresh that finds a new order" was replaced by the single live-notification sound (it rang on reload and reconnect).
