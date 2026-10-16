@@ -1,6 +1,6 @@
 # Git workflow and CI/CD
 
-Two developers, two long-lived branches, short-lived feature branches, reviewed pull requests, CI on every change. **CI and deployment are separate**: nothing in this repository deploys automatically.
+Two developers, three permanent branches, short-lived feature branches, pull requests, CI on every change. **CI and deployment are separate**: nothing in this repository deploys automatically, and merging into any branch never authorizes a deployment.
 
 ```
 feature/<dev>-<topic>  --PR-->  development  --release PR-->  production
@@ -8,6 +8,7 @@ feature/<dev>-<topic>  --PR-->  development  --release PR-->  production
 
 | Branch | Role | Who changes it |
 |---|---|---|
+| `main` | **legacy/reference, frozen.** Kept unchanged for the existing server checkout and older integrations. Not a merge destination for features or releases and never the source of a new release. Still the GitHub default branch (changing that needs separate owner approval) | nobody, in ordinary work |
 | `development` | shared integration; always green | pull requests from feature, fix and hotfix back-merge branches |
 | `production` | stable, releasable | release pull requests from `development`, and hotfix pull requests; always through a PR with green CI |
 
@@ -15,13 +16,11 @@ Temporary branches: `feature/<developer>-<topic>` (for example `feature/daksh-ra
 
 ## Current state (verify before relying on it)
 
-Verified 2026-10-16 through the GitHub API:
-
-- The stable branch is still named **`main`** and is the default branch. The rename to `production` is **intentionally not done yet**: the production server is a self-hosted Docker stack whose Git checkout and `git pull` upstream could not be inspected (see "Branch rename procedure"). Until the rename, read `main` as `production` everywhere below.
-- Two active rulesets: `development protection` (id 25244979, refs/heads/development) and `production protection` (id 25261486, refs/heads/production **and** refs/heads/main, so the stable branch is protected today and stays protected after the rename). Both: pull request required, **0** approvals, code-owner review not required, resolved conversations, the five CI checks required with the branch up to date, no force-push, no deletion, no bypass actors.
-- Repository setting "Automatically delete head branches" is **on**: merged temporary branches disappear from the remote; `development` and the stable branch cannot be deleted (ruleset), so a release PR never removes `development`.
+- **Three permanent branches**: `main` (legacy/reference, default branch, frozen, never renamed or deleted), `development` (active integration) and `production` (release branch, to be created from the former stable `main` tip `7809abf`, never from `development`, and not merged with `development` until the first release PR). **`main` is not renamed**; the earlier plan to rename it is cancelled.
+- Rulesets (active, no bypass actors): `development protection` (id 25244979, `refs/heads/development`) and `production protection` (id 25261486, `refs/heads/production` and `refs/heads/main`). Every permanent branch: pull request required, **0** approvals, code-owner review not required, resolved conversations, the five CI checks required with the branch up to date, no force-push, no deletion.
+- Repository setting "Automatically delete head branches" is **on**: merged temporary branches disappear from the remote; the permanent branches cannot be deleted (ruleset), so a release PR never removes `development`.
 - Both developers can merge any eligible PR: `singhdaksh7` (admin) and `AmardeepManav` (write).
-- `main` and `development` differ on purpose: `development` carries reviewed work that has not been released.
+- **Deployment is a fourth, separate concern** (see `docs/DEPLOYMENT.md`): a manually authorized operation on an explicit release commit or tag. No workflow deploys; merging into `production` deploys nothing.
 
 ## Daily developer commands
 
@@ -51,7 +50,7 @@ Rules: one logical feature per branch; keep it small enough to review; rebase or
 
 ## CI (`.github/workflows/ci.yml`)
 
-Runs on pull requests and pushes to `development` and `production` (and `main` until it is renamed; remove that entry in the same change that completes the rename). Least-privilege (`contents: read`), actions pinned to commit SHAs, concurrent PR runs cancel superseded ones, every job has a timeout, pnpm is cached.
+Runs on pull requests and pushes to `development` and `production` (and `main`, which stays a trigger because it is a protected permanent branch). Least-privilege (`contents: read`), actions pinned to commit SHAs, concurrent PR runs cancel superseded ones, every job has a timeout, pnpm is cached.
 
 | Job (check name) | What it runs |
 |---|---|
@@ -86,7 +85,7 @@ Two developers with **equal authority**: **singhdaksh7** (Daksh) and **AmardeepM
 
 ## Protection settings (active)
 
-Applied from the reference payloads in `.github/rulesets/` (`development.json`, `production.json`); required check names match the contexts reported by real CI runs. Manage them under Settings > Rules > Rulesets, or `gh api -X PUT repos/singhdaksh7/printout-/rulesets/<id> --input .github/rulesets/<file>.json`. The production ruleset targets both `refs/heads/production` and `refs/heads/main` until the rename.
+Applied from the reference payloads in `.github/rulesets/` (`development.json`, `production.json`); required check names match the contexts reported by real CI runs. Manage them under Settings > Rules > Rulesets, or `gh api -X PUT repos/singhdaksh7/printout-/rulesets/<id> --input .github/rulesets/<file>.json`. The production ruleset targets `refs/heads/production` and `refs/heads/main`; `main` is frozen for ordinary development and exists only for legacy compatibility.
 
 | Rule | `development` | `production` |
 |---|---|---|
@@ -118,8 +117,8 @@ git switch development && git pull --ff-only && git fetch --prune
 2. `gh pr create --base production --head development --title "Release YYYY-MM-DD" `; the diff is the release notes. A review from the other developer is optional but recommended for a release.
 3. All required checks green and the verification steps below complete before merging.
 4. Database: read the target's `_prisma_migrations`, take and trial-restore a backup (`deploy/backup-db.sh`, `deploy/restore-db.sh`), and rehearse the new migrations on a restored copy.
-5. Merge the PR. **Merging does not deploy and does not run migrations.**
-6. Deploy deliberately from the server: `bash deploy/deploy.sh` (order: backup, migrate, up, health wait). Then run `deploy/smoke.mjs` and watch `/ready`, logs and the uptime monitor.
+5. Merge the PR. **Merging does not deploy, does not run migrations and does not authorize a deployment.**
+6. Deployment is a separate operation (`docs/DEPLOYMENT.md`, "Release and deployment procedure"). Only after explicit authorization, deploy deliberately from the server: `bash deploy/deploy.sh` (order: backup, migrate, up, health wait). Then run `deploy/smoke.mjs` and watch `/ready`, logs and the uptime monitor.
 7. Rollback: restore the pre-deploy backup and redeploy the previous image tag (migrations are forward-only).
 
 ### Staging checklist
@@ -139,26 +138,11 @@ gh pr create --base development
 git branch --contains <fix-sha> -r    # verify both branches contain it
 ```
 
-## Branch rename procedure (`main` to `production`), NOT done; needs owner approval and a server check
+## `main` stays; it is not renamed
 
-Findings of the 2026-10-16 audit: GitHub has no webhooks, deploy keys, environments, deployments or workflows referring to `main`; no Vercel project and no Render service in the owner's accounts uses this repository. Also checked (read-only): no Netlify project matches the repository, and the only Hostinger Git connection belongs to a different GitHub account. **Not verified (blocks the rename):** the production server's checkout and upstream (`deploy/deploy.sh` is run after `git pull`, which would break if the server tracks `origin/main`), any scheduled `git pull`, forks, and local clones on other machines; the production deployment is a self-hosted Docker stack (`deploy/`) whose branch is whatever is checked out on that server.
+`main` is not renamed, deleted or used for new releases. The existing server checkout and older integrations may still track `origin/main`, so it is preserved as a protected, frozen reference. New releases come only from `production`. The GitHub default branch remains `main` until the owner separately approves a change; a PR opened without `--base` therefore targets `main`, so **always pass `--base development` (or `--base production` for releases)**.
 
-Before renaming, check: (1) the server's checkout (`git -C <path> branch --show-current`), (2) any hosting dashboard linked to the repository, (3) other developers' clones, (4) open pull requests (the rename retargets them).
-
-```bash
-# 1. fresh verified backup first: git bundle create <file> --all && git bundle verify <file>
-# 2. native rename (keeps history, retargets PRs, moves the default branch)
-gh api -X POST repos/singhdaksh7/printout-/branches/main/rename -f new_name=production
-# 3. every clone
-git fetch origin && git branch -m main production && git branch -u origin/production production && git remote set-head origin -a
-# 4. verify
-gh api repos/singhdaksh7/printout- --jq .default_branch                 # production
-gh api repos/singhdaksh7/printout-/branches --jq '.[].name'             # production, development
-# 5. remove `main` from the triggers in .github/workflows/ci.yml and from the production ruleset include list (the rulesets are already active)
-# 6. on the production server, repoint the checkout: git branch -m main production && git branch -u origin/production production
-```
-
-Rollback: `gh api -X POST repos/singhdaksh7/printout-/branches/production/rename -f new_name=main`, then repeat step 3 with the names swapped.
+Creating `production` (one time, from the verified `main` tip, never from `development`): `git push origin <main-tip-sha>:refs/heads/production` (no force). The production ruleset requires the five checks even on branch creation (`do_not_enforce_on_create: false`), which a brand-new branch can never satisfy, so the owner must either create the branch in the GitHub UI or temporarily set `do_not_enforce_on_create` to true on ruleset 25261486 and restore it immediately afterwards.
 
 ## Backups
 

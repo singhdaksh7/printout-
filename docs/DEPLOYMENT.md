@@ -182,7 +182,19 @@ External uptime monitor (UptimeRobot / BetterStack, free) on `https://<DOMAIN>/r
 
 **Deploy order is always: backup -> migrate -> up.** `bash deploy/deploy.sh` does all three (`git pull && bash deploy/deploy.sh`): it takes a backup first (and **aborts** if the backup fails; `SKIP_BACKUP=1` only if you backed up another way), runs `docker compose --env-file deploy/.env.production -f deploy/docker-compose.prod.yml run --rm migrate` (= `prisma migrate deploy`), then `up -d`. Only migrations are one-shot; a failing migration leaves the old containers running.
 
-**Branch note:** deployment is manual and never triggered by GitHub (CI has no deploy job, merging a PR deploys nothing). Whatever branch the server checkout tracks is what `git pull` fetches; today the stable branch is still named `main`. Before it is renamed to `production`, check the server (`git branch --show-current`, `git rev-parse --abbrev-ref @{u}`) and repoint it as described in `docs/GIT_WORKFLOW.md`.
+**Branch note:** deployment is manual and never triggered by GitHub (CI has no deploy job; merging a PR deploys nothing). `main` is a frozen legacy branch and is **not** the source of new releases; releases come from `production`. The existing server checkout may still track `origin/main`; do not change it without a separate authorized task.
+
+### Release and deployment procedure (every step manual)
+
+1. Merge `development` into `production` by pull request with the five CI checks green. This is not authorization to deploy.
+2. Select an immutable release: a `production` commit SHA or a version/signed tag on it.
+3. Verify migration compatibility (compare `_prisma_migrations` on the target with the release's migrations; rehearse on a restored copy).
+4. Back up the production database (`deploy/backup-db.sh`) and trial-restore it (`deploy/restore-db.sh`).
+5. Obtain explicit deployment authorization from the owner for that exact SHA or tag.
+6. On the server check out exactly that SHA or tag (`git fetch && git checkout <sha-or-tag>`) and run `bash deploy/deploy.sh` (backup, migrate, up).
+7. Run `deploy/smoke.mjs` and watch `/ready`, logs and the uptime monitor.
+8. Record the deployed SHA, time and result (deployment log).
+9. Rollback: redeploy the previous tag or SHA and, if a migration must be undone, restore the pre-deploy backup (migrations are forward-only); rehearse this on staging first.
 
 - Migrations are **forward-only** (no down migrations). Prefer additive (expand/contract) changes so the previous release still runs against the new schema.
 - **Code-only rollback:** `git checkout <previous tag> && bash deploy/deploy.sh`.
