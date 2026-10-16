@@ -141,7 +141,7 @@ Thin wrappers that only word and colour values the caller already has: no fetchi
 The library is additive. Screens keep their current markup until migrated, one family at a time, each as its own commit:
 
 1. Shop: **done**: queue, order detail, rate card, QR and standee, devices, analytics (the app's History-type screen; the design's History table needs an endpoint that does not exist), settings, shell and sign-in. Staff and Reports appear in the sidebar as non-interactive "Soon" items.
-2. Platform Admin: **done**: shell, dashboard, shops, shop detail, orders metadata, plans, subscriptions, audit log and sign-in. No 2FA, agent monitoring, support sessions or deletion audit (no backend).
+2. Platform Admin: **done**: shell, dashboard, shops, shop detail, orders metadata, plans, subscriptions, audit log and sign-in. Account settings (`/admin/account`: details, session, change email/password) uses the shared library plus a local Show/Hide `PasswordField` (TextField + Button). No 2FA, agent monitoring, support sessions or deletion audit (no backend).
 3. Customer: after approved designs are supplied.
 
 ### Stage 1: print queue and order detail (migrated)

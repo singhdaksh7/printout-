@@ -453,6 +453,40 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account:
+    get:
+      summary: "Signed-in admin's own profile and session metadata (no secrets)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: { id, email, displayName, role, createdAt, session } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/email:
+    post:
+      summary: "Change own email (requires currentPassword; ends all of the admin's sessions)"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, newEmail], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, newEmail: { type: string, format: email, maxLength: 254 } } }
+      responses:
+        '200': { description: 'Success: { data: { email, signedOut: true } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 400 VALIDATION_ERROR, 403 INVALID_CURRENT_PASSWORD, 409 EMAIL_UNAVAILABLE, 409 CONFLICT, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/password:
+    post:
+      summary: "Change own password (requires currentPassword; ends all of the admin's sessions)"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, newPassword: { type: string, minLength: 12, maxLength: 256 } } }
+      responses:
+        '200': { description: 'Success: { data: { signedOut: true } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 400 VALIDATION_ERROR, 403 INVALID_CURRENT_PASSWORD, 409 CONFLICT, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /admin/audit-logs:
     get:
       summary: "Audit entries (cursor)"

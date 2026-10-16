@@ -60,6 +60,22 @@ Run against a private DB (`printout_test_sec`).
 Accepted / remaining: counters, login throttle and SSE bus are per process (run one API instance); a document URL issued just before `deleteAfter` is bounded by it, but a cancelled order's URL stays valid until its (<= 5 min) TTL; HEAD against a missing bucket is indistinguishable from a missing object in S3 (`NotFound`), but deletes use DeleteObject whose `NoSuchBucket` now surfaces.
 
 
+## Admin account self-service (`feature/daksh-admin-security`)
+
+Routes: `GET /admin/account`, `POST /admin/account/email`, `POST /admin/account/password` (see API_CONTRACT). Tests: `apps/api/test/admin-account.test.ts`, `apps/web/src/admin/__tests__/account.test.tsx`, `e2e/10-admin-account.spec.ts`.
+
+| Control | Implementation |
+| --- | --- |
+| Authorization | `adminGuard` (PLATFORM_ADMIN + CSRF on POST). The target user id comes only from the session; bodies are `.strict()`, so no `userId` can be supplied. Shop owners get 403, anonymous 401. |
+| Re-authentication | Current password verified with Argon2id before any change; a wrong password is `403 INVALID_CURRENT_PASSWORD` (audited, metadata only). Failures count against a per-admin budget in `LoginThrottle` (`LOGIN_FAIL_MAX` per window), then `429`, even for the right password. The admin mutation limiter and per-IP ceiling also apply. |
+| Atomicity | Credential update (guarded on the old email and hash, so concurrent changes lose with 409), all sessions ended and the audit row are one transaction. A test makes the audit insert fail with a Postgres trigger and shows user, sessions and audit unchanged. |
+| Sessions | All of the admin's sessions end, including the caller's and other devices; the cookie is cleared. Same effect as `admin:update`. |
+| Enumeration | The caller is authenticated and re-authenticated. A taken email returns one generic `EMAIL_UNAVAILABLE` message for shop owners and admins alike (also on a database unique race). |
+| Secrets | The hash is never returned. Passwords are not logged (request bodies are not logged; `*.currentPassword` and `*.newPassword` were also added to the log redaction list), not echoed in errors and not in audit metadata (no addresses either). Responses are `Cache-Control: no-store`. A test captures the log stream. |
+| Policy | One implementation, `src/password-policy.ts`, shared with `bootstrap-admin` and `admin:update`. |
+
+Limitations (accepted): no email verification of the new address (no mail path for admins; 2FA/OTP was out of scope), so someone with a stolen session AND the password could re-point the account (bounded by the throttle); failed-password counters are per API process like the login throttle; an authenticated, re-authenticated admin can still learn whether an address is taken from the generic 409 (throttled); other devices learn their session ended only on their next API call (no push).
+
 ## Dependency advisories
 
 See [DEPENDENCIES.md](DEPENDENCIES.md): 3 production advisories (deepmerge-ts via the Prisma CLI, react-router x2) are unreachable in this app and need major upgrades; dev-only tooling advisories are listed there too. Deployment hardening evidence (containers, Caddy, backups) is in [DEPLOYMENT.md](DEPLOYMENT.md) and [PROD_SMOKE.md](PROD_SMOKE.md).
