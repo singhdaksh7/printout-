@@ -74,7 +74,16 @@ Routes: `GET /admin/account`, `POST /admin/account/email`, `POST /admin/account/
 | Secrets | The hash is never returned. Passwords are not logged (request bodies are not logged; `*.currentPassword` and `*.newPassword` were also added to the log redaction list), not echoed in errors and not in audit metadata (no addresses either). Responses are `Cache-Control: no-store`. A test captures the log stream. |
 | Policy | One implementation, `src/password-policy.ts`, shared with `bootstrap-admin` and `admin:update`. |
 
-Limitations (accepted): no email verification of the new address (no mail path for admins; 2FA/OTP was out of scope), so someone with a stolen session AND the password could re-point the account (bounded by the throttle); failed-password counters are per API process like the login throttle; an authenticated, re-authenticated admin can still learn whether an address is taken from the generic 409 (throttled); other devices learn their session ended only on their next API call (no push).
+### Unverified new email: risk review
+
+The new address is **not** verified (no confirmation link or code). Reviewed 2026-10-17 and accepted, because the email is only a sign-in identifier here:
+
+- **No recovery channel.** Nothing in the API resets a password by email, sends admins mail, or accepts an email as proof of identity. Admin recovery is the operator CLI (`bootstrap-admin` with `ADMIN_RESET_PASSWORD=1`, `admin:update`) with database access. Changing the email therefore cannot hand anyone a recovery path.
+- **Takeover needs the password.** The change requires the current password (Argon2id, throttled per admin) on top of a valid session and CSRF token. A stolen session alone cannot change the email or the password. Someone with a stolen session AND the password could re-point the login to an address they choose, but at that point they could equally change the password; both end every session and are audited.
+- **Typo lockout is the realistic risk** (the admin signs out on all devices and cannot sign in with a mistyped address). Mitigations: the UI requires the address to be typed twice and warns that there is no email-based recovery; the operator CLI repairs it.
+- **Revisit before** any feature that emails admins or resets passwords by email (for example merging the transactional email work): at that point the email becomes a recovery channel and changes must require verification of the new address (and a notice to the old one).
+
+Other limitations (accepted): failed-password counters are per API process like the login throttle; an authenticated, re-authenticated admin can still learn whether an address is taken from the generic 409 (throttled); other devices learn their session ended only on their next API call (no push); 2FA/OTP is out of scope.
 
 ## Dependency advisories
 
