@@ -140,13 +140,13 @@ Thin wrappers that only word and colour values the caller already has: no fetchi
 
 The library is additive. Screens keep their current markup until migrated, one family at a time, each as its own commit:
 
-1. Shop: **queue and order detail (done, stage 1)**, then rate card, QR, devices ("Printers"), history, settings, shell last.
-2. Platform Admin: overview, shops, shop detail, audit log, plans and subscriptions.
+1. Shop: **done**: queue, order detail, rate card, QR and standee, devices, analytics (the app's History-type screen; the design's History table needs an endpoint that does not exist), settings, shell and sign-in. Staff and Reports appear in the sidebar as non-interactive "Soon" items.
+2. Platform Admin: **done**: shell, dashboard, shops, shop detail, orders metadata, plans, subscriptions, audit log and sign-in. No 2FA, agent monitoring, support sessions or deletion audit (no backend).
 3. Customer: after approved designs are supplied.
 
 ### Stage 1: print queue and order detail (migrated)
 
-`shop/QueuePage.tsx`, `shop/OrderDetailPage.tsx`, styled with `shop/pb-pages.css`. Same routes (`/shop`, `/shop/orders/:id`), API calls, polling, realtime refresh, sound, retention countdowns, print/reprint/save/cancel behaviour and status wording. Built from `DataTable` (rows on desktop, cards below 768px), `Tabs`, `OrderStatusChip`, `Button`, `Banner`, `Modal`, `EmptyState`, `Card`, `KeyValueList`, `Timeline`, `LoadMore`, `useToast`. The page content uses the design's 1200px width via a scoped `:has()` rule, because the un-migrated shell caps content at 760px; remove it with the shell migration.
+`shop/QueuePage.tsx`, `shop/OrderDetailPage.tsx`, styled with `shop/pb-pages.css`. Same routes (`/shop`, `/shop/orders/:id`), API calls, polling, realtime refresh, sound, retention countdowns, print/reprint/save/cancel behaviour and status wording. Built from `DataTable` (rows on desktop, cards below 768px), `Tabs`, `OrderStatusChip`, `Button`, `Banner`, `Modal`, `EmptyState`, `Card`, `KeyValueList`, `Timeline`, `LoadMore`, `useToast`.
 
 Deliberate differences from `3.pdf` (backend or scope, not omissions by accident):
 

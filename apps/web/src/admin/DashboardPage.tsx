@@ -4,7 +4,7 @@ import { Button, Card, CardHeader, KeyValueList, StatTile } from '../ui';
 import { AdminOrderRows } from './OrdersPage';
 import { LoadError, Loading, useLoad } from './ui';
 
-const label = (k: string) => k.charAt(0) + k.slice(1).toLowerCase();
+const label = (k: string) => (k.charAt(0) + k.slice(1).toLowerCase()).replace(/_/g, ' ');
 const counts = (o: Record<string, number>) => Object.entries(o).map(([k, v]) => ({ label: label(k), value: v }));
 
 export default function DashboardPage() {
