@@ -21,6 +21,8 @@ import { json, type AppContext } from './routes/context.js';
 import { publicRoutes } from './routes/public.js';
 import { shopConfigRoutes } from './routes/shop-config.js';
 import { shopEventRoutes } from './routes/shop-events.js';
+import { shopNotificationRoutes } from './routes/shop-notifications.js';
+import { ShopNotificationHub } from './notifications/shop-notifications.js';
 import { shopOrderRoutes } from './routes/shop-orders.js';
 import { internalStorageRoutes } from './internal-storage.js';
 import { createStorage, type Storage } from './storage/index.js';
@@ -56,7 +58,11 @@ export function createApp(deps: AppDeps = {}) {
   const events = deps.events ?? new ShopEvents();
   const loginThrottle = new LoginThrottle(config.LOGIN_FAIL_MAX, config.LOGIN_FAIL_WINDOW_MINUTES * 60_000);
   const notifier = deps.notifier ?? new NoopNotifier();
-  const ctx: AppContext = { config, prisma, storage, events, loginThrottle, notifier };
+  const notifications = new ShopNotificationHub(prisma, config.NOTIFICATION_POLL_MS, (err) => {
+    // Never log payloads or ids: only the error class.
+    if (config.NODE_ENV !== 'test') console.error(JSON.stringify({ level: 'warn', msg: 'notification hub error', err: err instanceof Error ? err.name : 'unknown' }));
+  });
+  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, notifier };
 
   const app = Fastify({
     logger: {
@@ -116,6 +122,7 @@ export function createApp(deps: AppDeps = {}) {
 
   app.addHook('preClose', async () => {
     events.closeAll();
+    notifications.close();
   });
 
   if (config.NODE_ENV !== 'test') for (const warning of configWarnings(config)) app.log.warn(warning);
@@ -147,6 +154,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));
       await api.register((i) => shopEventRoutes(i, ctx));
+      await api.register((i) => shopNotificationRoutes(i, ctx));
       await api.register((i) => adminRoutes(i, ctx));
       // Device foundation (Phase 2): pairing (public), owner device management, device-authenticated APIs.
       await api.register((i) => devicePairingRoutes(i, ctx));
@@ -161,5 +169,5 @@ export function createApp(deps: AppDeps = {}) {
   app.register(uploadRoutes, { prefix: '/api/v1', prisma, storage, config });
   app.register(internalStorageRoutes, { prefix: '/api/v1', prisma, storage, config });
 
-  return { app, prisma, storage, events, config, notifier };
+  return { app, prisma, storage, events, notifications, config, notifier };
 }
