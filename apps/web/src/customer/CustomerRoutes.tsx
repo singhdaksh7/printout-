@@ -1,4 +1,5 @@
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { BrandLogo } from '../ui';
 import './customer.css';
 import { CustomerErrorBoundary } from './ErrorBoundary';
 import { ShopPage } from './ShopPage';
@@ -11,12 +12,15 @@ export default function CustomerRoutes() {
   const tracking = useLocation().pathname.startsWith('/t/');
   const online = useOnline();
   return (
-    <CustomerErrorBoundary>
-      {!online && <div className="cx-offline" role="status">You&apos;re offline — uploading and ordering need a connection.</div>}
-      <Routes>
-        <Route path=":id" element={tracking ? <TrackingPage /> : <ShopPage />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </CustomerErrorBoundary>
+    <div className="pb-theme cx-root">
+      <CustomerErrorBoundary>
+        {!online && <div className="cx-offline" role="status">You&apos;re offline — uploading and ordering need a connection.</div>}
+        <header className="cx-brandbar"><BrandLogo /></header>
+        <Routes>
+          <Route path=":id" element={tracking ? <TrackingPage /> : <ShopPage />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </CustomerErrorBoundary>
+    </div>
   );
 }

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { useAuth } from '../shop/auth';
-import { Banner, Button, Card, TextField } from '../ui';
+import { Banner, BrandLogo, Button, Card, TextField } from '../ui';
 
 function loginErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
@@ -44,6 +44,7 @@ export default function LoginPage() {
 
   return (
     <div className="pb-theme pb-login">
+      <div className="pb-login__brand"><BrandLogo /></div>
       <Card as="section" className="pb-login__card">
         <form onSubmit={submit} aria-labelledby="ad-login-title" noValidate className="pb-login__form">
           <div>

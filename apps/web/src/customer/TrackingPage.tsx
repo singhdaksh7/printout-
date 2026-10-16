@@ -5,6 +5,7 @@ import { formatCountdown, formatPaise } from '../lib/format';
 import type { HistoryEntry, OrderStatus, TrackedOrder } from '../lib/customer-api';
 import { getRecentOrders } from '../lib/customer-storage';
 import { describeOptions } from './config';
+import { Button, buttonClass } from '../ui';
 import { Alert, NotFound, Skeleton } from './parts';
 import { TERMINAL, useOrder, useServerNow } from './useOrder';
 
@@ -133,8 +134,8 @@ export function TrackingPage() {
       </section>
 
       <div className="cx-row cx-gap cx-actions">
-        <button type="button" className="cx-btn" onClick={() => void copy()}>Copy tracking link</button>
-        {slug && <Link className="cx-btn" to={`/p/${encodeURIComponent(slug)}`}>Back to shop</Link>}
+        <Button variant="outline" onClick={() => void copy()}>Copy tracking link</Button>
+        {slug && <Link className={buttonClass({ variant: 'outline' })} to={`/p/${encodeURIComponent(slug)}`}>Back to shop</Link>}
         <span className="cx-small cx-muted" role="status">{copied ? 'Link copied' : ''}</span>
       </div>
       {!TERMINAL.includes(order.status) && <p className="cx-small cx-muted">This page updates automatically.</p>}

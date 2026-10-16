@@ -59,7 +59,7 @@
 .pb-seg__opt::after { content: ''; position: absolute; inset: -6px 0; } /* 44px hit area */
 .pb-seg__input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: inherit; }
 .pb-seg__text {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
   padding: 0 var(--pb-space-3); border-radius: 999px;
   font: 600 var(--pb-text-label)/1 var(--pb-font-body); color: var(--pb-n700);
   transition: background-color var(--pb-dur-fast) var(--pb-ease), color var(--pb-dur-fast) var(--pb-ease);
@@ -83,3 +83,14 @@
 .pb-tab[aria-selected='true'] { background: var(--pb-white); color: var(--pb-navy); box-shadow: 0 1px 2px rgba(20, 33, 61, 0.12); }
 .pb-tab:disabled { opacity: 0.55; cursor: not-allowed; }
 .pb-tab[aria-selected='true'] .pb-seg__count { color: var(--pb-n700); }
+
+/* Phones: the label never wraps inside a segment, the track fills the row, and small buttons reach the 44px touch target. */
+@media (max-width: 767px) {
+  .pb-btn--sm { min-height: var(--pb-target); }
+  .pb-btn--sm::after, .pb-iconbtn--sm::after { display: none; }
+  .pb-iconbtn--sm { width: var(--pb-target); height: var(--pb-target); }
+}
+@media (max-width: 479px) {
+  .pb-seg--md .pb-seg__text { padding: 0 var(--pb-space-2); font-size: 13px; }
+  .pb-seg--md .pb-seg__opt { flex: 1 1 auto; }
+}

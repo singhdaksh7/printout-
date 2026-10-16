@@ -1,13 +1,17 @@
-import type { MouseEvent, ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { matchPath, NavLink, useLocation } from 'react-router-dom';
+import { IconButton } from '../actions/IconButton';
 import { cx } from '../cx';
 import { Icon, type IconName } from '../icons/Icon';
+import { useFocusTrap } from '../overlays/useFocusTrap';
 import { Badge } from '../status/Badge';
 import './navigation.css';
 
 export interface NavItem {
   to: string;
   label: string;
+  /** Shorter label for the phone tab bar, where six tabs share 360px. Falls back to `label`. */
+  shortLabel?: string;
   icon: IconName;
   /** Match only this exact path (e.g. the queue at `/shop`). */
   end?: boolean;
@@ -75,29 +79,95 @@ export function Sidebar({ label, brand, items, footer, onNavigate, className }: 
 
 export interface BottomNavProps {
   label: string;
-  /** Three to five destinations. The caller decides what goes under "More". */
+  /** Up to five destinations that stay visible. */
   items: ReadonlyArray<NavItem>;
+  /** Everything else. Shown in a "More" sheet so no destination is unreachable on a phone. Omit when nothing is left over. */
+  moreItems?: ReadonlyArray<NavItem>;
   onNavigate?: (e: MouseEvent<HTMLAnchorElement>) => void;
 }
 
-/** Phone tab bar (Queue, History, Printers, More). Visible below 768px only. */
-export function BottomNav({ label, items, onNavigate }: BottomNavProps) {
+/** Phone tab bar (visible below 768px only): the main destinations plus a "More" button that opens a sheet with the rest. */
+export function BottomNav({ label, items, moreItems = [], onNavigate }: BottomNavProps) {
+  const { pathname } = useLocation();
+  const [open, setOpen] = useState(false);
+  const more = moreItems.filter((i) => !i.comingSoon);
+  const moreActive = more.some((i) => matchPath({ path: i.to, end: i.end ?? false }, pathname));
+  useEffect(() => setOpen(false), [pathname]);
   return (
-    <nav aria-label={label} className="pb-bottomnav">
-      <ul>
-        {items.filter((i) => !i.comingSoon).map((it) => (
-          <li key={it.to}>
-            <NavLink to={it.to} end={it.end} onClick={onNavigate} className={({ isActive }) => cx('pb-bottomnav__link', isActive && 'is-active')}>
-              <span className="pb-bottomnav__icon">
-                <Icon name={it.icon} size={22} />
-                {it.count !== undefined && it.count > 0 && <Badge tone="orange" className="pb-bottomnav__badge" aria-label={`${it.count} new`}>{it.count}</Badge>}
-              </span>
-              <span>{it.label}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <>
+      <nav aria-label={label} className="pb-bottomnav">
+        <ul>
+          {items.filter((i) => !i.comingSoon).map((it) => (
+            <li key={it.to}>
+              <NavLink to={it.to} end={it.end} onClick={onNavigate} className={({ isActive }) => cx('pb-bottomnav__link', isActive && 'is-active')}>
+                <span className="pb-bottomnav__icon">
+                  <Icon name={it.icon} size={22} />
+                  {it.count !== undefined && it.count > 0 && <Badge tone="orange" className="pb-bottomnav__badge" aria-label={`${it.count} new`}>{it.count}</Badge>}
+                </span>
+                <span>{it.shortLabel ?? it.label}</span>
+              </NavLink>
+            </li>
+          ))}
+          {more.length > 0 && (
+            <li>
+              <button type="button" className={cx('pb-bottomnav__link', (moreActive || open) && 'is-active')} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+                <span className="pb-bottomnav__icon"><Icon name="ellipsis" size={22} /></span>
+                <span>More</span>
+              </button>
+            </li>
+          )}
+        </ul>
+      </nav>
+      {open && <MoreSheet label={label} items={more} onClose={() => setOpen(false)} onNavigate={onNavigate} />}
+    </>
+  );
+}
+
+function MoreSheet({ label, items, onClose, onNavigate }: { label: string; items: ReadonlyArray<NavItem>; onClose: () => void; onNavigate?: ((e: MouseEvent<HTMLAnchorElement>) => void) | undefined }) {
+  const { ref, onKeyDown } = useFocusTrap<HTMLDivElement>({ onEscape: onClose });
+  return (
+    <div className="pb-sheet-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} className="pb-sheet" role="dialog" aria-modal="true" aria-label="More" onKeyDown={onKeyDown} tabIndex={-1}>
+        <div className="pb-sheet__header">
+          <h2 className="pb-sheet__title">More</h2>
+          <IconButton icon="x" label="Close" onClick={onClose} />
+        </div>
+        <nav aria-label={`${label}, more`}>
+          <ul className="pb-sheet__list">
+            {items.map((it) => (
+              <li key={it.to}>
+                <NavLink to={it.to} end={it.end} onClick={(e) => { onNavigate?.(e); if (!e.defaultPrevented) onClose(); }} className={({ isActive }) => cx('pb-sheet__link', isActive && 'is-active')}>
+                  <Icon name={it.icon} size={22} />
+                  <span>{it.label}</span>
+                  <Icon name="chevron-right" size={18} className="pb-sheet__chev" />
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+export interface BrandLogoProps {
+  /** Second line under the name, e.g. "Platform admin". */
+  sub?: string;
+  /** For the navy sidebar. */
+  onDark?: boolean;
+  className?: string;
+}
+
+/** The product lockup: orange brand tile with the printer mark, then the PrintoutBuddy wordmark (Rubik 700). */
+export function BrandLogo({ sub, onDark, className }: BrandLogoProps) {
+  return (
+    <span className={cx('pb-brand', onDark && 'pb-brand--on-dark', className)}>
+      <span className="pb-brand__tile" aria-hidden="true"><Icon name="printer" size={20} /></span>
+      <span className="pb-brand__text">
+        <span className="pb-brand__name">PrintoutBuddy</span>
+        {sub && <span className="pb-brand__sub">{sub}</span>}
+      </span>
+    </span>
   );
 }
 

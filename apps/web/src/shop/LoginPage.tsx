@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { Banner, Button, Card, TextField } from '../ui';
+import { Banner, BrandLogo, Button, Card, TextField } from '../ui';
 import { useAuth } from './auth';
 
 function loginErrorMessage(e: unknown): string {
@@ -47,6 +47,7 @@ export default function LoginPage() {
 
   return (
     <div className="pb-theme pb-login">
+      <div className="pb-login__brand"><BrandLogo /></div>
       <Card as="section" className="pb-login__card">
         <form onSubmit={submit} aria-labelledby="login-title" noValidate className="pb-login__form">
           <div>

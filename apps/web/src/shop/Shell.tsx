@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { listOrders } from '../lib/shop-api';
 import { useAuth } from './auth';
-import { AppShell, Banner, BottomNav, Button, Chip, Sidebar, TopBar, type ChipTone, type NavItem } from '../ui';
+import { AppShell, Banner, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, type ChipTone, type NavItem } from '../ui';
 import { ShopErrorBoundary, UnsavedContext, UNSAVED_PROMPT } from './components';
 import { useAutoRefresh, useDebounced } from './hooks';
 import { useRealtime, useRealtimeRefresh } from './realtime';
 
 /** Sidebar (desktop and tablet) destinations. Staff and Reports have no backend yet, so they are labelled Coming soon and are not links. */
 const NAV_ITEMS: NavItem[] = [
-  { to: '/shop', label: 'Print queue', end: true, icon: 'list-ordered' },
+  { to: '/shop', label: 'Print queue', shortLabel: 'Queue', end: true, icon: 'list-ordered' },
   { to: '/shop/history', label: 'History', icon: 'clock' },
   { to: '/shop/analytics', label: 'Analytics', icon: 'chart-column' },
   { to: '/shop/devices', label: 'Devices', icon: 'printer' },
@@ -19,8 +19,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/shop/staff', label: 'Staff', icon: 'users', comingSoon: true },
   { to: '/shop/reports', label: 'Reports', icon: 'receipt', comingSoon: true }
 ];
-/** Phone tab bar: the same destinations minus Devices (reached from Settings) and Analytics (linked from History) so the five labels fit 360px. */
-const PHONE_PATHS = ['/shop', '/shop/history', '/shop/pricing', '/shop/qr', '/shop/settings'];
+/** Phone tab bar: five destinations stay visible; the rest (QR & standee, Settings) live under "More", so nothing is hidden or reachable only by a side link. */
+const PHONE_PATHS = ['/shop', '/shop/history', '/shop/analytics', '/shop/devices', '/shop/pricing'];
 
 const CONN_LABEL = { live: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', offline: 'Offline' } as const;
 const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'err' };
@@ -74,11 +74,12 @@ export default function Shell() {
   const shopName = state.status === 'authed' ? (state.session.shop?.displayName ?? 'Printout') : 'Printout';
   const items = NAV_ITEMS.map((i) => (i.to === '/shop' ? { ...i, count: newCount } : i));
   const phoneItems = items.filter((i) => PHONE_PATHS.includes(i.to));
+  const moreItems = items.filter((i) => !PHONE_PATHS.includes(i.to));
   return (
     <UnsavedContext.Provider value={guard}>
       <AppShell
         notice={(!online || conn === 'offline') ? <Banner tone="warn" layout="bar">You are offline. Orders may be out of date until the connection returns.</Banner> : undefined}
-        sidebar={<Sidebar label="Shop sections" brand={<span className="pb-brandmark">PrintoutBuddy</span>} items={items} onNavigate={onNavClick} />}
+        sidebar={<Sidebar label="Shop sections" brand={<BrandLogo onDark />} items={items} onNavigate={onNavClick} />}
         topbar={
           <TopBar
             start={<span className="pb-shopname" title={shopName}>{shopName}</span>}
@@ -88,7 +89,7 @@ export default function Shell() {
             </>}
           />
         }
-        bottomNav={<BottomNav label="Shop sections, phone" items={phoneItems} onNavigate={onNavClick} />}
+        bottomNav={<BottomNav label="Shop sections, phone" items={phoneItems} moreItems={moreItems} onNavigate={onNavClick} />}
       >
         <ShopErrorBoundary><Outlet /></ShopErrorBoundary>
       </AppShell>
