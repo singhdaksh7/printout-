@@ -54,6 +54,17 @@ They truncate it, so never point `TEST_DATABASE_URL` elsewhere, and do not run t
 See `docs/DEPLOYMENT.md` (single VPS, Docker, Caddy HTTPS, PostgreSQL, private R2/S3). Nothing is deployed from this repository automatically.
 Security findings and accepted risks: `docs/SECURITY_REVIEW.md`.
 
+## Development workflow
+
+Two permanent branches: `main` (production: approved, releasable code; the default branch) and `development` (integration). There is no separate `production` branch. Deployment is a separate, manually authorized step; merging into `main` does not deploy. Work happens on short-lived branches such as `feature/<your-name>-<topic>` (any developer uses their own name; names are flexible), always created from the latest `development`, merged by pull request once the five CI checks pass (mandatory PR, zero required approvals, direct pushes and force-pushes blocked; either developer may merge, including their own PR; reviews are optional, and `.github/CODEOWNERS` offers each developer as reviewer of the other) (`.github/workflows/ci.yml`). Releases are a reviewed pull request from `development` to `production`; merging does not deploy or migrate anything. Merged temporary branches are deleted automatically; the two permanent branches never are. Commands, hotfixes, protection settings and troubleshooting: `docs/GIT_WORKFLOW.md`.
+
+```bash
+git fetch origin && git switch development && git pull --ff-only
+git switch -c feature/<your-name>-<topic>
+# ...commit, then
+git push -u origin feature/<your-name>-<topic> && gh pr create --base development --fill
+```
+
 ## Principles
 
 - One shared, tenant-isolated platform; tenant identity comes only from the authenticated session.
