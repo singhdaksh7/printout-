@@ -6,7 +6,8 @@ import { getAnalytics, listOrders, describeError, type OrderSummary } from '../l
 import { Banner, Button, Card, Checkbox, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Tabs, buttonClass, cx, type Column } from '../ui';
 import { pageSelectionText } from './components';
 import { useAuth } from './auth';
-import { ageLabel, safeStorage, useAutoRefresh, useDebounced, useTick } from './hooks';
+import { useAlertSound } from './alert-sound';
+import { ageLabel, useAutoRefresh, useDebounced, useTick } from './hooks';
 import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useRealtimeRefresh } from './realtime';
 import './pb-pages.css';
@@ -258,29 +259,12 @@ const OrderCard = memo(function OrderCard({ o, onChanged }: { o: OrderSummary; o
   );
 });
 
-function useBeep() {
-  const [on, setOn] = useState(() => safeStorage()?.getItem('printout.shop.sound') === '1');
-  const toggle = () => setOn((v) => { safeStorage()?.setItem('printout.shop.sound', v ? '0' : '1'); return !v; });
-  const beep = useCallback(() => {
-    try {
-      const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AC) return;
-      const ctx = new AC();
-      const osc = ctx.createOscillator(), gain = ctx.createGain();
-      osc.frequency.value = 880; gain.gain.value = 0.05;
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(); osc.stop(ctx.currentTime + 0.18);
-      osc.onended = () => void ctx.close();
-    } catch { /* sound is optional */ }
-  }, []);
-  return { on, toggle, beep };
-}
-
 export default function QueuePage() {
   const [tabKey, setTabKey] = useState('new');
   const tab = TABS.find((t) => t.key === tabKey)!;
   const q = useQueue(tab);
-  const sound = useBeep();
+  // The chime itself is played once per live notification by the shop shell (shop/notifications.tsx); the queue only owns the checkbox.
+  const sound = useAlertSound();
   const { state: auth } = useAuth();
   const retentionMinutes = auth.status === 'authed' ? auth.session.retentionMinutes : undefined;
 
@@ -301,15 +285,6 @@ export default function QueuePage() {
   const debounced = useDebounced(refreshAll, 300);
   useRealtimeRefresh(debounced);
   useAutoRefresh(refreshAll, 45_000);
-
-  // beep for a newly arrived NEW order (only if the user switched sound on; never autoplays otherwise)
-  const lastTick = useRef(0);
-  useEffect(() => {
-    if (q.freshTick !== lastTick.current) {
-      lastTick.current = q.freshTick;
-      if (sound.on && q.newestFresh.current && Date.now() - q.newestFresh.current < 2000) sound.beep();
-    }
-  }, [q.freshTick, q.newestFresh, sound]);
 
   // when a retention countdown reaches zero, refetch once so the card flips to "File deleted"
   const expired = useTick(() => q.items.filter((o) => o.deleteAfter && o.documentStatus !== 'DELETED' && Date.parse(o.deleteAfter) <= Date.now()).length);
@@ -334,7 +309,7 @@ export default function QueuePage() {
           <h1 id="queue-title" className="pb-h1">Print queue</h1>
           <p className="pb-muted pb-pagehead__sub">Newest first. Files are deleted automatically {retentionPhrase(retentionMinutes)} after you press Print.</p>
         </div>
-        <Checkbox label="Sound for new orders" checked={sound.on} onChange={sound.toggle} />
+        <Checkbox label="Sound for new orders" checked={sound.enabled} onChange={() => sound.set(!sound.enabled)} />
       </div>
       {stats && (
         <div className="pb-stats pb-stats--queue" aria-label="Today at a glance" role="group" data-testid="queue-stats">

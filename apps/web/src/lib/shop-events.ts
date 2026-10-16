@@ -1,5 +1,5 @@
 // Testable SSE client. EventSource is injectable; reconnect with exponential backoff when the browser gives up.
-export const SHOP_EVENT_NAMES = ['order.created', 'order.updated', 'order.statusChanged', 'document.deletionScheduled', 'document.deleted'] as const;
+export const SHOP_EVENT_NAMES = ['order.created', 'order.updated', 'order.statusChanged', 'document.deletionScheduled', 'document.deleted', 'notification.created'] as const;
 export type ShopEventName = (typeof SHOP_EVENT_NAMES)[number];
 export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline';
 export interface ShopEvent { type: string; data: Record<string, unknown> | null; id: string }
@@ -67,7 +67,9 @@ export function createEventSourceClient(opts: EventClientOptions): EventClient {
     for (const name of SHOP_EVENT_NAMES) {
       source.addEventListener(name, (m) => {
         const id = (m as MessageEvent).lastEventId || '';
-        if (id) {
+        // notification.created carries no SSE id (a browser reports the stream's LAST id for it, which would look like a
+        // duplicate); it is de-duplicated by notification id in shop/notifications.tsx instead.
+        if (id && name !== 'notification.created') {
           if (seen.includes(id)) return;
           seen.push(id);
           if (seen.length > 100) seen.shift();
