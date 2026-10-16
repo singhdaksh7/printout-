@@ -27,7 +27,7 @@ export default defineConfig({
       timeout: 60_000
     },
     {
-      command: 'corepack pnpm exec vite --port 5273 --strictPort',
+      command: 'corepack pnpm exec vite --port ' + WEB_PORT + ' --strictPort',
       cwd: web,
       url: `http://localhost:${WEB_PORT}/`,
       env: { VITE_API_TARGET: `http://localhost:${API_PORT}` },
@@ -35,7 +35,7 @@ export default defineConfig({
       timeout: 60_000
     },
     {
-      command: 'corepack pnpm exec vite build && corepack pnpm exec vite preview --port 5274 --strictPort',
+      command: 'corepack pnpm exec vite build && corepack pnpm exec vite preview --port ' + PREVIEW_PORT + ' --strictPort',
       cwd: web,
       url: `http://localhost:${PREVIEW_PORT}/`,
       env: { VITE_API_TARGET: `http://localhost:${API_PORT}` },
