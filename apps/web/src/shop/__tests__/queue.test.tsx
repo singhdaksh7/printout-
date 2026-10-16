@@ -30,6 +30,23 @@ const initiated = (over: Partial<OrderSummary> = {}) =>
   order({ status: 'PRINTING', documentStatus: 'PRINTED_RETENTION', printInitiatedAt: new Date().toISOString(), deleteAfter: new Date(Date.now() + 27 * 60_000).toISOString(), ...over });
 
 describe('queue', () => {
+  it('summary strip shows real analytics numbers and the queue still works when analytics is unavailable', async () => {
+    const analytics: Handler = ({ method, path }) =>
+      method === 'GET' && path === '/shop/analytics' ? { data: { newPrintRequests: 3, ordersToday: 9, pagesToday: 120, printsInitiated: 5 } } : undefined;
+    mockFetch(authedSession, analytics, orders({ items: [order()] }));
+    renderShop('/shop');
+    const strip = within(await screen.findByTestId('queue-stats'));
+    expect(strip.getByText('Waiting for print').closest('div')).toHaveTextContent('3');
+    expect(strip.getByText('Orders today').closest('div')).toHaveTextContent('9');
+    expect(strip.getByText('Pages today').closest('div')).toHaveTextContent('120');
+    expect(await screen.findByTestId('order-card')).toBeInTheDocument();
+    cleanup();
+    mockFetch(authedSession, orders({ items: [order()] }));
+    renderShop('/shop');
+    expect(await screen.findByTestId('order-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('queue-stats')).toBeNull();
+  });
+
   it('New request card shows everything the shopkeeper needs to print, and Print is the primary action', async () => {
     mockFetch(authedSession, orders({ items: [order({ paperSize: 'A4', pageSelection: { mode: 'ranges', ranges: [{ from: 1, to: 3 }, { from: 7, to: 7 }] } })] }));
     renderShop('/shop');
