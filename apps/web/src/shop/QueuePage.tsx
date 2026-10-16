@@ -1,11 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
+import { retentionPhrase } from '../lib/retention';
 import { listOrders, describeError, type OrderSummary } from '../lib/shop-api';
-import { Banner, pageSelectionText, Skeleton, StatusChip } from './components';
+import { Banner, Button, Card, Checkbox, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, Tabs, buttonClass, cx, type Column } from '../ui';
+import { pageSelectionText } from './components';
+import { useAuth } from './auth';
 import { ageLabel, safeStorage, useAutoRefresh, useDebounced, useTick } from './hooks';
 import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useRealtimeRefresh } from './realtime';
+import './pb-pages.css';
 
 export interface Tab { key: string; label: string; query: { status?: string; active?: boolean; print?: 'pending' | 'initiated' } }
 export const TABS: Tab[] = [
@@ -110,10 +114,10 @@ function useQueue(tab: Tab) {
 function Retention({ deleteAfter, documentStatus }: { deleteAfter?: string | null | undefined; documentStatus?: string | undefined }) {
   const target = deleteAfter ? Date.parse(deleteAfter) : NaN;
   const secs = useTick(() => (Number.isNaN(target) ? 0 : Math.ceil((target - Date.now()) / 1000)));
-  if (documentStatus === 'DELETED') return <span className="sh-chip sh-chip-deleted">File deleted automatically ✓</span>;
+  if (documentStatus === 'DELETED') return <Chip tone="ok" size="sm" dot={false}>File deleted automatically ✓</Chip>;
   if (Number.isNaN(target)) return null;
-  if (secs <= 0) return <span className="sh-chip sh-chip-warn">Deleting…</span>;
-  return <span className="sh-chip sh-chip-retention">Deletes in {formatCountdown(secs * 1000)}</span>;
+  if (secs <= 0) return <Chip tone="warn" size="sm">Deleting…</Chip>;
+  return <Chip tone="orange" size="sm">Deletes in {formatCountdown(secs * 1000)}</Chip>;
 }
 
 function Age({ iso }: { iso: string }) {
@@ -121,9 +125,8 @@ function Age({ iso }: { iso: string }) {
   return <time dateTime={iso} title={new Date(iso).toLocaleString()}>{t}</time>;
 }
 
-export const OrderCard = memo(function OrderCard({ o, isNew, onChanged }: { o: OrderSummary; isNew: boolean; onChanged?: () => void }) {
-  const [busy, setBusy] = useState<'print' | 'save' | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+/** What the shopkeeper may do with an order's file right now (unchanged rules; the server still enforces access). */
+function useOrderFlags(o: OrderSummary) {
   const target = o.deleteAfter ? Date.parse(o.deleteAfter) : NaN;
   const secsLeft = useTick(() => (Number.isNaN(target) ? 0 : Math.ceil((target - Date.now()) / 1000)));
   const initiated = !!o.printInitiatedAt;
@@ -132,7 +135,81 @@ export const OrderCard = memo(function OrderCard({ o, isNew, onChanged }: { o: O
   // Print: a request nobody printed yet. Reprint: Print was pressed and the file is still inside its retention window.
   const canPrint = live && !initiated && o.documentStatus === 'AVAILABLE';
   const canReprint = live && initiated && !deleted && secsLeft > 0;
-  const hasFile = canPrint || canReprint;
+  return { secsLeft, initiated, canPrint, canReprint, hasFile: canPrint || canReprint };
+}
+
+const pagesLabel = (o: OrderSummary) =>
+  o.selectedPageCount != null
+    ? (o.pageCount != null && o.pageCount !== o.selectedPageCount ? `${o.selectedPageCount}/${o.pageCount} pages` : `${o.selectedPageCount} pages`)
+    : o.pageCount != null ? `${o.pageCount} pages` : null;
+
+function OrderCell({ o }: { o: OrderSummary }) {
+  return (
+    <div className="pb-order-id">
+      <Link className="pb-order-link" to={`/shop/orders/${o.id}`} aria-label={`Order #${o.orderNumber}`}>
+        <JobCode code={`#${o.orderNumber}`} />
+      </Link>
+      <span className="pb-order-amount">{formatPaise(o.totalPaise)}</span>
+    </div>
+  );
+}
+
+function FileCell({ o }: { o: OrderSummary }) {
+  const ref = o.customerDisplayNameOrReference;
+  return (
+    <div className="pb-file">
+      <div className="pb-file__name pb-ellipsis" title={o.originalFilename ?? undefined}>{o.originalFilename ?? 'Document'}</div>
+      {ref && <div className="pb-file__ref pb-ellipsis" title={ref}>For: {ref}</div>}
+      <div className="pb-file__age">Received <Age iso={o.createdAt} /></div>
+    </div>
+  );
+}
+
+function SpecsCell({ o }: { o: OrderSummary }) {
+  const pages = pagesLabel(o);
+  const copies = o.copies != null ? `${o.copies} ${o.copies === 1 ? 'copy' : 'copies'}` : null;
+  return (
+    <div className="pb-specs">
+      {pages && <span>{pages}</span>}
+      {pages && copies && <span className="pb-specs__x" aria-hidden="true">×</span>}
+      {copies && <span>{copies}</span>}
+    </div>
+  );
+}
+
+function SettingsCell({ o }: { o: OrderSummary }) {
+  return (
+    <div className="pb-settings" data-testid="order-specs">
+      {o.colourMode && <span>{o.colourMode === 'colour' ? 'Colour' : 'B&W'}</span>}
+      {o.sides && <span>{o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'}</span>}
+      {o.pageSelection && <span>{pageSelectionText(o.pageSelection)}</span>}
+      <span>{o.paperSize ?? 'A4'}</span>
+    </div>
+  );
+}
+
+function StatusCell({ o, showChip = true }: { o: OrderSummary; showChip?: boolean }) {
+  const f = useOrderFlags(o);
+  const mins = Math.max(1, Math.ceil(f.secsLeft / 60));
+  return (
+    <div className="pb-statuscell">
+      {showChip && <OrderStatusChip status={o.status} />}
+      {f.initiated && (
+        <div className="pb-statuscell__line" data-testid="print-initiated">
+          Print initiated <time dateTime={o.printInitiatedAt!} title={new Date(o.printInitiatedAt!).toLocaleString()}>{new Date(o.printInitiatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+        </div>
+      )}
+      {f.canReprint && <div className="pb-statuscell__line" data-testid="reprint-window">Available for reprint for {mins} min</div>}
+      <Retention deleteAfter={o.deleteAfter} documentStatus={o.documentStatus} />
+    </div>
+  );
+}
+
+/** Print / Reprint, Save file and View for one order. `stacked` is the phone card layout (full-width buttons). */
+function RowActions({ o, onChanged, stacked = false }: { o: OrderSummary; onChanged?: (() => void) | undefined; stacked?: boolean }) {
+  const [busy, setBusy] = useState<'print' | 'save' | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const f = useOrderFlags(o);
   async function run(kind: 'print' | 'save') {
     if (busy) return;
     setBusy(kind); setErr(null);
@@ -140,51 +217,39 @@ export const OrderCard = memo(function OrderCard({ o, isNew, onChanged }: { o: O
       if (kind === 'print') await printNowAndOpen(o.id); else await saveFileToDevice(o.id);
     } catch (e) { setErr(describeError(e)); } finally { setBusy(null); onChanged?.(); }
   }
-  const pages = o.selectedPageCount != null
-    ? (o.pageCount != null && o.pageCount !== o.selectedPageCount ? `${o.selectedPageCount}/${o.pageCount} pages` : `${o.selectedPageCount} pages`)
-    : o.pageCount != null ? `${o.pageCount} pages` : null;
-  const mins = Math.max(1, Math.ceil(secsLeft / 60));
   return (
-    <li className={`sh-card order-card${isNew ? ' is-fresh' : ''}`} data-testid="order-card">
-      <div className="order-card-top">
-        <Link className="order-card-link" to={`/shop/orders/${o.id}`} aria-label={`Order #${o.orderNumber}`}>
-          <span className="order-num">#{o.orderNumber}</span>
-        </Link>
-        {initiated && <StatusChip status={o.status} />}
-        <span className="order-amount tnum">{formatPaise(o.totalPaise)}</span>
-      </div>
-      {o.customerDisplayNameOrReference && <div className="order-ref sh-ellip" title={o.customerDisplayNameOrReference}>For: {o.customerDisplayNameOrReference}</div>}
-      <div className="order-file sh-ellip" title={o.originalFilename ?? undefined}>{o.originalFilename ?? 'Document'}</div>
-      <div className="order-meta" data-testid="order-specs">
-        {pages && <span>{pages}</span>}
-        {o.colourMode && <span>{o.colourMode === 'colour' ? 'Colour' : 'B&W'}</span>}
-        {o.copies != null && <span>{o.copies} {o.copies === 1 ? 'copy' : 'copies'}</span>}
-        {o.sides && <span>{o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'}</span>}
-        {o.pageSelection && <span>{pageSelectionText(o.pageSelection)}</span>}
-        <span>{o.paperSize ?? 'A4'}</span>
-      </div>
-      {hasFile && (
-        <div className="order-actions">
-          <button className="sh-btn sh-btn-primary sh-btn-lg" disabled={busy !== null} onClick={() => void run('print')}>
-            {busy === 'print' ? 'Opening…' : canReprint ? 'Reprint' : 'Print'}
-          </button>
-          <button className="sh-btn" disabled={busy !== null} onClick={() => void run('save')} title={SAVE_FILE_NOTE}>{busy === 'save' ? 'Saving…' : 'Save file'}</button>
-          <Link className="sh-btn sh-btn-sm" to={`/shop/orders/${o.id}`}>View</Link>
-        </div>
+    <div className={cx('pb-actions', stacked && 'pb-actions--stacked')}>
+      {f.hasFile && (
+        <>
+          <Button variant={stacked ? 'primary' : 'dark'} size={stacked ? 'lg' : 'sm'} loading={busy === 'print'} disabled={busy !== null} onClick={() => void run('print')}>
+            {busy === 'print' ? 'Opening…' : f.canReprint ? 'Reprint' : 'Print'}
+          </Button>
+          <Button variant="outline" size="sm" loading={busy === 'save'} disabled={busy !== null} onClick={() => void run('save')} title={SAVE_FILE_NOTE}>
+            {busy === 'save' ? 'Saving…' : 'Save file'}
+          </Button>
+        </>
       )}
-      {initiated && <div className="order-initiated sh-muted" data-testid="print-initiated">Print initiated <time dateTime={o.printInitiatedAt!} title={new Date(o.printInitiatedAt!).toLocaleString()}>{new Date(o.printInitiatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>}
-      {canReprint && <div className="order-reprint sh-muted" data-testid="reprint-window">Available for reprint for {mins} min</div>}
-      {!hasFile && (
-        <div className="order-actions">
-          <Link className="sh-btn sh-btn-sm" to={`/shop/orders/${o.id}`}>View details</Link>
-        </div>
-      )}
-      {err && <div className="sh-banner sh-banner-error" role="alert">{err}</div>}
-      <div className="order-foot">
-        <Age iso={o.createdAt} />
-        <Retention deleteAfter={o.deleteAfter} documentStatus={o.documentStatus} />
+      <Link className={buttonClass({ variant: 'ghost', size: 'sm' })} to={`/shop/orders/${o.id}`}>{f.hasFile ? 'View' : 'View details'}</Link>
+      {err && <Banner tone="err" icon={false}>{err}</Banner>}
+    </div>
+  );
+}
+
+const OrderCard = memo(function OrderCard({ o, onChanged }: { o: OrderSummary; onChanged?: (() => void) | undefined }) {
+  return (
+    <div className="pb-ordercard">
+      <div className="pb-ordercard__top">
+        <OrderCell o={o} />
+        <OrderStatusChip status={o.status} />
       </div>
-    </li>
+      <FileCell o={o} />
+      <div className="pb-ordercard__specs">
+        <SpecsCell o={o} />
+        <SettingsCell o={o} />
+      </div>
+      <StatusCell o={o} showChip={false} />
+      <RowActions o={o} stacked {...(onChanged ? { onChanged } : {})} />
+    </div>
   );
 });
 
@@ -211,6 +276,8 @@ export default function QueuePage() {
   const tab = TABS.find((t) => t.key === tabKey)!;
   const q = useQueue(tab);
   const sound = useBeep();
+  const { state: auth } = useAuth();
+  const retentionMinutes = auth.status === 'authed' ? auth.session.retentionMinutes : undefined;
 
   const debounced = useDebounced(q.refresh, 300);
   useRealtimeRefresh(debounced);
@@ -231,39 +298,56 @@ export default function QueuePage() {
   useEffect(() => { if (expired > 0) refreshSoon(); }, [expired, refreshSoon]);
 
   const empty = !q.loading && q.items.length === 0 && !q.error;
-  const fresh = q.fresh;
-  const rendered = useMemo(() => q.items.map((o) => <OrderCard key={o.id} o={o} isNew={fresh.has(o.id)} onChanged={q.refresh} />), [q.items, fresh, q.refresh]);
+  const refresh = q.refresh;
+  const columns = useMemo<Column<OrderSummary>[]>(() => [
+    { key: 'order', header: 'Order', cell: (o) => <OrderCell o={o} /> },
+    { key: 'file', header: 'File', cell: (o) => <FileCell o={o} /> },
+    { key: 'specs', header: 'Pages × copies', cell: (o) => <SpecsCell o={o} /> },
+    { key: 'settings', header: 'Settings', cell: (o) => <SettingsCell o={o} /> },
+    { key: 'status', header: 'Status', cell: (o) => <StatusCell o={o} /> },
+    { key: 'action', header: 'Action', srOnlyHeader: true, align: 'end', cell: (o) => <RowActions o={o} onChanged={refresh} /> }
+  ], [refresh]);
 
   return (
-    <section aria-labelledby="queue-title">
-      <div className="sh-pagehead">
-        <h1 id="queue-title">Print queue</h1>
-        <label className="sh-switch">
-          <input type="checkbox" checked={sound.on} onChange={sound.toggle} />
-          <span>Sound for new orders</span>
-        </label>
-      </div>
-      <div className="sh-tabs" role="tablist" aria-label="Order filters">
-        {TABS.map((t) => (
-          <button key={t.key} role="tab" aria-selected={t.key === tabKey} className={`sh-tab${t.key === tabKey ? ' active' : ''}`} onClick={() => setTabKey(t.key)}>{t.label}</button>
-        ))}
-      </div>
-      {q.error && <Banner onRetry={q.refresh}>{q.error}</Banner>}
-      <div aria-live="polite" className="sh-sr-only">{q.fresh.size > 0 ? 'New order received' : ''}</div>
-      {q.loading ? <Skeleton lines={5} label="Loading orders" /> : null}
-      {empty && (
-        <div className="sh-empty">
-          <h2>{tabKey === 'new' ? 'No new requests' : 'Nothing here yet'}</h2>
-          <p>{tabKey === 'new' ? 'New orders appear here the moment customers send them. Show your QR code at the counter to get started.' : 'Orders will show up here as they move along.'}</p>
-          {tabKey === 'new' && <Link className="sh-btn" to="/shop/qr">Open counter QR</Link>}
+    <section aria-labelledby="queue-title" className="pb-theme pb-page pb-page--wide">
+      <div className="pb-pagehead">
+        <div>
+          <h1 id="queue-title" className="pb-h1">Print queue</h1>
+          <p className="pb-muted pb-pagehead__sub">Newest first. Files are deleted automatically {retentionPhrase(retentionMinutes)} after you press Print.</p>
         </div>
-      )}
-      {q.items.length > 0 && <ul className="order-list">{rendered}</ul>}
-      {q.hasMore && (
-        <div className="sh-center">
-          <button className="sh-btn" onClick={q.loadMore} disabled={q.loadingMore}>{q.loadingMore ? 'Loading…' : 'Load more'}</button>
-        </div>
-      )}
+        <Checkbox label="Sound for new orders" checked={sound.on} onChange={sound.toggle} />
+      </div>
+      <Tabs label="Order filters" idPrefix="queue" panelId="queue-panel" tabs={TABS.map((t) => ({ key: t.key, label: t.label }))} value={tabKey} onChange={setTabKey} />
+      <div id="queue-panel" role="tabpanel" aria-labelledby={`queue-tab-${tabKey}`} className="pb-page">
+        {q.error && <Banner tone="err" actions={<Button size="sm" variant="dark" onClick={q.refresh}>Retry</Button>}>{q.error}</Banner>}
+        <div aria-live="polite" className="pb-sr-only">{q.fresh.size > 0 ? 'New order received' : ''}</div>
+        {empty && (
+          <Card padding="none">
+            <EmptyState
+              icon="printer"
+              titleAs="h2"
+              title={tabKey === 'new' ? 'No new requests' : 'Nothing here yet'}
+              action={tabKey === 'new' ? <Link className={buttonClass({ variant: 'outline' })} to="/shop/qr">Open counter QR</Link> : undefined}
+            >
+              {tabKey === 'new' ? 'New orders appear here the moment customers send them. Show your QR code at the counter to get started.' : 'Orders will show up here as they move along.'}
+            </EmptyState>
+          </Card>
+        )}
+        {(q.loading || q.items.length > 0) && (
+          <DataTable
+            caption="Orders"
+            columns={columns}
+            rows={q.items}
+            getRowKey={(o) => o.id}
+            loading={q.loading}
+            loadingLabel="Loading orders"
+            highlightKeys={q.fresh}
+            rowAttributes={() => ({ 'data-testid': 'order-card' })}
+            renderCard={(o) => <OrderCard o={o} onChanged={refresh} />}
+          />
+        )}
+        {q.hasMore && <LoadMore hasMore loading={q.loadingMore} onClick={q.loadMore} />}
+      </div>
     </section>
   );
 }
