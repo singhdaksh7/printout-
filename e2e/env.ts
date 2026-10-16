@@ -3,8 +3,8 @@ import path from 'node:path';
 export const ROOT = path.resolve(__dirname, '..');
 // Override when another project is already using the default (E2E_API_PORT=3199 pnpm e2e).
 export const API_PORT = Number(process.env.E2E_API_PORT ?? 3100);
-export const WEB_PORT = 5273;
-export const PREVIEW_PORT = 5274;
+export const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 5273);
+export const PREVIEW_PORT = Number(process.env.E2E_PREVIEW_PORT ?? 5274);
 export const API = `http://localhost:${API_PORT}`;
 export const WEB = `http://localhost:${WEB_PORT}`;
 export const PREVIEW = `http://localhost:${PREVIEW_PORT}`;

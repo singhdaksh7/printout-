@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../shop/auth';
 import { AppShell, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, type NavItem } from '../ui';
 
@@ -23,10 +23,13 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/orders', label: 'Orders', icon: 'list-ordered' },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: 'credit-card' },
   { to: '/admin/plans', label: 'Plans', icon: 'receipt' },
-  { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' }
+  { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' },
+  { to: '/admin/account', label: 'Account', icon: 'lock' }
 ];
 /** Phone tab bar: four destinations plus "More" (Subscriptions, Plans). "Subscriptions" does not fit a 60px tab at 360px, so it lives under More with Plans. */
 const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/audit'];
+/** The signed-in name (a link to Account settings) is hidden on small phones, so Account settings is offered under More there. */
+const ACCOUNT_ITEM: NavItem = { to: '/admin/account', label: 'Account settings', icon: 'settings' };
 
 export default function Shell() {
   const { state, logout } = useAuth();
@@ -45,12 +48,12 @@ export default function Shell() {
         <TopBar
           start={<Chip tone="info" dot={false}>Platform admin</Chip>}
           end={<>
-            <span className="pb-shopname pb-muted ad-username" title={name}>{name}</span>
+            <Link to="/admin/account" className="pb-shopname ad-accountlink" title={name} aria-label={`Account settings for ${name}`}>{name}</Link>
             <Button variant="outline" size="sm" iconStart="log-out" onClick={out} disabled={leaving}>Log out</Button>
           </>}
         />
       }
-      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} moreItems={NAV_ITEMS.filter((i) => !PHONE_PATHS.includes(i.to))} />}
+      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} moreItems={[...NAV_ITEMS.filter((i) => !PHONE_PATHS.includes(i.to)), ACCOUNT_ITEM]} />}
     >
       <div className="pb-page pb-theme"><Outlet /></div>
     </AppShell>

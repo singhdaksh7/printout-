@@ -16,6 +16,7 @@ import { devicePairingRoutes } from './routes/device-pairing.js';
 import { deviceSelfRoutes } from './routes/device-self.js';
 import { shopDeviceRoutes } from './routes/shop-devices.js';
 import { adminRoutes } from './routes/admin.js';
+import { adminAccountRoutes } from './routes/admin-account.js';
 import { authRoutes } from './routes/auth.js';
 import { json, type AppContext } from './routes/context.js';
 import { publicRoutes } from './routes/public.js';
@@ -70,7 +71,9 @@ export function createApp(deps: AppDeps = {}) {
         'headers.authorization',
         'headers["x-csrf-token"]',
         'password',
-        '*.password'
+        '*.password',
+        '*.currentPassword',
+        '*.newPassword'
       ],
       serializers: {
         // Default serializer logs the full URL: query strings carry signed-URL signatures and upload tokens, and
@@ -148,6 +151,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopConfigRoutes(i, ctx));
       await api.register((i) => shopEventRoutes(i, ctx));
       await api.register((i) => adminRoutes(i, ctx));
+      await api.register((i) => adminAccountRoutes(i, ctx));
       // Device foundation (Phase 2): pairing (public), owner device management, device-authenticated APIs.
       await api.register((i) => devicePairingRoutes(i, ctx));
       await api.register((i) => shopDeviceRoutes(i, ctx));

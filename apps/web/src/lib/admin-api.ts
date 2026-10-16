@@ -98,3 +98,15 @@ export function fmtDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' });
 }
+
+/** The signed-in platform admin's own profile. Never contains a password hash, session token or CSRF secret. */
+export interface AdminAccount {
+  id: string; email: string; displayName: string; role: 'PLATFORM_ADMIN'; createdAt: string;
+  session: { startedAt: string; expiresAt: string; otherActiveSessions: number };
+}
+export const getAccount = (signal?: AbortSignal) => shopRequest<AdminAccount>('/admin/account', { signal: signal as AbortSignal });
+/** Both calls end every session of this admin on success: the caller must sign the UI out locally. */
+export const changeAdminEmail = (body: { currentPassword: string; newEmail: string }) =>
+  shopRequest<{ email: string; signedOut: true }>('/admin/account/email', { method: 'POST', body });
+export const changeAdminPassword = (body: { currentPassword: string; newPassword: string }) =>
+  shopRequest<{ signedOut: true }>('/admin/account/password', { method: 'POST', body });

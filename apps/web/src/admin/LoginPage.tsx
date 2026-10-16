@@ -17,7 +17,7 @@ export default function LoginPage() {
   const { state, login } = useAuth();
   const loc = useLocation();
   const navigate = useNavigate();
-  const nav = loc.state as { from?: string; expired?: boolean } | null;
+  const nav = loc.state as { from?: string; expired?: boolean; credentialsChanged?: 'email' | 'password' } | null;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -51,7 +51,10 @@ export default function LoginPage() {
             <h1 id="ad-login-title" className="pb-h1">Admin sign in</h1>
             <p className="pb-muted pb-pagehead__sub">Printout platform administration</p>
           </div>
-          {nav?.expired && !error && <Banner tone="warn">Session expired — sign in again.</Banner>}
+          {nav?.credentialsChanged && !error && (
+            <Banner tone="ok">Your {nav.credentialsChanged} was changed and you were signed out on all devices. Sign in again{nav.credentialsChanged === 'email' ? ' with your new email' : ' with your new password'}.</Banner>
+          )}
+          {nav?.expired && !error && !nav.credentialsChanged && <Banner tone="warn">Session expired — sign in again.</Banner>}
           {error && <Banner tone="err">{error}</Banner>}
           <TextField label="Email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
           <TextField label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />

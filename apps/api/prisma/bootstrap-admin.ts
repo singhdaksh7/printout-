@@ -16,6 +16,7 @@
 import { PrismaClient, Role } from '@prisma/client';
 import { pathToFileURL } from 'node:url';
 import { hashPassword } from '../src/auth.js';
+import { passwordPolicyProblem } from '../src/password-policy.js';
 
 export class BootstrapError extends Error {
   constructor(
@@ -41,33 +42,9 @@ export interface BootstrapEnv {
   ADMIN_RESET_PASSWORD?: string;
 }
 
-const MIN_PASSWORD_LENGTH = 12;
-const PLACEHOLDER = /change-?this|change-?me|replace|placeholder|your-?password|example/i;
-const COMMON = new Set([
-  'password1234',
-  'password12345',
-  'passwordpassword',
-  'qwertyuiop12',
-  'qwertyuiopas',
-  'administrator',
-  'administrator1',
-  '123456789012',
-  '1234567890123',
-  'adminadmin12',
-  'letmeinletmein',
-  'iloveyouiloveyou'
-]);
-
 /** Returns a human-readable reason when the password is not acceptable, otherwise undefined. */
 export function passwordProblem(password: string, email?: string): string | undefined {
-  if (password.length < MIN_PASSWORD_LENGTH) return `ADMIN_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters`;
-  if (password.length > 256) return 'ADMIN_PASSWORD must be at most 256 characters';
-  if (PLACEHOLDER.test(password)) return 'ADMIN_PASSWORD looks like a placeholder';
-  if (new Set(password).size < 5) return 'ADMIN_PASSWORD is too repetitive';
-  if (COMMON.has(password.toLowerCase())) return 'ADMIN_PASSWORD is a commonly used password';
-  const local = email?.split('@')[0]?.toLowerCase();
-  if (local && local.length >= 4 && password.toLowerCase().includes(local)) return 'ADMIN_PASSWORD must not contain the email name';
-  return undefined;
+  return passwordPolicyProblem(password, email, 'ADMIN_PASSWORD');
 }
 
 type Db = Pick<PrismaClient, 'user' | 'session' | 'auditLog' | '$transaction'>;

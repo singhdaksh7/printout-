@@ -22,6 +22,13 @@
 .pb-page > .ad-list > .ad-row { padding: var(--pb-space-3) var(--pb-space-4); border-bottom: 1px solid var(--pb-n200); }
 .pb-page > .ad-list > .ad-row:last-child { border-bottom: 0; }
 @media (max-width: 599px) {
-  /* The signed-in name stays for assistive tech; hiding it visually keeps the phone header on one row. */
-  .ad-username { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* The signed-in name would force a second header row on small phones; Account settings is under More there. */
+  .ad-accountlink { display: none; }
 }
+
+/* Account settings */
+.ad-accountlink { display: inline-flex; align-items: center; min-height: var(--pb-target); color: var(--pb-n700); text-decoration: none; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: var(--pb-radius-sm); }
+.ad-accountlink:hover { color: var(--pb-navy); text-decoration: underline; text-underline-offset: 2px; }
+.ad-account { display: flex; flex-direction: column; gap: var(--pb-space-4); max-width: 44rem; }
+.ad-pwfield { position: relative; }
+.ad-formerr { outline: none; }
