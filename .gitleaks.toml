@@ -11,6 +11,7 @@ paths = [
   '''^apps/api/test/.*''',
   '''^apps/api/vitest\.config\.ts$''',
   '''^apps/api/prisma/bootstrap-admin\.ts$''',
+  '''^apps/api/src/password-policy\.ts$''',
   '''^e2e/env\.ts$''',
   '''^apps/android/app/src/test/.*''',
 ]

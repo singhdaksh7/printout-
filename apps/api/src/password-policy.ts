@@ -8,7 +8,7 @@ const PLACEHOLDER = /change-?this|change-?me|replace|placeholder|your-?password|
 const COMMON = new Set([
   'password1234',
   'password12345',
-  'passwordpassword', // gitleaks:allow (deliberately weak entry of the common-password denylist, not a secret)
+  'passwordpassword',
   'qwertyuiop12',
   'qwertyuiopas',
   'administrator',
