@@ -56,7 +56,7 @@ Not run: Android builds, real printer tests, anything against production.
 
 ## 11. Git branch status
 
-Local `development` is ahead of `origin/development` by 29 commits (unpushed). Remote still has `main` and `development`. Backups before any change: a bundle of all refs plus archives of dirty and untracked worktrees, checksummed, stored outside the repository; restore with `git fetch <bundle> '<ref>:<ref>'`. All other branches and worktrees were left untouched.
+Local `development` is ahead of `origin/development` by 24 commits (unpushed). Remote still has `main` and `development`. Backups before any change: a bundle of all refs plus archives of dirty and untracked worktrees, checksummed, stored outside the repository; restore with `git fetch <bundle> '<ref>:<ref>'`. All other branches and worktrees were left untouched.
 
 ## 12. Deferred and why
 
