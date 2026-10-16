@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { makeEncryptedPdf, makeExe, makeJpeg, makePdf, makePng } from '../apps/api/test/fixtures/make';
-import { API, ROOT, SEED_PASSWORD, WEB } from './env';
+import { API, PG_CONTAINER, ROOT, SEED_PASSWORD, WEB } from './env';
 
 export { makeEncryptedPdf, makeExe, makeJpeg, makePdf, makePng };
 export const SLUG = 'central-print';
@@ -90,5 +90,5 @@ export async function newMobileContext(browser: Browser, vp = VIEWPORTS.mobile):
 /** Reads the private e2e database (read-only helper for assertions). */
 export function dbQuery(sql: string): string {
   const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
-  return execFileSync('docker', ['exec', 'print-codex-postgres-1', 'psql', '-U', 'printout', '-d', 'printout_e2e', '-At', '-c', sql], { encoding: 'utf8' }).trim();
+  return execFileSync('docker', ['exec', PG_CONTAINER, 'psql', '-U', 'printout', '-d', 'printout_e2e', '-At', '-c', sql], { encoding: 'utf8' }).trim();
 }
