@@ -1,257 +1,465 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
- SHOP_OWNER
- PLATFORM_ADMIN
+  SHOP_OWNER
+  PLATFORM_ADMIN
 }
+
 enum ShopStatus {
- ACTIVE
- SUSPENDED
+  ACTIVE
+  SUSPENDED
+  /// Target statuses (architecture PDF p1, Shop). Additive: nothing in the application sets or reads them yet.
+  PILOT
+  PAST_DUE
+  CANCELLED
 }
+
 enum OrderStatus {
- NEW
- ACCEPTED
- PRINTING
- PRINTED
- READY
- COLLECTED
- CANCELLED
- EXPIRED
+  NEW
+  ACCEPTED
+  PRINTING
+  PRINTED
+  READY
+  COLLECTED
+  CANCELLED
+  EXPIRED
 }
+
 enum DocumentStatus {
- UPLOADING
- AVAILABLE
- PRINTED_RETENTION
- DELETED
- FAILED
+  UPLOADING
+  AVAILABLE
+  PRINTED_RETENTION
+  DELETED
+  FAILED
 }
+
 enum ColourMode {
- bw
- colour
+  bw
+  colour
 }
+
 enum PrintSides {
- single
- duplex
+  single
+  duplex
 }
+
 enum SubscriptionStatus {
- ACTIVE
- SUSPENDED
- CANCELLED
+  ACTIVE
+  SUSPENDED
+  CANCELLED
 }
 
 model Shop {
-  id String @id @default(cuid())
-  slug String @unique
-  displayName String
-  address String?
-  status ShopStatus @default(ACTIVE)
-  acceptsOrders Boolean @default(true)
-  orderCounter Int @default(0)
-  users User[]
-  settings ShopSettings?
-  pricingRules PricingRule[]
-  orders Order[]
-  documents Document[]
-  devices ShopDevice[]
+  id                 String              @id @default(cuid())
+  slug               String              @unique
+  displayName        String
+  address            String?
+  status             ShopStatus          @default(ACTIVE)
+  /// Reference to the shop's data key in a managed KMS (target). Unset until KMS is chosen.
+  kmsKeyRef          String?
+  acceptsOrders      Boolean             @default(true)
+  orderCounter       Int                 @default(0)
+  users              User[]
+  settings           ShopSettings?
+  pricingRules       PricingRule[]
+  orders             Order[]
+  documents          Document[]
+  devices            ShopDevice[]
   devicePairingCodes DevicePairingCode[]
-  auditLogs AuditLog[]
-  subscription Subscription?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  auditLogs          AuditLog[]
+  subscription       Subscription?
+  memberships        Membership[]
+  printAgents        PrintAgent[]
+  printers           Printer[]
+  printJobs          PrintJob[]
+  customerSessions   CustomerSession[]
+  invoices           Invoice[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 }
+
 model User {
-  id String @id @default(cuid())
-  shopId String?
-  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  email String @unique
-  displayName String
+  id           String       @id @default(cuid())
+  shopId       String?
+  shop         Shop?        @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  email        String       @unique
+  displayName  String
   passwordHash String
-  role Role
-  sessions Session[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  role         Role
+  sessions     Session[]
+  memberships  Membership[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }
+
 model Session {
-  id String @id @default(cuid())
-  tokenHash String @unique
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
+  id            String    @id @default(cuid())
+  tokenHash     String    @unique
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt     DateTime
   invalidatedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt     DateTime  @default(now())
+
   @@index([userId])
 }
+
 model ShopSettings {
-  id String @id @default(cuid())
-  shopId String @unique
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  shopId        String   @unique
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   publicContact String?
-  brandColor String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  brandColor    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
+
 model PricingRule {
-  id String @id @default(cuid())
-  shopId String
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  paperSize String @default("A4")
-  colourMode ColourMode
-  sides PrintSides
+  id                 String     @id @default(cuid())
+  shopId             String
+  shop               Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  paperSize          String     @default("A4")
+  colourMode         ColourMode
+  sides              PrintSides
   pricePerSheetPaise Int
-  active Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  active             Boolean    @default(true)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
   @@unique([shopId, paperSize, colourMode, sides])
 }
+
 model Document {
-  id String @id @default(cuid())
-  shopId String
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  order Order?
-  objectKey String @unique
-  originalFilename String
-  detectedMimeType String?
-  byteSize BigInt?
-  pageCount Int?
-  checksum String?
-  status DocumentStatus @default(UPLOADING)
-  uploadedAt DateTime?
-  expiresAt DateTime?
-  printedAt DateTime?
+  id                    String           @id @default(cuid())
+  shopId                String
+  shop                  Shop             @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  order                 Order?
+  /// Target multi-document jobs: the PrintJob this document belongs to. Null for every existing Order-backed document.
+  printJobId            String?
+  printJob              PrintJob?        @relation(fields: [printJobId], references: [id], onDelete: SetNull)
+  receipt               DeletionReceipt?
+  objectKey             String           @unique
+  originalFilename      String
+  detectedMimeType      String?
+  byteSize              BigInt?
+  pageCount             Int?
+  checksum              String?
+  status                DocumentStatus   @default(UPLOADING)
+  uploadedAt            DateTime?
+  expiresAt             DateTime?
+  printedAt             DateTime?
   /// First successful shop Print action (server time). Starts the retention window; it does NOT prove physical printing.
-  printInitiatedAt DateTime?
-  deleteAfter DateTime?
-  deletedAt DateTime?
-  deletionError String?
-  deletionAttempts Int @default(0)
+  printInitiatedAt      DateTime?
+  deleteAfter           DateTime?
+  deletedAt             DateTime?
+  deletionError         String?
+  deletionAttempts      Int              @default(0)
   lastDeletionAttemptAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
   @@index([shopId, status])
   @@index([status, deleteAfter])
   @@index([status, expiresAt])
   @@index([status, createdAt])
+  @@index([printJobId])
 }
+
 model Order {
-  id String @id @default(cuid())
-  shopId String
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  documentId String @unique
-  document Document @relation(fields: [documentId], references: [id])
-  orderNumber String
-  clientRequestId String?
-  trackingToken String @unique
+  id                             String               @id @default(cuid())
+  shopId                         String
+  shop                           Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  documentId                     String               @unique
+  document                       Document             @relation(fields: [documentId], references: [id])
+  orderNumber                    String
+  clientRequestId                String?
+  trackingToken                  String               @unique
   customerDisplayNameOrReference String?
-  status OrderStatus @default(NEW)
-  totalPaise Int
-  currency String @default("INR")
-  priceSnapshot Json
-  printOptionsSnapshot Json
-  histories OrderStatusHistory[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status                         OrderStatus          @default(NEW)
+  totalPaise                     Int
+  currency                       String               @default("INR")
+  priceSnapshot                  Json
+  printOptionsSnapshot           Json
+  histories                      OrderStatusHistory[]
+  printJob                       PrintJob?
+  createdAt                      DateTime             @default(now())
+  updatedAt                      DateTime             @updatedAt
+
   @@unique([shopId, orderNumber])
   @@unique([shopId, clientRequestId])
   @@index([shopId, status, createdAt])
   @@index([shopId, createdAt])
 }
+
 model OrderStatusHistory {
-  id String @id @default(cuid())
-  orderId String
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  fromStatus OrderStatus?
-  toStatus OrderStatus
-  reason String?
-  actorUserId String?
+  id            String       @id @default(cuid())
+  orderId       String
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus    OrderStatus?
+  toStatus      OrderStatus
+  reason        String?
+  actorUserId   String?
   actorDeviceId String?
-  createdAt DateTime @default(now())
+  createdAt     DateTime     @default(now())
+
   @@index([orderId, createdAt])
 }
+
 model Plan {
- id String @id @default(cuid())
- name String @unique
- pricePaise Int
- active Boolean @default(true)
- subscriptions Subscription[]
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id            String         @id @default(cuid())
+  name          String         @unique
+  /// Stable machine key (e.g. basic, pro) and limits from the architecture PDF. All null until the owner approves values.
+  key           String?        @unique
+  maxAgents     Int?
+  maxPrinters   Int?
+  staffEnabled  Boolean?
+  pricePaise    Int
+  active        Boolean        @default(true)
+  subscriptions Subscription[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
+
 enum DevicePlatform {
   ANDROID
   WINDOWS
 }
+
 enum DeviceStatus {
   ACTIVE
   REVOKED
 }
+
 /// A paired printing device (future Android app / Windows agent). Authenticates with a high-entropy bearer credential;
 /// only its SHA-256 digest is stored. shopId is the ONLY tenant source for every device request.
 model ShopDevice {
-  id String @id @default(cuid())
-  shopId String
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name String
-  platform DevicePlatform
-  status DeviceStatus @default(ACTIVE)
+  id                 String         @id @default(cuid())
+  shopId             String
+  shop               Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name               String
+  platform           DevicePlatform
+  status             DeviceStatus   @default(ACTIVE)
   /// sha256 hex of the raw credential (credential is 256-bit random, so a fast digest is appropriate). Never the raw value.
-  credentialHash String @unique
+  credentialHash     String         @unique
   /// Bumped on credential rotation (future). Rotation = new hash + version+1.
-  credentialVersion Int @default(1)
-  appVersion String?
-  osVersion String?
+  credentialVersion  Int            @default(1)
+  appVersion         String?
+  osVersion          String?
   /// FCM registration token (ANDROID). Never returned by any API, never logged.
-  pushToken String?
+  pushToken          String?
   pushTokenUpdatedAt DateTime?
-  lastSeenAt DateTime?
-  revokedAt DateTime?
-  revokedByUserId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  lastSeenAt         DateTime?
+  revokedAt          DateTime?
+  revokedByUserId    String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
   @@index([shopId, status])
 }
+
 /// One-time, short-lived pairing code created by a shop owner. Only an HMAC of the code is stored.
 model DevicePairingCode {
-  id String @id @default(cuid())
-  shopId String
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  codeHash String @unique
-  expiresAt DateTime
-  usedAt DateTime?
-  usedByDeviceId String?
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  codeHash        String    @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedByDeviceId  String?
   createdByUserId String?
-  createdAt DateTime @default(now())
+  createdAt       DateTime  @default(now())
+
   @@index([shopId, expiresAt])
 }
+
 model Subscription {
- id String @id @default(cuid())
- shopId String @unique
- shop Shop @relation(fields:[shopId], references:[id], onDelete:Cascade)
- planId String
- plan Plan @relation(fields:[planId], references:[id])
- status SubscriptionStatus @default(ACTIVE)
- renewsAt DateTime?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id                    String             @id @default(cuid())
+  shopId                String             @unique
+  shop                  Shop               @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  planId                String
+  plan                  Plan               @relation(fields: [planId], references: [id])
+  status                SubscriptionStatus @default(ACTIVE)
+  renewsAt              DateTime?
+  /// Payment-gateway subscription id (unique when set). Payment processing is not enabled.
+  gatewaySubscriptionId String?            @unique
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 }
+
 model AuditLog {
- id String @id @default(cuid())
- shopId String?
- shop Shop? @relation(fields:[shopId], references:[id], onDelete:SetNull)
- actorUserId String?
- /// SHOP_OWNER | SHOP_DEVICE | PLATFORM_ADMIN | SYSTEM (null on rows written before devices existed)
- actorType String?
- actorDeviceId String?
- action String
- targetType String?
- targetId String?
- metadata Json?
- createdAt DateTime @default(now())
- @@index([shopId, createdAt])
- @@index([createdAt])
+  id            String   @id @default(cuid())
+  shopId        String?
+  shop          Shop?    @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  actorUserId   String?
+  /// SHOP_OWNER | SHOP_DEVICE | PLATFORM_ADMIN | SYSTEM (null on rows written before devices existed)
+  actorType     String?
+  actorDeviceId String?
+  action        String
+  targetType    String?
+  targetId      String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Target-architecture entities (PrintoutBuddy Architecture.pdf p1 Data model, p6 ER). ADDITIVE ONLY: nothing in the
+// application reads or writes these yet, `Order` stays authoritative, and no status mapping is invented.
+// Open decisions are listed in docs/SCHEMA_ALIGNMENT.md.
+// ---------------------------------------------------------------------------------------------------------------
+
+enum MembershipRole {
+  OWNER
+  STAFF
+}
+
+/// shop_id + user_id + role. Staff only on Pro and no billing access are application rules (not enforced here).
+model Membership {
+  id        String         @id @default(cuid())
+  shopId    String
+  shop      Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      MembershipRole
+  createdAt DateTime       @default(now())
+
+  @@unique([shopId, userId])
+  @@index([userId])
+}
+
+/// Windows print agent (target). Distinct from ShopDevice (the Android device foundation).
+model PrintAgent {
+  id             String    @id @default(cuid())
+  shopId         String
+  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name           String
+  credentialHash String    @unique
+  agentVersion   String?
+  lastSeenAt     DateTime?
+  revokedAt      DateTime?
+  printers       Printer[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([shopId])
+}
+
+/// Basic: 1 printer, Pro: up to 3. The limit check belongs to the insert path and is not a column constraint.
+model Printer {
+  id        String     @id @default(cuid())
+  shopId    String
+  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  agentId   String
+  agent     PrintAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name      String
+  colour    Boolean    @default(false)
+  duplex    Boolean    @default(false)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([shopId])
+  @@index([agentId])
+}
+
+enum PrintJobStatus {
+  UPLOADING
+  QUEUED
+  PRINTING
+  PRINTED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+/// Target job (PDF p12 lifecycle). `orderId` links a job to an existing Order once a mapping is approved; no rows are
+/// created from Orders today. Lease fields are set only by the future atomic claim.
+model PrintJob {
+  id             String         @id @default(cuid())
+  shopId         String
+  shop           Shop           @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  orderId        String?        @unique
+  order          Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  code           String
+  serviceDay     DateTime       @db.Date
+  status         PrintJobStatus @default(UPLOADING)
+  attempt        Int            @default(0)
+  leaseId        String?
+  leaseAgentId   String?
+  leaseExpiresAt DateTime?
+  expiresAt      DateTime?
+  documents      Document[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([shopId, serviceDay, code])
+  @@index([shopId, status])
+  @@index([status, expiresAt])
+}
+
+/// One per document; accepted once by receiptId. `wipeFlags` is JSON because the PDF names "three wipe flags" without
+/// naming them (unresolved). verifiedAt is set when sha256 matches the document.
+model DeletionReceipt {
+  id              String    @id @default(cuid())
+  receiptId       String    @unique
+  documentId      String    @unique
+  document        Document  @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  sha256          String
+  wipeFlags       Json
+  agentReportedAt DateTime?
+  verifiedAt      DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+/// Anonymous customer session: no phone number, expires after 2 hours, only a truncated IP prefix is kept.
+model CustomerSession {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  ipPrefix  String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([shopId, expiresAt])
+}
+
+/// Billing records (target). Gateway ids are unique so webhook replays are harmless. Statuses are free text until the
+/// payment provider is chosen (unresolved). No payment processing is enabled.
+model Invoice {
+  id               String    @id @default(cuid())
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  gatewayInvoiceId String?   @unique
+  amountPaise      Int
+  currency         String    @default("INR")
+  status           String
+  issuedAt         DateTime?
+  paidAt           DateTime?
+  payments         Payment[]
+  createdAt        DateTime  @default(now())
+
+  @@index([shopId, createdAt])
+}
+
+model Payment {
+  id               String   @id @default(cuid())
+  invoiceId        String
+  invoice          Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  gatewayPaymentId String?  @unique
+  gatewayEventId   String?  @unique
+  amountPaise      Int
+  status           String
+  createdAt        DateTime @default(now())
+
+  @@index([invoiceId])
 }
