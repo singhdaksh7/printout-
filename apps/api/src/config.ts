@@ -15,6 +15,8 @@ const RATE_LIMIT_DEFAULTS = {
   RATE_LIMIT_PRINT_CONFIRM_MAX: 60,
   RATE_LIMIT_DOCUMENT_ACCESS_MAX: 60,
   RATE_LIMIT_SHOP_MUTATION_MAX: 60,
+  /** CSV exports are heavy: per session per minute. */
+  RATE_LIMIT_SHOP_EXPORT_MAX: 6,
   RATE_LIMIT_ADMIN_READ_MAX: 600,
   RATE_LIMIT_ADMIN_MUTATION_MAX: 60,
   RATE_LIMIT_SSE_CONNECT_MAX: 30,
@@ -83,6 +85,7 @@ const schema = z
     RATE_LIMIT_PRINT_CONFIRM_MAX: optionalPositiveInt,
     RATE_LIMIT_DOCUMENT_ACCESS_MAX: optionalPositiveInt,
     RATE_LIMIT_SHOP_MUTATION_MAX: optionalPositiveInt,
+    RATE_LIMIT_SHOP_EXPORT_MAX: optionalPositiveInt,
     RATE_LIMIT_ADMIN_READ_MAX: optionalPositiveInt,
     RATE_LIMIT_ADMIN_MUTATION_MAX: optionalPositiveInt,
     RATE_LIMIT_SSE_CONNECT_MAX: optionalPositiveInt,

@@ -29,7 +29,7 @@ No new components were needed for the migrations; the existing library (`apps/we
 
 ## 7. Shopkeeper screens
 
-Done: print queue, order detail, rate card (with a worked example computed from the typed price only), QR and standee controls (poster and print rules unchanged), devices, settings, shell (sidebar, top bar, phone tab bar; Staff and Reports shown as non-interactive "Soon"), sign-in. **History:** the app has no history endpoint, so the existing Analytics screen was migrated and keeps its name and route; the design's History table (date filters, CSV export) is not built. The design's printer-health, agent and billing content is not shown because nothing backs it.
+Done: print queue, order detail, rate card (with a worked example computed from the typed price only), QR and standee controls (poster and print rules unchanged), devices, settings, shell (sidebar, top bar, phone tab bar; Staff and Reports shown as non-interactive "Soon"), sign-in. **History:** built after the first migration (`feature/daksh-order-history`): `/shop/history` with `GET /shop/orders/history`, `/summary` and `/export.csv` (see API_CONTRACT). It is metadata only (files are never opened, downloaded or reprinted from it), uses Asia/Kolkata days, and shows "Print started / Print initiated", never a physical-print confirmation. Analytics keeps its name and route (sidebar; linked from History on phones). The design's printer-health, agent and billing content is not shown because nothing backs it.
 
 ## 8. Admin screens
 
@@ -75,6 +75,6 @@ Not ready to deploy from this report alone: the work is unpushed, the migration 
 1. Review and approve pushing `development`.
 2. (Superseded) `main` stays as the production branch and is not renamed; branch protections are active (`docs/GIT_WORKFLOW.md`).
 3. Decide the open schema questions (`docs/SCHEMA_ALIGNMENT.md`).
-4. Decide whether a History endpoint (date and status filters, export) should be built.
+4. ~~History endpoint~~ built (order history list, summary, CSV). Open: export row cap (5,000) and whether to add a customer-reference column.
 5. Apply the migration to staging, then production, when ready.
 6. Stop the disposable test database when done: `docker rm -f printout-e2e-pg`.

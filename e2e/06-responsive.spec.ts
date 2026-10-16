@@ -34,12 +34,18 @@ for (const [name, vp] of SIZES) {
     await page.getByTestId('order-card').filter({ hasText: `Resp ${name}` }).getByRole('link').first().click();
     await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
     await expectNoOverflow(page, `order detail ${name}`);
-    for (const label of ['Rate card', 'QR & standee', 'Analytics', 'Settings']) {
+    // Phone tab bar: Print queue, History, Rate card, QR & standee, Settings. Analytics is linked from History.
+    for (const label of ['History', 'Rate card', 'QR & standee', 'Settings']) {
       await page.getByRole('link', { name: label, exact: true }).click();
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await page.waitForLoadState('networkidle');
       await expectNoOverflow(page, `${label} ${name}`);
     }
+    await page.getByRole('link', { name: 'History', exact: true }).click();
+    await page.getByRole('link', { name: 'View analytics' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await expectNoOverflow(page, `Analytics ${name}`);
     await shot(page, `62-shop-settings-${name}`, false);
     await ctx.close();
   });

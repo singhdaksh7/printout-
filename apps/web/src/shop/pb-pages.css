@@ -87,6 +87,22 @@
 .pb-bottomnav__link { font-size: 11px; }
 .pb-bottomnav__link > span:last-child { white-space: nowrap; }
 
+/* History (order history) */
+.pb-nowrap { white-space: nowrap; }
+.pb-historyfilters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--pb-space-3); }
+.pb-historyfilters__dates { display: flex; flex-wrap: wrap; gap: var(--pb-space-3); }
+.pb-historyfilters__search { flex: 1 1 14rem; max-width: 22rem; min-width: 0; }
+.pb-historycard__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-2) var(--pb-space-3); margin: 0; }
+.pb-historycard__meta div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pb-historycard__meta dt { font: 600 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
+.pb-historycard__meta dd { margin: 0; font: 400 var(--pb-text-label)/1.4 var(--pb-font-body); overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .pb-historystats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); }
+  .pb-historystats > :first-child { grid-column: 1 / -1; }
+  .pb-historyfilters > * { flex: 1 1 100%; max-width: none; }
+  .pb-historyfilters .pb-seg { width: 100%; overflow-x: auto; }
+}
+
 /* Queue summary strip: four tiles in one row on desktop, a compact 2x2 grid on phones (hints are hidden there to keep the queue above the fold). */
 .pb-stats--queue { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 899px) { .pb-stats--queue { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); } }
