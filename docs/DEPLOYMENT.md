@@ -182,6 +182,8 @@ External uptime monitor (UptimeRobot / BetterStack, free) on `https://<DOMAIN>/r
 
 **Deploy order is always: backup -> migrate -> up.** `bash deploy/deploy.sh` does all three (`git pull && bash deploy/deploy.sh`): it takes a backup first (and **aborts** if the backup fails; `SKIP_BACKUP=1` only if you backed up another way), runs `docker compose --env-file deploy/.env.production -f deploy/docker-compose.prod.yml run --rm migrate` (= `prisma migrate deploy`), then `up -d`. Only migrations are one-shot; a failing migration leaves the old containers running.
 
+**Branch note:** deployment is manual and never triggered by GitHub (CI has no deploy job, merging a PR deploys nothing). Whatever branch the server checkout tracks is what `git pull` fetches; today the stable branch is still named `main`. Before it is renamed to `production`, check the server (`git branch --show-current`, `git rev-parse --abbrev-ref @{u}`) and repoint it as described in `docs/GIT_WORKFLOW.md`.
+
 - Migrations are **forward-only** (no down migrations). Prefer additive (expand/contract) changes so the previous release still runs against the new schema.
 - **Code-only rollback:** `git checkout <previous tag> && bash deploy/deploy.sh`.
 - **Rollback of a release that included a migration the old code cannot run against:** restore the pre-deploy backup.

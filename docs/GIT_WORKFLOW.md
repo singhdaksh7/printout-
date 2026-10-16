@@ -15,7 +15,13 @@ Temporary branches: `feature/<developer>-<topic>` (for example `feature/daksh-ra
 
 ## Current state (verify before relying on it)
 
-The remote default branch is still **`main`** and there is no `production` branch yet: the rename is waiting for the owner's approval (see "Branch rename procedure"). `development` and `main` are at the same commit after PR #1. Until the rename, treat `main` as `production` everywhere below. No branch protection or rulesets are enabled yet (see "Protection settings").
+Verified 2026-10-16 through the GitHub API:
+
+- The stable branch is still named **`main`** and is the default branch. The rename to `production` is **intentionally not done yet**: the production server is a self-hosted Docker stack whose Git checkout and `git pull` upstream could not be inspected (see "Branch rename procedure"). Until the rename, read `main` as `production` everywhere below.
+- Two active rulesets: `development protection` (id 25244979, refs/heads/development) and `production protection` (id 25261486, refs/heads/production **and** refs/heads/main, so the stable branch is protected today and stays protected after the rename). Both: pull request required, **0** approvals, code-owner review not required, resolved conversations, the five CI checks required with the branch up to date, no force-push, no deletion, no bypass actors.
+- Repository setting "Automatically delete head branches" is **on**: merged temporary branches disappear from the remote; `development` and the stable branch cannot be deleted (ruleset), so a release PR never removes `development`.
+- Both developers can merge any eligible PR: `singhdaksh7` (admin) and `AmardeepManav` (write).
+- `main` and `development` differ on purpose: `development` carries reviewed work that has not been released.
 
 ## Daily developer commands
 
@@ -45,7 +51,7 @@ Rules: one logical feature per branch; keep it small enough to review; rebase or
 
 ## CI (`.github/workflows/ci.yml`)
 
-Runs on pull requests and pushes to `development` and `production` (and `main` until it is renamed; remove that entry after the rename). Least-privilege (`contents: read`), actions pinned to commit SHAs, concurrent PR runs cancel superseded ones, every job has a timeout, pnpm is cached.
+Runs on pull requests and pushes to `development` and `production` (and `main` until it is renamed; remove that entry in the same change that completes the rename). Least-privilege (`contents: read`), actions pinned to commit SHAs, concurrent PR runs cancel superseded ones, every job has a timeout, pnpm is cached.
 
 | Job (check name) | What it runs |
 |---|---|
@@ -78,9 +84,9 @@ Two developers with **equal authority**: **singhdaksh7** (Daksh) and **AmardeepM
 - A review that requests changes is a human signal, not a technical block here: resolve it before merging.
 - Releases (`development` to `production`) still go through a PR, must be green, and follow the release verification steps below (staging checks, migration and backup readiness) before anyone merges.
 
-## Protection settings (to be enabled by the repository owner)
+## Protection settings (active)
 
-Not enabled yet. Reference payloads are in `.github/rulesets/`; required check names match the contexts reported on real CI runs. Enable via Settings > Rules > Rulesets, or `gh api -X POST repos/singhdaksh7/printout-/rulesets --input .github/rulesets/development.json` (and `production.json`).
+Applied from the reference payloads in `.github/rulesets/` (`development.json`, `production.json`); required check names match the contexts reported by real CI runs. Manage them under Settings > Rules > Rulesets, or `gh api -X PUT repos/singhdaksh7/printout-/rulesets/<id> --input .github/rulesets/<file>.json`. The production ruleset targets both `refs/heads/production` and `refs/heads/main` until the rename.
 
 | Rule | `development` | `production` |
 |---|---|---|
@@ -97,13 +103,13 @@ Direct pushes are blocked as a consequence of "require pull request" (rulesets h
 
 ## Branch cleanup
 
-Only temporary branches are ever deleted. `development` and `production` are permanent: the rulesets block their deletion and force-pushes, and the repository setting **Automatically delete head branches** is only safe once those rulesets are active, because a release PR has `development` as its head branch; GitHub does not delete a head branch that a ruleset protects from deletion, but without the ruleset it would. So the order is fixed: enable the rulesets first, then the setting.
+Only temporary branches are ever deleted. `development` and `production` are permanent: the rulesets block their deletion and force-pushes. The repository setting **Automatically delete head branches** (`delete_branch_on_merge`) is **enabled**; it was switched on only after both rulesets were active, because a release PR has `development` as its head branch and GitHub does not delete a head branch that a ruleset protects from deletion. Branches and worktrees that exist locally are never touched by this setting.
 
 ```bash
-# after the rulesets are active (needs owner approval; not enabled yet)
-gh api -X PATCH repos/singhdaksh7/printout- -F delete_branch_on_merge=true
-# verify a permanent branch survives: merge a throwaway PR from a test branch, then
+# verify after a merge: only permanent and still-open branches remain on the remote
 gh api repos/singhdaksh7/printout-/branches --jq '.[].name'
+# after your PR merged: update the local checkout, then drop the local branch if you like
+git switch development && git pull --ff-only && git fetch --prune
 ```
 
 ## Release: `development` to `production`
@@ -133,9 +139,9 @@ gh pr create --base development
 git branch --contains <fix-sha> -r    # verify both branches contain it
 ```
 
-## Branch rename procedure (`main` to `production`), needs owner approval
+## Branch rename procedure (`main` to `production`), NOT done; needs owner approval and a server check
 
-Findings of the 2026-10-16 audit: GitHub has no webhooks, deploy keys, environments, deployments or workflows referring to `main`; no Vercel project and no Render service in the owner's accounts uses this repository. **Not verified:** Netlify, Hostinger, any other host or CI, forks, and local clones on other machines; the production deployment is a self-hosted Docker stack (`deploy/`) whose branch is whatever is checked out on that server.
+Findings of the 2026-10-16 audit: GitHub has no webhooks, deploy keys, environments, deployments or workflows referring to `main`; no Vercel project and no Render service in the owner's accounts uses this repository. Also checked (read-only): no Netlify project matches the repository, and the only Hostinger Git connection belongs to a different GitHub account. **Not verified (blocks the rename):** the production server's checkout and upstream (`deploy/deploy.sh` is run after `git pull`, which would break if the server tracks `origin/main`), any scheduled `git pull`, forks, and local clones on other machines; the production deployment is a self-hosted Docker stack (`deploy/`) whose branch is whatever is checked out on that server.
 
 Before renaming, check: (1) the server's checkout (`git -C <path> branch --show-current`), (2) any hosting dashboard linked to the repository, (3) other developers' clones, (4) open pull requests (the rename retargets them).
 
@@ -148,7 +154,8 @@ git fetch origin && git branch -m main production && git branch -u origin/produc
 # 4. verify
 gh api repos/singhdaksh7/printout- --jq .default_branch                 # production
 gh api repos/singhdaksh7/printout-/branches --jq '.[].name'             # production, development
-# 5. remove `main` from the triggers in .github/workflows/ci.yml and enable the rulesets
+# 5. remove `main` from the triggers in .github/workflows/ci.yml and from the production ruleset include list (the rulesets are already active)
+# 6. on the production server, repoint the checkout: git branch -m main production && git branch -u origin/production production
 ```
 
 Rollback: `gh api -X POST repos/singhdaksh7/printout-/branches/production/rename -f new_name=main`, then repeat step 3 with the names swapped.
