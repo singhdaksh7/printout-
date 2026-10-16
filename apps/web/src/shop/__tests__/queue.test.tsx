@@ -53,6 +53,13 @@ describe('queue', () => {
     expect(screen.getByRole('link', { name: 'Order #CENT-1' })).toHaveAttribute('href', '/shop/orders/o1');
   });
 
+  it('does not repeat a "New" status chip on rows of the New tab', async () => {
+    mockFetch(authedSession, orders({ items: [order()] }));
+    renderShop('/shop');
+    const c = within(await screen.findByTestId('order-card'));
+    expect(c.queryByText('New')).not.toBeInTheDocument();
+  });
+
   it('long filenames are truncated with the full name in a title', async () => {
     const long = `${'a'.repeat(200)}.pdf`;
     mockFetch(authedSession, orders({ items: [order({ originalFilename: long })] }));

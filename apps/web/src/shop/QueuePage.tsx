@@ -188,12 +188,17 @@ function SettingsCell({ o }: { o: OrderSummary }) {
   );
 }
 
+/** A status chip for queue rows. NEW is the state of every row in the New tab (nothing has happened yet), so a chip would only repeat the tab; later states carry information and are shown. */
+function QueueStatusChip({ status }: { status: OrderSummary['status'] }) {
+  return status === 'NEW' ? null : <OrderStatusChip status={status} />;
+}
+
 function StatusCell({ o, showChip = true }: { o: OrderSummary; showChip?: boolean }) {
   const f = useOrderFlags(o);
   const mins = Math.max(1, Math.ceil(f.secsLeft / 60));
   return (
     <div className="pb-statuscell">
-      {showChip && <OrderStatusChip status={o.status} />}
+      {showChip && <QueueStatusChip status={o.status} />}
       {f.initiated && (
         <div className="pb-statuscell__line" data-testid="print-initiated">
           Print initiated <time dateTime={o.printInitiatedAt!} title={new Date(o.printInitiatedAt!).toLocaleString()}>{new Date(o.printInitiatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
@@ -240,7 +245,7 @@ const OrderCard = memo(function OrderCard({ o, onChanged }: { o: OrderSummary; o
     <div className="pb-ordercard">
       <div className="pb-ordercard__top">
         <OrderCell o={o} />
-        <OrderStatusChip status={o.status} />
+        <QueueStatusChip status={o.status} />
       </div>
       <FileCell o={o} />
       <div className="pb-ordercard__specs">
