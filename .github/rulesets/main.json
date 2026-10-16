@@ -1,11 +1,10 @@
 {
-  "name": "production protection",
+  "name": "main protection",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
     "ref_name": {
       "include": [
-        "refs/heads/production",
         "refs/heads/main"
       ],
       "exclude": []
