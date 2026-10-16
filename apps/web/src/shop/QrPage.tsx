@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { describeError, getQr, type QrInfo } from '../lib/shop-api';
 import { useAuth } from './auth';
 import { retentionPhrase } from '../lib/retention';
-import { Banner, Skeleton, useToast } from './components';
+import { Banner, Button, Card, Skeleton, useToast } from '../ui';
 
 function download(href: string, name: string) {
   const a = document.createElement('a');
@@ -61,26 +61,26 @@ export default function QrPage() {
   }
 
   const shopName = sessionName || info?.shopName || '';
-  if (error) return <section><h1>Counter QR</h1><Banner onRetry={() => setAttempt((n) => n + 1)}>{error}</Banner></section>;
-  if (!info) return <section><h1>Counter QR</h1><Skeleton lines={4} label="Loading QR code" /></section>;
+  if (error) return <section className="pb-theme pb-page"><h1 className="pb-h1">Counter QR</h1><Banner tone="err" actions={<Button size="sm" variant="dark" onClick={() => setAttempt((n) => n + 1)}>Retry</Button>}>{error}</Banner></section>;
+  if (!info) return <section className="pb-theme pb-page"><h1 className="pb-h1">Counter QR</h1><Skeleton lines={4} label="Loading QR code" /></section>;
 
   return (
-    <section className={`qr-page${posterMode ? ' poster-mode' : ''}`} aria-labelledby="qr-title">
+    <section className={`qr-page pb-theme pb-page${posterMode ? ' poster-mode' : ''}`} aria-labelledby="qr-title">
       <div className="qr-controls">
-        <h1 id="qr-title">Counter QR</h1>
-        <p className="sh-muted">Customers scan this to open your shop page and send their documents.</p>
-        <div className="sh-card qr-card">
+        <h1 id="qr-title" className="pb-h1">Counter QR</h1>
+        <p className="pb-muted pb-pagehead__sub">Customers scan this to open your shop page and send their documents.</p>
+        <Card className="qr-card">
           <div className="qr-img" role="img" aria-label={`QR code for ${info.publicUrl}`} dangerouslySetInnerHTML={{ __html: svg }} />
-          <p className="qr-url sh-wrap"><a href={info.publicUrl} target="_blank" rel="noopener noreferrer">{info.publicUrl}</a></p>
-          <div className="sh-actions">
-            <button className="sh-btn" onClick={copy}>Copy link</button>
-            <button className="sh-btn" onClick={downloadPng}>Download PNG</button>
-            <button className="sh-btn" onClick={downloadSvg}>Download SVG</button>
+          <p className="qr-url pb-wrap pb-mono"><a href={info.publicUrl} target="_blank" rel="noopener noreferrer">{info.publicUrl}</a></p>
+          <div className="pb-qr-actions">
+            <Button variant="outline" size="sm" onClick={copy}>Copy link</Button>
+            <Button variant="outline" size="sm" onClick={downloadPng}>Download PNG</Button>
+            <Button variant="outline" size="sm" onClick={downloadSvg}>Download SVG</Button>
           </div>
-        </div>
-        <div className="sh-actions">
-          <button className="sh-btn sh-btn-primary" onClick={() => { if (!posterMode) setParams({ poster: '1' }); setTimeout(() => window.print(), 50); }}>Print A4 poster</button>
-          {posterMode && <button className="sh-btn" onClick={() => setParams({})}>Back to QR</button>}
+        </Card>
+        <div className="pb-qr-actions pb-qr-actions--main">
+          <Button variant="primary" onClick={() => { if (!posterMode) setParams({ poster: '1' }); setTimeout(() => window.print(), 50); }}>Print A4 poster</Button>
+          {posterMode && <Button variant="ghost" onClick={() => setParams({})}>Back to QR</Button>}
         </div>
       </div>
 

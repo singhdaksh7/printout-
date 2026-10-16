@@ -183,7 +183,7 @@
 /* print: poster only, single A4 page */
 @page { size: A4; margin: 10mm; }
 @media print {
-  .shop-chrome, .qr-controls, .sh-toast-region, .sh-banner { display: none !important; }
+  .shop-chrome, .qr-controls, .sh-toast-region, .sh-banner, .pb-toast-region, .pb-banner { display: none !important; }
   html, body { background: #fff !important; }
   .shop-shell { display: block; min-height: 0; }
   .shop-main { max-width: none; padding: 0; margin: 0; }
