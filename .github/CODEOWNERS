@@ -1,0 +1,5 @@
+# Both developers are listed as owners of everything so each can be asked for an optional review of the other's work.
+# GitHub requests a review from every listed owner except the PR author. No review is required: the rulesets require a pull request
+# and green CI only (required_approving_review_count is 0, require_code_owner_review is false). Either developer may merge any PR,
+# including their own, once CI passes (docs/GIT_WORKFLOW.md).
+* @singhdaksh7 @AmardeepManav
