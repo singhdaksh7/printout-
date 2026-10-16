@@ -116,6 +116,30 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/history:
+    get:
+      summary: "Order history (IST day range, search, cursor; metadata only)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (CSV body for export.csv)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/history/summary:
+    get:
+      summary: "Order history summary counts"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (CSV body for export.csv)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/history/export.csv:
+    get:
+      summary: "Order history CSV export (metadata only, formula-safe, rate-limited)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (CSV body for export.csv)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/orders/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }

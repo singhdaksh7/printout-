@@ -52,7 +52,7 @@ Work on a feature branch from `development`; long-lived branches are `developmen
 
 ## Deliberately deferred (show as Coming soon or not at all, never as working)
 
-Windows Print Agent; Kotlin/Ktor backend; OTP login and admin 2FA; staff roles and authorization; billing, payment processing, UPI Autopay; reports; customer sessions and SSE for customers; chunked uploads and the 25 MB limit; page-1 preview image; deletion-receipt verification; automatic one-year metadata deletion; History table with date filters and CSV export (no endpoint yet).
+Windows Print Agent; Kotlin/Ktor backend; OTP login and admin 2FA; staff roles and authorization; billing, payment processing, UPI Autopay; reports; customer sessions and SSE for customers; chunked uploads and the 25 MB limit; page-1 preview image; deletion-receipt verification; automatic one-year metadata deletion; (History table with date filters and CSV export is now built on the Order model: `/shop/history`, `/shop/orders/history*`.)
 
 ## Keep out of the skill
 

@@ -9,6 +9,7 @@ import OrderDetailPage from './OrderDetailPage';
 import PricingPage from './PricingPage';
 import QrPage from './QrPage';
 import AnalyticsPage from './AnalyticsPage';
+import HistoryPage from './HistoryPage';
 import SettingsPage from './SettingsPage';
 import DevicesPage from './DevicesPage';
 import './shop.css';
@@ -25,6 +26,7 @@ export default function ShopRoutes() {
             <Route path="orders/:id" element={<OrderDetailPage />} />
             <Route path="pricing" element={<PricingPage />} />
             <Route path="qr" element={<QrPage />} />
+            <Route path="history" element={<HistoryPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="devices" element={<DevicesPage />} />

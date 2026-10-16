@@ -20,6 +20,8 @@ export interface Limiters {
   printConfirm: Limiter;
   documentAccess: Limiter;
   shopMutation: Limiter;
+  /** Order-history CSV export (heavy read). */
+  shopExport: Limiter;
   adminRead: Limiter;
   adminMutation: Limiter;
   sseConnect: Limiter;
@@ -76,6 +78,7 @@ export function getLimiters(app: FastifyInstance, config: Config): Limiters {
     printConfirm: make(config.RATE_LIMIT_PRINT_CONFIRM_MAX),
     documentAccess: make(config.RATE_LIMIT_DOCUMENT_ACCESS_MAX),
     shopMutation: make(config.RATE_LIMIT_SHOP_MUTATION_MAX),
+    shopExport: make(config.RATE_LIMIT_SHOP_EXPORT_MAX),
     adminRead: make(config.RATE_LIMIT_ADMIN_READ_MAX),
     adminMutation: make(config.RATE_LIMIT_ADMIN_MUTATION_MAX),
     sseConnect: make(config.RATE_LIMIT_SSE_CONNECT_MAX),
