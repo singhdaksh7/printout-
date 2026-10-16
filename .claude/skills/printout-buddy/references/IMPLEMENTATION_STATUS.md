@@ -57,3 +57,5 @@ Windows Print Agent; Kotlin/Ktor backend; OTP login and admin 2FA; staff roles a
 ## Keep out of the skill
 
 Secrets, credentials, personal paths, binary fonts and the large design PDFs.
+
+Order value report (built on the Analytics page): `GET /shop/analytics/revenue` and `/revenue/export.csv`. It shows ESTIMATED order value from the stored quote `Order.totalPaise` only. There are no customer payment records, so never label it revenue, earnings or money collected; collected revenue, refunds and net earnings stay unavailable until a verified payment source exists. Rules: IST days, counted = not CANCELLED/EXPIRED, integer paise, no re-pricing of history.

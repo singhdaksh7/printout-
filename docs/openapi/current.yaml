@@ -140,6 +140,22 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... } (CSV body for export.csv)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/analytics/revenue:
+    get:
+      summary: "Order value report: ESTIMATED order value from stored quotes (not payments); IST day range, comparison, daily series, breakdowns"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/analytics/revenue/export.csv:
+    get:
+      summary: "Order value CSV export (quoted values only, formula-safe, rate-limited, max 5000 rows)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'CSV body', content: { text/csv: { schema: { type: string } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/orders/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
