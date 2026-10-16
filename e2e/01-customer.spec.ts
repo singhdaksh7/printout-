@@ -27,9 +27,10 @@ test('mobile customer: PDF upload, server page count, options, quote, single sub
   await expect(page.getByTestId('total')).toHaveText('₹6.00');
   await expectNoOverflow(page, 'configure');
 
-  await page.getByRole('radio', { name: 'Colour', exact: true }).click();
-  await page.getByRole('radio', { name: 'Double-sided' }).click();
-  await page.getByRole('radio', { name: 'Custom' }).click();
+  // segmented options are clicked through their visible label (the native radio is visually hidden)
+  await page.locator('label.pb-seg__opt', { hasText: /^Colour$/ }).click();
+  await page.locator('label.pb-seg__opt', { hasText: 'Double-sided' }).click();
+  await page.locator('label.pb-seg__opt', { hasText: 'Custom' }).click();
   await page.getByPlaceholder(/e\.g\./).fill('1-2');
   // colour duplex 1000? seed: colour/duplex 900 paise, 2 pages -> 1 sheet -> Rs 9.00
   await expect(page.getByTestId('total')).toHaveText('₹9.00');

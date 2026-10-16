@@ -4,8 +4,7 @@
 .ad-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pb-space-2) var(--pb-space-4); padding: var(--pb-space-3) 0; border-bottom: 1px solid var(--pb-n100); overflow-wrap: anywhere; }
 .ad-row:last-child { border-bottom: 0; }
 .ad-row--block { display: block; }
-.ad-row a { font-weight: 600; color: var(--pb-navy); text-decoration: underline; text-underline-offset: 2px; }
-.ad-row a:hover { color: var(--pb-orange-ink); }
+.ad-row a { font-weight: 600; }
 .ad-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .ad-order-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2) var(--pb-space-3); }
 .ad-filters { display: flex; flex-wrap: wrap; gap: var(--pb-space-3); align-items: flex-start; }
@@ -14,15 +13,25 @@
 .ad-actions { display: flex; flex-wrap: wrap; gap: var(--pb-space-3); }
 .ad-pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 400 12px/1.5 var(--pb-font-mono); background: var(--pb-n50); padding: var(--pb-space-2); border-radius: var(--pb-radius-sm); margin: var(--pb-space-1) 0 0; }
 .ad-secret { font-family: var(--pb-font-mono); background: var(--pb-warn-soft); border: 1px dashed var(--pb-warn); padding: var(--pb-space-3); border-radius: var(--pb-radius-md); overflow-wrap: anywhere; user-select: all; margin: var(--pb-space-3) 0; }
-.ad-brandsub { display: block; font: 400 12px/1.3 var(--pb-font-body); color: var(--pb-n300); }
-/* Five phone tabs must fit 360px: keep each label on one line. */
-.pb-bottomnav__link { font-size: 11px; }
-.pb-bottomnav__link > span:last-child { white-space: nowrap; }
 @media (max-width: 767px) { .ad-right { align-items: flex-start; text-align: left; } }
+/* Links inside list rows keep a 44px touch area (the row padding is not part of the link). */
+.ad-row a { position: relative; }
+.ad-row a::after { content: ''; position: absolute; inset: -12px -4px; }
+/* Standalone lists (Shops, Orders, Subscriptions) read as one bordered card with clear row dividers; inside a Card they stay plain. */
+.pb-page > .ad-list { background: var(--pb-white); border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-lg); overflow: hidden; }
+.pb-page > .ad-list > .ad-row { padding: var(--pb-space-3) var(--pb-space-4); border-bottom: 1px solid var(--pb-n200); }
+.pb-page > .ad-list > .ad-row:last-child { border-bottom: 0; }
+@media (max-width: 599px) {
+  /* Chip + name + Log out stay on one header row: the name truncates instead of wrapping to a second row. */
+  .ad-accountlink { max-width: 6.5rem; }
+}
 
 /* Account settings */
-.ad-accountlink { color: var(--pb-text-secondary); text-decoration: none; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: var(--pb-radius-sm); }
+.ad-accountlink { display: inline-flex; align-items: center; min-height: var(--pb-target); color: var(--pb-n700); text-decoration: none; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: var(--pb-radius-sm); }
 .ad-accountlink:hover { color: var(--pb-navy); text-decoration: underline; text-underline-offset: 2px; }
 .ad-account { display: flex; flex-direction: column; gap: var(--pb-space-4); max-width: 44rem; }
 .ad-pwfield { position: relative; }
 .ad-formerr { outline: none; }
+/* The card header and the (usually empty) error slot would each add a form gap; collapse them so the title sits close to its text. */
+.ad-form > .pb-card__header { margin-bottom: 0; }
+.ad-formerr:empty { display: none; }

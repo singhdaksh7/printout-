@@ -289,7 +289,7 @@ describe('sound alerts', () => {
   it('opt-in happens by an explicit click that unlocks audio, persists, and rings once per live order', async () => {
     await setup({ items: [] });
     await userEvent.click(await bell());
-    const box = within(await screen.findByRole('dialog', { name: 'Notifications' })).getByRole('checkbox', { name: 'Sound for new orders' });
+    const box = within(await screen.findByRole('dialog', { name: 'Notifications' })).getByRole('switch', { name: 'Sound for new orders' });
     expect(box).not.toBeChecked();
     await userEvent.click(box);
     expect(box).toBeChecked();
@@ -330,7 +330,7 @@ describe('sound alerts', () => {
     window.localStorage.setItem(SOUND_KEY, '1');
     await setup({ items: [] });
     await userEvent.click(await bell());
-    const box = within(await screen.findByRole('dialog', { name: 'Notifications' })).getByRole('checkbox', { name: 'Sound for new orders' });
+    const box = within(await screen.findByRole('dialog', { name: 'Notifications' })).getByRole('switch', { name: 'Sound for new orders' });
     expect(box).toBeChecked();
     await userEvent.click(box);
     expect(window.localStorage.getItem(SOUND_KEY)).toBe('0');

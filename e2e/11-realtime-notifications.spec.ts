@@ -141,7 +141,7 @@ test('sound is off until the shopkeeper opts in, then rings once per live order 
   expect(await beeps(pa)).toBe(0);
 
   await pa.getByRole('button', { name: /^Notifications/ }).click();
-  const box = pa.getByRole('dialog').getByRole('checkbox', { name: 'Sound for new orders' });
+  const box = pa.getByRole('dialog').getByRole('switch', { name: 'Sound for new orders' });
   await expect(box).not.toBeChecked();
   await box.check(); // explicit opt-in (a user gesture, so the browser allows audio)
   expect(await pa.evaluate(() => window.localStorage.getItem('printout.shop.sound'))).toBe('1');
@@ -160,7 +160,7 @@ test('sound is off until the shopkeeper opts in, then rings once per live order 
 
   // mute persists
   await pa.getByRole('button', { name: /^Notifications/ }).click();
-  await pa.getByRole('dialog').getByRole('checkbox', { name: 'Sound for new orders' }).uncheck();
+  await pa.getByRole('dialog').getByRole('switch', { name: 'Sound for new orders' }).uncheck();
   expect(await pa.evaluate(() => window.localStorage.getItem('printout.shop.sound'))).toBe('0');
   await pa.keyboard.press('Escape');
 });

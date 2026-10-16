@@ -17,7 +17,7 @@ for (const [name, vp] of SIZES) {
     await expectNoOverflow(page, `customer idle ${name}`);
     await page.getByTestId('file-input').setInputFiles({ name: longName, mimeType: 'application/pdf', buffer: await makePdf(4) });
     await expect(page.getByTestId('total')).toBeVisible();
-    await page.getByRole('radio', { name: 'Custom' }).click();
+    await page.locator('label.pb-seg__opt', { hasText: 'Custom' }).click();
     await page.getByPlaceholder(/e\.g\./).fill('1-3');
     await expect(page.getByTestId('total')).toBeVisible();
     await expectNoOverflow(page, `customer configured ${name}`);
@@ -34,18 +34,26 @@ for (const [name, vp] of SIZES) {
     await page.getByTestId('order-card').filter({ hasText: `Resp ${name}` }).getByRole('link').first().click();
     await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
     await expectNoOverflow(page, `order detail ${name}`);
-    // Phone tab bar: Print queue, History, Rate card, QR & standee, Settings. Analytics is linked from History.
-    for (const label of ['History', 'Rate card', 'QR & standee', 'Settings']) {
-      await page.getByRole('link', { name: label, exact: true }).click();
+    // Below 768px: phone tab bar (Queue, History, Analytics, Devices, Rate card, then More with QR & standee and Settings).
+    // From 768px: the sidebar rail lists every destination.
+    const phone = vp.width < 768;
+    const bar = page.getByRole('navigation', { name: phone ? 'Shop sections, phone' : 'Shop sections' });
+    for (const label of phone ? ['History', 'Analytics', 'Devices', 'Rate card'] : ['History', 'Analytics', 'Devices', 'Rate card', 'QR & standee', 'Settings']) {
+      await bar.getByRole('link', { name: label, exact: true }).click();
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await page.waitForLoadState('networkidle');
       await expectNoOverflow(page, `${label} ${name}`);
     }
-    await page.getByRole('link', { name: 'History', exact: true }).click();
-    await page.getByRole('link', { name: 'View analytics' }).click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible();
-    await page.waitForLoadState('networkidle');
-    await expectNoOverflow(page, `Analytics ${name}`);
+    for (const label of phone ? ['QR & standee', 'Settings'] : []) {
+      await bar.getByRole('button', { name: 'More' }).click();
+      await expect(page.getByRole('dialog', { name: 'More' })).toBeVisible();
+      await expectNoOverflow(page, `More sheet ${name}`);
+      await page.getByRole('dialog', { name: 'More' }).getByRole('link', { name: label }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      await expectNoOverflow(page, `${label} ${name}`);
+    }
     await shot(page, `62-shop-settings-${name}`, false);
     await ctx.close();
   });

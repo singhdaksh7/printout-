@@ -5,6 +5,7 @@ import { formatPaise } from '../lib/format';
 import { retentionPhrase } from '../lib/retention';
 import { customerErrorMessage, getShop, submitOrder, type PublicShop } from '../lib/customer-api';
 import { getRecentOrders, rememberOrder } from '../lib/customer-storage';
+import { Button, TextField } from '../ui';
 import { ConfigureCard } from './ConfigureCard';
 import { UploadCard } from './UploadCard';
 import { Alert, NotFound, Skeleton } from './parts';
@@ -32,7 +33,7 @@ export function ShopPage() {
   if (shop.s === 'loading') return <main className="cx-page" aria-busy="true"><div className="cx-card" role="status" aria-label="Loading shop"><Skeleton lines={3} /></div></main>;
   if (shop.s === 'missing') return <NotFound title="Shop not found" body="We couldn't find this shop. Check the link or scan the shop's QR code again." />;
   if (shop.s === 'error') {
-    return <main className="cx-page"><div className="cx-card cx-center"><Alert>{shop.message}</Alert><button className="cx-btn cx-btn-primary" onClick={() => setReload((n) => n + 1)}>Try again</button></div></main>;
+    return <main className="cx-page"><div className="cx-card cx-center"><Alert>{shop.message}</Alert><Button variant="primary" onClick={() => setReload((n) => n + 1)}>Try again</Button></div></main>;
   }
   const unavailable = !shop.shop.acceptsOrders || (shop.shop.status !== undefined && shop.shop.status !== 'ACTIVE');
   return <ShopFlow slug={slug} shop={shop.shop} unavailable={unavailable} />;
@@ -98,7 +99,7 @@ function ShopFlow({ slug, shop, unavailable }: { slug: string; shop: PublicShop;
       {recent.length > 0 && upload.state.phase === 'idle' && (
         <nav className="cx-card cx-recent" aria-label="My recent orders">
           <h2 className="cx-h2">My recent orders</h2>
-          <ul>{recent.map((o) => <li key={o.token}><Link to={`/t/${encodeURIComponent(o.token)}`} className="cx-link">{o.orderNumber}{o.shopName ? ` · ${o.shopName}` : ''}</Link></li>)}</ul>
+          <ul>{recent.map((o) => <li key={o.token}><Link to={`/t/${encodeURIComponent(o.token)}`}>{o.orderNumber}{o.shopName ? ` · ${o.shopName}` : ''}</Link></li>)}</ul>
         </nav>
       )}
       <div className="cx-grid">
@@ -116,13 +117,12 @@ function ShopFlow({ slug, shop, unavailable }: { slug: string; shop: PublicShop;
                 {built.options && <p className="cx-muted">{describeOptions(built.options).join(' · ')}</p>}
                 <QuoteView quote={quote} valid={!!built.options} />
                 <div className="cx-field">
-                  <label className="cx-label" htmlFor="cx-name">Name or reference <span className="cx-muted">(optional)</span></label>
-                  <input id="cx-name" className="cx-input" maxLength={100} autoComplete="off" value={name} placeholder="So the shop can find your order" onChange={(e) => setName(e.target.value)} />
+                  <TextField id="cx-name" label="Name or reference (optional)" maxLength={100} autoComplete="off" value={name} placeholder="So the shop can find your order" onChange={(e) => setName(e.target.value)} />
                 </div>
                 {submitError && <Alert>{submitError.message}</Alert>}
-                <button type="button" className="cx-btn cx-btn-primary cx-btn-lg cx-block" disabled={!canSubmit} onClick={() => void submit()}>
+                <Button variant="primary" size="lg" fullWidth className="cx-block" disabled={!canSubmit} loading={submitting} onClick={() => void submit()}>
                   {submitting ? 'Placing order…' : 'Place order'}
-                </button>
+                </Button>
                 {!online && <p className="cx-muted cx-small">Reconnect to place your order.</p>}
                 <p className="cx-small"><strong>Pay the shop directly when you collect.</strong> No online payment.</p>
               </>

@@ -1,6 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Banner, Button, Checkbox, EmptyState, Icon, IconButton, Drawer, Skeleton } from '../ui';
+import { Badge, Banner, Button, EmptyState, Icon, IconButton, Drawer, Skeleton, Switch } from '../ui';
 import { ageLabel, useTick } from './hooks';
 import { useAlertSound } from './alert-sound';
 import { useNotifications } from './notifications';
@@ -53,7 +53,7 @@ export function NotificationBell() {
             <Button variant="outline" size="sm" iconStart="check-check" onClick={() => void n.markAllRead()} disabled={n.unread === 0}>
               Mark all as read
             </Button>
-            <Checkbox
+            <Switch
               label="Sound for new orders"
               checked={sound.enabled}
               onChange={() => sound.set(!sound.enabled)}

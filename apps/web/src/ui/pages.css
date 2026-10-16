@@ -12,6 +12,7 @@
 .pb-order-amount, .pb-tnum { font-variant-numeric: tabular-nums; }
 
 /* sign-in pages */
-.pb-theme.pb-login { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: var(--pb-space-4); background: var(--pb-n50); }
+.pb-theme.pb-login { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--pb-space-5); padding: var(--pb-space-4); background: var(--pb-n50); }
+.pb-login__brand { display: flex; justify-content: center; }
 .pb-login__card { width: 100%; max-width: 400px; }
 .pb-login__form { display: flex; flex-direction: column; gap: var(--pb-space-4); }

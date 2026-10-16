@@ -5,7 +5,7 @@ import { Button } from '../actions/Button';
 import { DataTable, type Column } from '../data/DataTable';
 import { LoadMore } from '../data/LoadMore';
 import { EmptyState } from '../feedback/EmptyState';
-import { AppShell, BottomNav, Sidebar, TopBar, type NavItem } from '../navigation/navigation';
+import { AppShell, BottomNav, BrandLogo, Sidebar, TopBar, type NavItem } from '../navigation/navigation';
 
 interface Row { id: string; code: string; file: string }
 const rows: Row[] = [{ id: 'a', code: '4823', file: 'Project_report.docx' }, { id: 'b', code: '4821', file: 'Marksheet_2026.pdf' }];
@@ -154,6 +154,52 @@ describe('Sidebar, BottomNav, AppShell', () => {
     const nav = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(nav).getAllByRole('link')).toHaveLength(2);
     expect(within(nav).getByLabelText('3 new')).toBeInTheDocument();
+  });
+
+  it('BottomNav shows short labels and a More button that opens a sheet with the remaining destinations', async () => {
+    const all: NavItem[] = [
+      { to: '/shop', label: 'Print queue', shortLabel: 'Queue', end: true, icon: 'list-ordered' },
+      { to: '/shop/history', label: 'History', icon: 'clock' },
+      { to: '/shop/qr', label: 'QR & standee', icon: 'qr-code' },
+      { to: '/shop/settings', label: 'Settings', icon: 'settings' },
+      { to: '/shop/staff', label: 'Staff', icon: 'users', comingSoon: true }
+    ];
+    render(<MemoryRouter initialEntries={['/shop']}><BottomNav label="Primary" items={all.slice(0, 2)} moreItems={all.slice(2)} /></MemoryRouter>);
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(nav).getByRole('link', { name: 'Queue' })).toBeInTheDocument();
+    const more = within(nav).getByRole('button', { name: 'More' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(more);
+    expect(more).toHaveAttribute('aria-expanded', 'true');
+    const sheet = screen.getByRole('dialog', { name: 'More' });
+    expect(within(sheet).getByRole('link', { name: 'QR & standee' })).toBeInTheDocument();
+    expect(within(sheet).getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    expect(within(sheet).queryByRole('link', { name: /Staff/ })).toBeNull(); // coming soon is never offered
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(more).toHaveFocus(); // focus returns to the opener
+  });
+
+  it('BottomNav marks More as current while a More destination is open, and closes the sheet on navigation', async () => {
+    const moreItems: NavItem[] = [{ to: '/shop/settings', label: 'Settings', icon: 'settings' }];
+    render(<MemoryRouter initialEntries={['/shop/settings']}><BottomNav label="Primary" items={[]} moreItems={moreItems} /></MemoryRouter>);
+    const more = screen.getByRole('button', { name: 'More' });
+    expect(more.className).toContain('is-active');
+    await userEvent.click(more);
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'Settings' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('BottomNav without leftovers has no More button', () => {
+    render(<MemoryRouter><BottomNav label="Primary" items={items} /></MemoryRouter>);
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+  });
+
+  it('BrandLogo renders the wordmark and an optional sub line, with the tile hidden from assistive tech', () => {
+    const { container } = render(<BrandLogo sub="Platform admin" />);
+    expect(screen.getByText('PrintoutBuddy')).toBeInTheDocument();
+    expect(screen.getByText('Platform admin')).toBeInTheDocument();
+    expect(container.querySelector('.pb-brand__tile')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('AppShell provides a skip link and a main landmark and renders slots', () => {
