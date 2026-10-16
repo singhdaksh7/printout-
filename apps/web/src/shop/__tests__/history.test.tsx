@@ -87,7 +87,8 @@ describe('history page', () => {
     expect(await screen.findByRole('heading', { name: 'History' })).toBeInTheDocument();
     const table = await screen.findByRole('table', { name: /Order history, Today/ });
     for (const h of ['Time', 'Code', 'File', 'Pages × copies', 'Settings', 'Status', 'By', 'File deleted']) expect(within(table).getByRole('columnheader', { name: h })).toBeInTheDocument();
-    const row = within(table).getByTestId('history-row');
+    // The table mounts (aria-busy) before the rows load: wait for the row instead of assuming it is already there.
+    const row = await within(table).findByTestId('history-row');
     expect(within(row).getAllByText('11:44')).toHaveLength(2); // created time and the print-initiated time
     expect(within(row).getByRole('link', { name: 'Order #CENT-4821' })).toHaveAttribute('href', '/shop/orders/o1');
     expect(within(row).getByText('Marksheet_2026.pdf')).toBeInTheDocument();
