@@ -1,0 +1,1 @@
+Reference payloads for GitHub repository rulesets. They are NOT applied automatically. The required check names must match the contexts GitHub reports for `.github/workflows/ci.yml` (confirm after a CI run). See docs/GIT_WORKFLOW.md for how and when to enable them.

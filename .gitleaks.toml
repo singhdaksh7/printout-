@@ -1,0 +1,16 @@
+# Secret-scan configuration (gitleaks). Extends the default rules; only the paths below are allowlisted, and only because
+# they contain deliberately fake values (test fixtures, placeholders, a common-password denylist). Real secrets belong in
+# the environment, never in these paths. Review any new entry with the same care as a secret.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake fixtures and placeholders"
+paths = [
+  '''^\.env\.example$''',
+  '''^apps/api/test/.*''',
+  '''^apps/api/vitest\.config\.ts$''',
+  '''^apps/api/prisma/bootstrap-admin\.ts$''',
+  '''^e2e/env\.ts$''',
+  '''^apps/android/app/src/test/.*''',
+]

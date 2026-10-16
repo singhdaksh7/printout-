@@ -20,9 +20,9 @@ Read `references/IMPLEMENTATION_STATUS.md` first (what is built, commands, defer
 7. Use isolated disposable databases for migration/tests. Never run destructive test fixtures against an unknown DB. No real customer file uploads in tests.
 8. Produce a change log: requirement, files, migration/rollback plan, tests, risks, unimplemented portions, and questions for product owner.
 
-## Branch policy
+## Branch policy and CI/CD
 
-Target remote branches: `development` (integration) and `production` (stable). The remote still has `main`; the rename awaits owner approval (`docs/GIT_WORKFLOW.md`). Safely preserve unpublished local histories and untracked work before renaming/deleting. Never assume the remote reflects local Android/UI/email work.
+Long-lived branches: `development` (integration) and `production` (stable; the remote is still `main` until the owner approves the rename). Create `feature/<dev>-<topic>` (or `fix/`, `hotfix/`) from the latest `development`, open a PR into `development`, never push to the long-lived branches directly, and release by a reviewed PR `development` to `production`. CI (`.github/workflows/ci.yml`) runs web, API, e2e, UI and security jobs on PRs and pushes; it never deploys. Merging does not deploy or migrate; deployment is a manual, separately approved step (`docs/GIT_WORKFLOW.md`, `docs/DEPLOYMENT.md`). Never push, rename branches, change protections, merge a PR, force-push or touch production without explicit authorization. Back up (`git bundle create --all`, verify, trial restore) before any branch operation and preserve unpublished work.
 
 ## Source precedence
 
