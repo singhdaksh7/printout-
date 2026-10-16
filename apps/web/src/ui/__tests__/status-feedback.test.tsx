@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from '../actions/Button';
 import { Banner } from '../feedback/Banner';
 import { EmptyState } from '../feedback/EmptyState';
 import { Skeleton } from '../feedback/Skeleton';
 import { ToastRegion } from '../feedback/ToastRegion';
+import { useToast } from '../feedback/useToast';
 import { Badge } from '../status/Badge';
 import { Chip } from '../status/Chip';
 import { ProgressBar } from '../status/ProgressBar';
@@ -82,6 +83,7 @@ describe('Banner', () => {
     );
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
     expect(screen.getByRole('list').tagName).toBe('OL');
+    expect(screen.getByRole('list').style.getPropertyValue('--pb-steps')).toBe('2'); // columns = steps, capped at three
     expect(screen.getByRole('button', { name: 'Check again' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(onDismiss).toHaveBeenCalled();
@@ -119,5 +121,38 @@ describe('ToastRegion, Skeleton, EmptyState', () => {
     expect(screen.getByText('New jobs appear here.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Print standee' })).toBeInTheDocument();
     expect(screen.getByText('Is the QR standee on the counter?')).toBeInTheDocument();
+  });
+});
+
+describe('useToast and EmptyState heading level', () => {
+  function Harness() {
+    const { show, node } = useToast(1000);
+    return <><button onClick={() => show('Order cancelled')}>go</button>{node}</>;
+  }
+
+  it('shows a message in the polite live region and clears it by itself', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<Harness />);
+      expect(screen.getByRole('status')).toBeEmptyDOMElement();
+      await userEvent.click(screen.getByText('go'));
+      expect(screen.getByRole('status')).toHaveTextContent('Order cancelled');
+      await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+      expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('EmptyState renders the title at the requested heading level (h3 by default)', () => {
+    const { rerender } = render(<EmptyState title="Nothing here" />);
+    expect(screen.getByRole('heading', { level: 3, name: 'Nothing here' })).toBeInTheDocument();
+    rerender(<EmptyState title="Nothing here" titleAs="h2" />);
+    expect(screen.getByRole('heading', { level: 2, name: 'Nothing here' })).toBeInTheDocument();
+  });
+});
+
+describe('Banner steps layout', () => {
+  it('caps the desktop columns at three however many steps there are', () => {
+    render(<Banner tone="err" steps={['a', 'b', 'c', 'd', 'e']}>x</Banner>);
+    expect(screen.getByRole('list').style.getPropertyValue('--pb-steps')).toBe('3');
   });
 });

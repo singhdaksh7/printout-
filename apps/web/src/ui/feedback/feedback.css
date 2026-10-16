@@ -15,7 +15,11 @@
 .pb-banner__body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .pb-banner__title { margin: 0; font-weight: 700; }
 .pb-banner__text { font-weight: 400; }
-.pb-banner__steps { margin: var(--pb-space-2) 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+/* Recovery steps: stacked on phones, up to three numbered columns on wider screens (3.pdf p14). */
+.pb-banner__steps { list-style: none; counter-reset: pb-step; margin: var(--pb-space-2) 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pb-space-2) var(--pb-space-5); }
+.pb-banner__steps li { counter-increment: pb-step; position: relative; padding-left: 1.6em; }
+.pb-banner__steps li::before { content: counter(pb-step) '.'; position: absolute; left: 0; font-variant-numeric: tabular-nums; }
+@media (min-width: 768px) { .pb-banner__steps { grid-template-columns: repeat(var(--pb-steps, 3), minmax(0, 1fr)); } }
 .pb-banner__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2); margin-top: var(--pb-space-3); }
 .pb-banner__dismiss { flex: none; margin: -8px -8px -8px 0; color: inherit; }
 .pb-banner--bar { align-items: center; border-radius: 0; padding: var(--pb-space-3) var(--pb-gutter); }

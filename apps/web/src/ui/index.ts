@@ -10,6 +10,7 @@ export { Icon, ICON_NAMES, type IconName, type IconProps } from './icons/Icon';
 export { Button, buttonClass, type ButtonProps, type ButtonSize, type ButtonVariant } from './actions/Button';
 export { IconButton, type IconButtonProps } from './actions/IconButton';
 export { SegmentedControl, type SegmentedControlProps, type SegmentedOption } from './actions/SegmentedControl';
+export { Tabs, type TabItem, type TabsProps } from './actions/Tabs';
 
 // Inputs
 export { TextField, type TextFieldProps } from './inputs/TextField';
@@ -28,6 +29,7 @@ export { ProgressBar, type ProgressBarProps } from './status/ProgressBar';
 // Feedback
 export { Banner, type BannerProps, type BannerTone } from './feedback/Banner';
 export { ToastRegion, type ToastRegionProps } from './feedback/ToastRegion';
+export { useToast } from './feedback/useToast';
 export { Skeleton, type SkeletonProps } from './feedback/Skeleton';
 export { EmptyState, type EmptyStateProps } from './feedback/EmptyState';
 

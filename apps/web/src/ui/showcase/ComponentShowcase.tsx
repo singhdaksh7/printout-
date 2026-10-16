@@ -3,7 +3,7 @@ import {
   AppShell, Badge, Banner, BarChart, BottomNav, Button, Card, CardHeader, Checkbox, Chip, DataTable, Drawer, EmptyState, FileDeletedLine,
   HBarList, HeartbeatStrip, Icon, IconButton, JOB_STATUS, JobCode, JobStatusChip, KeyValueList, LoadMore, Modal, ORDER_STATUS_DISPLAY, OrderStatusChip,
   PRESENCE, PresenceChip, ProgressBar, RadioGroup, RetentionNotice, SHOP_STATUS, SegmentedBar, SegmentedControl, Select, ShopStatusChip, Sidebar,
-  Skeleton, Spinner, StatTile, TextArea, TextField, Timeline, ToastRegion, TopBar, buttonClass, ICON_NAMES,
+  Skeleton, Spinner, StatTile, Tabs, TextArea, TextField, Timeline, ToastRegion, TopBar, buttonClass, ICON_NAMES,
   type Column, type HeartbeatState, type JobStatusKind, type LegacyOrderStatus, type NavItem, type PresenceKind
 } from '..';
 import './showcase.css';
@@ -82,6 +82,7 @@ const HEART: HeartbeatState[] = [...Array<HeartbeatState>(26).fill('online'), 'd
 
 export default function ComponentShowcase() {
   const [seg, setSeg] = useState('active');
+  const [tab, setTab] = useState('new');
   const [days, setDays] = useState('today');
   const [reason, setReason] = useState<string | null>('asked');
   const [printer, setPrinter] = useState<string | null>('epson');
@@ -164,6 +165,10 @@ export default function ComponentShowcase() {
               <SegmentedControl label="Status filter" value="all" onChange={() => {}} options={[{ value: 'all', label: 'All', count: 6 }, { value: 'pilot', label: 'pilot', count: 1 }, { value: 'active', label: 'active', count: 3 }, { value: 'x', label: 'cancelled', count: 0, disabled: true }]} />
             </div>
           </Demo>
+          <Demo title="Tabs (queue filters: real tab buttons over one panel)">
+            <Tabs label="Order filters (demo)" idPrefix="demo" panelId="demo-panel" value={tab} onChange={setTab} tabs={[{ key: 'new', label: 'New' }, { key: 'recent', label: 'Recent' }, { key: 'closed', label: 'Cancelled / expired' }]} />
+            <p id="demo-panel" role="tabpanel" aria-labelledby={`demo-tab-${tab}`} className="pb-muted">Panel for the “{tab}” tab. Arrow keys move and select, Home/End jump.</p>
+          </Demo>
         </Section>
 
         <Section id="inputs" title="Inputs and selections">
@@ -236,7 +241,7 @@ export default function ComponentShowcase() {
             <Banner tone="warn" title="Pilot ends in 5 days">Choose a plan to keep your queue running.</Banner>
             <Banner tone="orange" title="Tip">Orange-soft banner for prompts that are not warnings.</Banner>
             <Banner tone="err" title="Upload failed">Your internet dropped at 62%. Tap Retry to continue from where it stopped.</Banner>
-            <Banner tone="err" icon="monitor" title="Print agent is offline since 11:43 · printing paused" steps={['Check COUNTER-PC is switched on and not asleep.', 'Check the PC has internet.']} actions={<><Button size="sm" variant="dark" iconStart="refresh-cw">Check again</Button><span className="pb-caption">Last checked 11:47:10</span></>}>
+            <Banner tone="err" icon="monitor" title="Print agent is offline since 11:43 · printing paused" steps={['Check COUNTER-PC is switched on and not asleep.', 'Check the PC has internet.', 'Restart PrintoutBuddy Agent from the tray icon near the clock.']} actions={<><Button size="sm" variant="dark" iconStart="refresh-cw">Check again</Button><span className="pb-caption">Last checked 11:47:10</span></>}>
               New jobs still arrive and wait here.
             </Banner>
             <Banner tone="info" onDismiss={() => {}}>Dismissible banner without a title.</Banner>
@@ -268,7 +273,7 @@ export default function ComponentShowcase() {
           </div>
           <div className="sc-grid">
             <Card as="section" aria-labelledby="kv-h"><CardHeader id="kv-h" title="Job details" meta="Page 1 preview only" />
-              <KeyValueList items={[{ label: 'Copies', value: '1' }, { label: 'Colour', value: 'B/W' }, { label: 'Pages', value: 'All pages (38)' }, { label: 'Printer', value: 'Epson L3250' }, { label: 'Agent ID', value: 'agt_B4L7', mono: true }]} />
+              <KeyValueList items={[{ label: 'Copies', value: '1' }, { label: 'Colour', value: 'B/W' }, { label: 'Pages', value: 'All pages (38)' }, { label: 'Printer', value: 'Epson L3250' }, { label: 'Agent ID', value: 'agt_B4L7', mono: true }, { label: 'Total', value: '₹57.00', strong: true }]} />
             </Card>
             <Card as="section" aria-labelledby="tl-h"><CardHeader id="tl-h" title="Timeline" meta="Newest first" />
               <Timeline items={[{ time: '18:41', children: 'Job 4823 queued (DOCX → PDF, 38 pages)' }, { time: '14 Oct', tone: 'ok', children: 'Payment 299 received' }, { time: '17:53', tone: 'err', children: 'Last heartbeat. Network dropped.' }]} />

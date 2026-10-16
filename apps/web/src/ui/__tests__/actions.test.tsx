@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { Button, buttonClass } from '../actions/Button';
 import { IconButton } from '../actions/IconButton';
 import { SegmentedControl } from '../actions/SegmentedControl';
+import { Tabs } from '../actions/Tabs';
 
 describe('Button', () => {
   it('is type="button" by default and never submits a form by accident', async () => {
@@ -108,5 +109,52 @@ describe('SegmentedControl', () => {
     await userEvent.keyboard('{ArrowLeft}');
     expect(onChange).toHaveBeenLastCalledWith('active');
     expect(screen.getByRole('radio', { name: /Active/ })).toBeChecked();
+  });
+});
+
+describe('Tabs', () => {
+  const tabs = [{ key: 'new', label: 'New' }, { key: 'recent', label: 'Recent' }, { key: 'closed', label: 'Cancelled / expired' }, { key: 'off', label: 'Disabled', disabled: true }];
+  function Demo({ onChange = () => {} }: { onChange?: (k: string) => void }) {
+    const [v, setV] = useState('new');
+    return <Tabs label="Order filters" idPrefix="q" panelId="q-panel" tabs={tabs} value={v} onChange={(k) => { setV(k); onChange(k); }} />;
+  }
+
+  it('is a named tablist with tab roles, ids, aria-controls and one tab stop', () => {
+    render(<Demo />);
+    expect(screen.getByRole('tablist', { name: 'Order filters' })).toBeInTheDocument();
+    const [a, b] = screen.getAllByRole('tab');
+    expect(a).toHaveAttribute('aria-selected', 'true');
+    expect(b).toHaveAttribute('aria-selected', 'false');
+    expect(a).toHaveAttribute('id', 'q-tab-new');
+    expect(a).toHaveAttribute('aria-controls', 'q-panel');
+    expect(a).toHaveAttribute('tabindex', '0');
+    expect(b).toHaveAttribute('tabindex', '-1');
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['New', 'Recent', 'Cancelled / expired', 'Disabled']);
+  });
+
+  it('click selects; arrows wrap, skip disabled tabs and select; Home/End jump', async () => {
+    const onChange = vi.fn();
+    render(<Demo onChange={onChange} />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Recent' }));
+    expect(onChange).toHaveBeenLastCalledWith('recent');
+    screen.getByRole('tab', { name: 'Recent' }).focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(onChange).toHaveBeenLastCalledWith('closed');
+    expect(screen.getByRole('tab', { name: 'Cancelled / expired' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowRight}'); // disabled tab skipped, wraps to the first
+    expect(onChange).toHaveBeenLastCalledWith('new');
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(onChange).toHaveBeenLastCalledWith('closed');
+    await userEvent.keyboard('{Home}');
+    expect(onChange).toHaveBeenLastCalledWith('new');
+    await userEvent.keyboard('{End}');
+    expect(onChange).toHaveBeenLastCalledWith('closed');
+  });
+
+  it('does not select a disabled tab', async () => {
+    const onChange = vi.fn();
+    render(<Demo onChange={onChange} />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Disabled' }));
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

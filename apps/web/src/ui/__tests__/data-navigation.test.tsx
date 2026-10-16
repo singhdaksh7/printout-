@@ -59,6 +59,22 @@ describe('DataTable', () => {
     expect(screen.queryByText('Project_report.docx')).toBeNull();
   });
 
+  it('applies rowAttributes (data-* hooks) to table rows and to phone cards, and a custom loading label', () => {
+    const attrs = (r: Row) => ({ 'data-testid': 'order-card', 'data-id': r.id });
+    const first = render(<DataTable caption="Queue" columns={cols()} rows={rows} getRowKey={(r) => r.id} rowAttributes={attrs} />);
+    expect(screen.getAllByTestId('order-card')).toHaveLength(2);
+    expect(screen.getAllByTestId('order-card')[1]).toHaveAttribute('data-id', 'b');
+    expect(screen.getAllByTestId('order-card')[0]!.tagName).toBe('TR');
+    first.unmount();
+    mockMedia(true);
+    const second = render(<DataTable caption="Queue" columns={cols()} rows={rows} getRowKey={(r) => r.id} rowAttributes={attrs} renderCard={(r) => <p>{r.code}</p>} />);
+    expect(screen.getAllByTestId('order-card')[0]).toHaveAttribute('role', 'listitem');
+    second.unmount();
+    mockMedia(false);
+    render(<DataTable caption="Queue" columns={cols()} rows={[]} getRowKey={(r) => r.id} loading loadingLabel="Loading orders" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading orders');
+  });
+
   it('shows the empty slot instead of an empty table', () => {
     render(<DataTable caption="Queue" columns={cols()} rows={[]} getRowKey={(r) => r.id} empty={<EmptyState title="No jobs waiting" />} />);
     expect(screen.getByRole('heading', { name: 'No jobs waiting' })).toBeInTheDocument();

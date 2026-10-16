@@ -14,7 +14,7 @@ export interface BannerProps {
   children?: ReactNode;
   /** Icon override, or `false` for none. Defaults by tone. */
   icon?: IconName | false;
-  /** Ordered recovery steps (rendered as an `ol`), e.g. "Check the PC is switched on". */
+  /** Ordered recovery steps (an `ol`), e.g. "Check the PC is switched on". Up to three columns from 768px, stacked below (3.pdf p14). */
   steps?: ReadonlyArray<ReactNode>;
   /** Buttons/links, rendered after the text (Retry, Check again). */
   actions?: ReactNode;
@@ -37,7 +37,8 @@ export function Banner({ tone = 'info', title, children, icon, steps, actions, o
         {title && <p className="pb-banner__title">{title}</p>}
         {children && <div className="pb-banner__text">{children}</div>}
         {steps && steps.length > 0 && (
-          <ol className="pb-banner__steps">
+          // role="list" keeps list semantics even though the markers are drawn with CSS counters.
+          <ol className="pb-banner__steps" role="list" style={{ ['--pb-steps' as string]: Math.min(steps.length, 3) }}>
             {steps.map((s, i) => <li key={i}>{s}</li>)}
           </ol>
         )}

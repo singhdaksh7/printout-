@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { cx } from '../cx';
 import { Skeleton } from '../feedback/Skeleton';
 import { useMediaQuery } from '../useMediaQuery';
@@ -28,12 +28,16 @@ export interface DataTableProps<R> {
   onRowClick?: (row: R) => void;
   loading?: boolean;
   loadingRows?: number;
+  /** Accessible text announced while loading (default "Loading"), e.g. "Loading orders". */
+  loadingLabel?: string;
   /** Shown instead of the table when there are no rows (and not loading). Use EmptyState. */
   empty?: ReactNode;
   /** Below `cardsBelow` px each row is rendered with this instead of the table (one DOM, never both). */
   renderCard?: (row: R) => ReactNode;
   cardsBelow?: number;
   footer?: ReactNode;
+  /** Extra attributes for each row (and each phone card): data-* hooks, ids. Do not use to override the table semantics. */
+  rowAttributes?: (row: R) => HTMLAttributes<HTMLElement> & { [data: `data-${string}`]: string | undefined };
   className?: string;
 }
 
@@ -41,7 +45,7 @@ export interface DataTableProps<R> {
  * Responsive data table. Semantic table with a captioned, keyboard-scrollable region; optional card layout on
  * phones; skeleton rows while loading; empty slot. Sorting and filtering stay with the caller (server-owned data).
  */
-export function DataTable<R>({ columns, rows, getRowKey, caption, selectedKey, highlightKeys, onRowClick, loading, loadingRows = 5, empty, renderCard, cardsBelow = 768, footer, className }: DataTableProps<R>) {
+export function DataTable<R>({ columns, rows, getRowKey, caption, selectedKey, highlightKeys, onRowClick, loading, loadingRows = 5, loadingLabel = 'Loading', empty, renderCard, cardsBelow = 768, footer, rowAttributes, className }: DataTableProps<R>) {
   const narrow = useMediaQuery(`(max-width: ${cardsBelow - 1}px)`);
   const highlighted = new Set(highlightKeys ?? []);
 
@@ -53,7 +57,7 @@ export function DataTable<R>({ columns, rows, getRowKey, caption, selectedKey, h
         {rows.map((r) => {
           const key = getRowKey(r);
           return (
-            <div key={key} role="listitem" className={cx('pb-cardlist__item', key === selectedKey && 'is-selected', highlighted.has(key) && 'is-new')}>
+            <div key={key} role="listitem" {...rowAttributes?.(r)} className={cx('pb-cardlist__item', key === selectedKey && 'is-selected', highlighted.has(key) && 'is-new')}>
               {renderCard(r)}
             </div>
           );
@@ -91,6 +95,7 @@ export function DataTable<R>({ columns, rows, getRowKey, caption, selectedKey, h
                   return (
                     <tr
                       key={key}
+                      {...rowAttributes?.(r)}
                       className={cx(onRowClick && 'is-clickable', key === selectedKey && 'is-selected', highlighted.has(key) && 'is-new')}
                       aria-current={key === selectedKey ? 'true' : undefined}
                       onClick={onRowClick ? (e) => { if (!(e.target as HTMLElement).closest('a,button,input,select,textarea,label')) onRowClick(r); } : undefined}
@@ -104,7 +109,7 @@ export function DataTable<R>({ columns, rows, getRowKey, caption, selectedKey, h
           </tbody>
         </table>
       </div>
-      {loading && <span className="pb-sr-only" role="status">Loading</span>}
+      {loading && <span className="pb-sr-only" role="status">{loadingLabel}</span>}
       {footer && <div className="pb-table-footer">{footer}</div>}
     </div>
   );

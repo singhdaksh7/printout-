@@ -40,6 +40,12 @@ describe('KeyValueList and Timeline', () => {
     expect(screen.getByText('agt_B4L7')).toHaveClass('pb-mono');
   });
 
+  it('KeyValueList can emphasise a total row', () => {
+    render(<KeyValueList items={[{ label: 'Total sheets', value: '4' }, { label: 'Total', value: '₹12.50', strong: true }]} />);
+    expect(screen.getByText('Total').parentElement).toHaveClass('pb-kv__row--strong');
+    expect(screen.getByText('Total sheets').parentElement).not.toHaveClass('pb-kv__row--strong');
+  });
+
   it('Timeline is an ordered list with time and text', () => {
     render(<Timeline items={[{ time: '18:41', children: 'Job 4823 queued' }, { time: '14 Oct', tone: 'ok', children: 'Payment received' }]} />);
     const list = screen.getByRole('list');

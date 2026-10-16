@@ -70,3 +70,16 @@
 .pb-seg__input:focus-visible + .pb-seg__text { outline: 3px solid var(--pb-info); outline-offset: 2px; }
 .pb-seg__count { font-weight: 500; color: var(--pb-n700); }
 .pb-seg__input:checked + .pb-seg__text .pb-seg__count { color: var(--pb-n700); }
+
+/* Tabs: same pill track as SegmentedControl, but real tab buttons controlling one panel. */
+.pb-tabs { max-width: 100%; overflow-x: auto; }
+.pb-tab {
+  display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: var(--pb-target); padding: 0 var(--pb-space-4);
+  border: 0; border-radius: 999px; background: transparent; color: var(--pb-n700); cursor: pointer; white-space: nowrap;
+  font: 600 14px/1 var(--pb-font-body);
+  transition: background-color var(--pb-dur-fast) var(--pb-ease), color var(--pb-dur-fast) var(--pb-ease);
+}
+.pb-tab:hover:not(:disabled):not([aria-selected='true']) { background: rgba(255, 255, 255, 0.6); }
+.pb-tab[aria-selected='true'] { background: var(--pb-white); color: var(--pb-navy); box-shadow: 0 1px 2px rgba(20, 33, 61, 0.12); }
+.pb-tab:disabled { opacity: 0.55; cursor: not-allowed; }
+.pb-tab[aria-selected='true'] .pb-seg__count { color: var(--pb-n700); }

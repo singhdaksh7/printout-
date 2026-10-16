@@ -7,6 +7,8 @@ export interface KeyValueItem {
   value: ReactNode;
   /** Render the value in the mono font (IDs, codes, hashes). */
   mono?: boolean;
+  /** Emphasise the row (a total). */
+  strong?: boolean;
 }
 
 export interface KeyValueListProps {
@@ -21,7 +23,7 @@ export function KeyValueList({ items, layout = 'inline', className }: KeyValueLi
   return (
     <dl className={cx('pb-kv', `pb-kv--${layout}`, className)}>
       {items.map((it, i) => (
-        <div key={i} className="pb-kv__row">
+        <div key={i} className={cx('pb-kv__row', it.strong && 'pb-kv__row--strong')}>
           <dt className="pb-kv__label">{it.label}</dt>
           <dd className={cx('pb-kv__value', it.mono && 'pb-mono')}>{it.value}</dd>
         </div>
