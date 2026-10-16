@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
+import { Banner, Button, Card, TextField } from '../ui';
 import { useAuth } from './auth';
 
 function loginErrorMessage(e: unknown): string {
@@ -45,24 +46,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="shop-login">
-      <form className="shop-login-card" onSubmit={submit} aria-labelledby="login-title" noValidate>
-        <h1 id="login-title">Shop sign in</h1>
-        <p className="sh-muted">Printout for print shops</p>
-        {expired && !error && <div className="sh-banner sh-banner-warn" role="status">Session expired — sign in again.</div>}
-        {error && <div className="sh-banner sh-banner-error" role="alert">{error}</div>}
-        <label className="sh-field">
-          <span>Email</span>
-          <input type="email" autoComplete="username" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
-        </label>
-        <label className="sh-field">
-          <span>Password</span>
-          <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-        </label>
-        <button className="sh-btn sh-btn-primary sh-btn-block" type="submit" disabled={busy || !email || !password}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+    <div className="pb-theme pb-login">
+      <Card as="section" className="pb-login__card">
+        <form onSubmit={submit} aria-labelledby="login-title" noValidate className="pb-login__form">
+          <div>
+            <h1 id="login-title" className="pb-h1">Shop sign in</h1>
+            <p className="pb-muted pb-pagehead__sub">Printout for print shops</p>
+          </div>
+          {expired && !error && <Banner tone="warn">Session expired — sign in again.</Banner>}
+          {error && <Banner tone="err">{error}</Banner>}
+          <TextField label="Email" type="email" autoComplete="username" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+          <TextField label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+          <Button type="submit" variant="primary" fullWidth disabled={busy || !email || !password} loading={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }

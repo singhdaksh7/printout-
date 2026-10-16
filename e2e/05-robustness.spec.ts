@@ -57,7 +57,7 @@ test('SSE reconnect, network error banner with retry, session expiry redirect', 
 
   // --- session expiry: cookies vanish, next protected call sends us to login
   await ctx.clearCookies();
-  await page.getByRole('link', { name: 'Pricing' }).click();
+  await page.getByRole('link', { name: 'Rate card' }).click();
   await expect(page).toHaveURL(/\/shop\/login/, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Shop sign in' })).toBeVisible();
   await shot(page, '54-session-expired');

@@ -53,20 +53,6 @@
 .sh-pagehead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
 .sh-pagehead h1, .shop-main h1 { font-size: 1.35rem; margin: .5rem 0; }
 
-/* shell: mobile = bottom tab bar */
-.shop-shell { min-height: 100dvh; display: flex; flex-direction: column; }
-.shop-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: .6rem; padding: .5rem 1rem; background: var(--surface); border-bottom: 1px solid var(--border); }
-.shop-header-name { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shop-conn { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; white-space: nowrap; }
-.shop-conn-dot { width: .6rem; height: .6rem; border-radius: 50%; background: #9ca3af; }
-.shop-conn-live .shop-conn-dot { background: #10b981; }
-.shop-conn-reconnecting .shop-conn-dot, .shop-conn-connecting .shop-conn-dot { background: #f59e0b; }
-.shop-conn-offline .shop-conn-dot { background: #ef4444; }
-.shop-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--surface); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
-.shop-nav-link { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: var(--nav-h); font-size: .72rem; font-weight: 600; color: var(--muted); text-decoration: none; }
-.shop-nav-link.active { color: var(--brand); }
-.shop-nav-badge { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 18px; padding: 0 5px; border-radius: 9px; background: #dc2626; color: #fff; font-size: .7rem; text-align: center; }
-.shop-main { flex: 1; width: 100%; max-width: 760px; margin: 0 auto; padding: .5rem 1rem calc(var(--nav-h) + 1.5rem + env(safe-area-inset-bottom)); }
 
 /* queue */
 .sh-tabs { display: flex; gap: .4rem; overflow-x: auto; padding: .25rem 0 .5rem; }
@@ -161,13 +147,6 @@
 
 /* wide: side nav */
 @media (min-width: 1024px) {
-  .shop-shell { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr; }
-  .shop-header { grid-column: 1 / -1; }
-  .shop-nav { position: sticky; top: 61px; left: auto; bottom: auto; align-self: start; height: calc(100dvh - 61px); display: flex; flex-direction: column; justify-content: flex-start; gap: .25rem; padding: .75rem; border-top: 0; border-right: 1px solid var(--border); grid-template-columns: none; }
-  .shop-nav-link { flex-direction: row; justify-content: flex-start; gap: .75rem; min-height: 44px; padding: 0 .75rem; border-radius: 10px; font-size: 1rem; }
-  .shop-nav-link.active { background: #eff6ff; }
-  .shop-nav-badge { position: static; margin-left: auto; }
-  .shop-main { max-width: 960px; padding-bottom: 2rem; }
   .sh-sticky-actions { bottom: 0; }
   .sh-toast-region { bottom: 1.5rem; }
   .order-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: .6rem; } .order-list .order-card { margin: 0; }
@@ -180,10 +159,11 @@
 /* print: poster only, single A4 page */
 @page { size: A4; margin: 10mm; }
 @media print {
-  .shop-chrome, .qr-controls, .sh-toast-region, .sh-banner, .pb-toast-region, .pb-banner { display: none !important; }
+  .shop-chrome, .pb-sidebar, .pb-topbar, .pb-bottomnav, .pb-skip, .qr-controls, .sh-toast-region, .sh-banner, .pb-toast-region, .pb-banner { display: none !important; }
   html, body { background: #fff !important; }
-  .shop-shell { display: block; min-height: 0; }
-  .shop-main { max-width: none; padding: 0; margin: 0; }
+  .shop-shell, .pb-shell { display: block; min-height: 0; padding: 0 !important; background: #fff !important; }
+  .pb-shell__main { padding: 0 !important; }
+  .pb-shell__content { max-width: none !important; }
   .qr-poster-wrap { margin: 0; }
   .qr-poster { border: 0; border-radius: 0; width: 190mm; height: 275mm; aspect-ratio: auto; padding: 8mm; margin: 0 auto; break-inside: avoid; page-break-inside: avoid; container-type: normal; }
   .qr-poster-title { font-size: 64pt; } .qr-poster-steps { font-size: 28pt; } .qr-poster-shop { font-size: 30pt; } .qr-poster-url { font-size: 16pt; } .qr-poster-note { font-size: 14pt; }

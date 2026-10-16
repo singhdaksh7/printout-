@@ -94,11 +94,11 @@ describe('pricing editor', () => {
     window.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    await user.click(screen.getByRole('link', { name: /queue/i }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Shop sections' })).getByRole('link', { name: /queue/i }));
     expect(confirmSpy).toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: 'Rate card' })).toBeInTheDocument();
     confirmSpy.mockReturnValue(true);
-    await user.click(screen.getByRole('link', { name: /queue/i }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Shop sections' })).getByRole('link', { name: /queue/i }));
     expect(await screen.findByRole('heading', { name: 'Print queue' })).toBeInTheDocument();
   });
 });
@@ -215,7 +215,7 @@ describe('navigation shell', () => {
     renderShop('/shop');
     expect(await screen.findByText('Central Print')).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Shop sections' });
-    for (const l of ['Queue', 'Pricing', 'QR', 'Analytics', 'Settings']) expect(within(nav).getByRole('link', { name: new RegExp(l) })).toBeInTheDocument();
+    for (const l of ['Print queue', 'Analytics', 'Devices', 'Rate card', 'QR & standee', 'Settings']) expect(within(nav).getByRole('link', { name: new RegExp(l) })).toBeInTheDocument();
     await user.click(within(nav).getByRole('link', { name: /Analytics/ }));
     expect(await screen.findByRole('heading', { name: 'Analytics' })).toBeInTheDocument();
   });

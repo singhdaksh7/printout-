@@ -37,7 +37,7 @@ test('shop + customer lifecycle across two browser contexts (SSE, Print starts r
   await expect(card).toContainText('All pages');
   await expect(card).toContainText('₹36.00'); // 4 pages -> 2 sheets x 2 copies x Rs 9
   await expect(card.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
-  await expect(shop.locator('.shop-nav-badge')).toBeVisible();
+  await expect(shop.locator('.pb-nav .pb-badge:visible, .pb-bottomnav__badge:visible').first()).toBeVisible();
   await shot(shop, '11-shop-queue-new-order');
   await expectNoOverflow(shop, 'queue with order');
 

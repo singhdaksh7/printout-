@@ -8,7 +8,7 @@ import { ART, SLUG, VIEWPORTS, createOrderViaApi, expectNoOverflow, newMobileCon
 // Runs against the isolated e2e database like the other specs.
 
 async function scan(page: Page, label: string) {
-  const results = await new AxeBuilder({ page }).include('#shop-main').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  const results = await new AxeBuilder({ page }).include('#pb-main').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   const summary = results.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.length} node(s), e.g. ${v.nodes[0]?.target.join(' ')}`);
   expect(summary, `axe violations on ${label}\n${summary.join('\n')}`).toEqual([]);
 }
