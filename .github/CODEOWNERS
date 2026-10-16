@@ -1,0 +1,5 @@
+# Both developers are listed as owners of everything. GitHub requests a review from every listed owner except the PR author,
+# so Daksh's PRs request AmardeepManav and Amardeep's PRs request singhdaksh7.
+# Review is NOT gated on code owners: the rulesets require exactly one approving review from either developer
+# (require_code_owner_review is false). Keep it that way unless the team decides otherwise (docs/GIT_WORKFLOW.md).
+* @singhdaksh7 @AmardeepManav
