@@ -58,6 +58,8 @@
   .pb-bottomnav__icon { position: relative; display: inline-flex; }
   .pb-bottomnav__badge { position: absolute; top: -6px; right: -10px; min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
   .pb-topbar { flex-wrap: wrap; }
+  .pb-topbar:not(:has(.pb-topbar__center)) { flex-wrap: nowrap; }
+  .pb-topbar__end { min-width: 0; }
   .pb-topbar__center { order: 3; flex-basis: 100%; max-width: none; }
 }
 

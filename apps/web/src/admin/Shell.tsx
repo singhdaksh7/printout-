@@ -26,10 +26,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' },
   { to: '/admin/account', label: 'Account', icon: 'lock' }
 ];
-/** Phone tab bar: four destinations plus "More" (Subscriptions, Plans). "Subscriptions" does not fit a 60px tab at 360px, so it lives under More with Plans. */
+/** Phone tab bar: four destinations plus "More" (Subscriptions, Plans, Account). "Subscriptions" does not fit a 60px tab at 360px, so it lives under More. */
 const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/audit'];
-/** The signed-in name (a link to Account settings) is hidden on small phones, so Account settings is offered under More there. */
-const ACCOUNT_ITEM: NavItem = { to: '/admin/account', label: 'Account settings', icon: 'settings' };
 
 export default function Shell() {
   const { state, logout } = useAuth();
@@ -53,7 +51,7 @@ export default function Shell() {
           </>}
         />
       }
-      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} moreItems={[...NAV_ITEMS.filter((i) => !PHONE_PATHS.includes(i.to)), ACCOUNT_ITEM]} />}
+      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} moreItems={NAV_ITEMS.filter((i) => !PHONE_PATHS.includes(i.to))} />}
     >
       <div className="pb-page pb-theme"><Outlet /></div>
     </AppShell>
