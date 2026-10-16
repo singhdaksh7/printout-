@@ -3,7 +3,7 @@
 .pb-chart { margin: 0; }
 .pb-chart__svg { display: block; width: 100%; height: auto; }
 .pb-chart__grid { stroke: var(--pb-n100); stroke-width: 1; }
-.pb-chart__tick { fill: var(--pb-n500); font: 400 11px var(--pb-font-body); }
+.pb-chart__tick { fill: var(--pb-text-secondary); font: 400 11px var(--pb-font-body); }
 .pb-chart__value { fill: var(--pb-n700); font: 600 11px var(--pb-font-body); }
 .pb-chart__bar { fill: var(--pb-navy); }
 .pb-chart__bar--highlight { fill: var(--pb-orange); }
@@ -22,8 +22,8 @@
 .pb-heartbeat__block--degraded { background: var(--pb-warn); }
 .pb-heartbeat__block--off-hours { background: var(--pb-n200); }
 .pb-heartbeat__block--offline { background: var(--pb-err); }
-.pb-heartbeat__axis { display: flex; justify-content: space-between; margin-top: 6px; color: var(--pb-n500); }
-.pb-legend { list-style: none; margin: var(--pb-space-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--pb-space-2) var(--pb-space-4); font: 400 var(--pb-text-caption)/1.3 var(--pb-font-body); color: var(--pb-n500); }
+.pb-heartbeat__axis { display: flex; justify-content: space-between; margin-top: 6px; color: var(--pb-text-secondary); }
+.pb-legend { list-style: none; margin: var(--pb-space-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--pb-space-2) var(--pb-space-4); font: 400 var(--pb-text-caption)/1.3 var(--pb-font-body); color: var(--pb-text-secondary); }
 .pb-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .pb-legend__swatch { width: 10px; height: 10px; border-radius: 2px; }
 
@@ -33,4 +33,4 @@
 .pb-segbar__seg--warn { background: var(--pb-warn-soft); color: var(--pb-warn); }
 .pb-segbar__seg--err { background: var(--pb-err-soft); color: var(--pb-err); }
 .pb-segbar__seg--neutral { background: var(--pb-n100); color: var(--pb-n700); }
-.pb-segbar__caption { margin: var(--pb-space-2) 0 0; font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-n500); }
+.pb-segbar__caption { margin: var(--pb-space-2) 0 0; font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }

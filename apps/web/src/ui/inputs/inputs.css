@@ -3,7 +3,7 @@
 
 .pb-field { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .pb-field__label { font: 600 var(--pb-text-label)/1.3 var(--pb-font-body); color: var(--pb-n700); padding: 0; }
-.pb-field__help { margin: 0; font: 400 13px/1.4 var(--pb-font-body); color: var(--pb-n500); }
+.pb-field__help { margin: 0; font: 400 13px/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
 .pb-field__error { margin: 0; font: 400 13px/1.4 var(--pb-font-body); color: var(--pb-err); }
 
 .pb-control {
@@ -28,6 +28,7 @@
   font: 400 var(--pb-text-body)/1.4 var(--pb-font-body);
 }
 .pb-control__input.pb-mono { font: 500 var(--pb-text-mono)/1.4 var(--pb-font-mono); }
+.pb-control .pb-control__input:focus-visible { outline: none; } /* the wrapper draws the single ring (beats the base :focus-visible rule) */
 .pb-control__input::placeholder { color: var(--pb-n500); opacity: 1; }
 .pb-control__input:disabled { cursor: not-allowed; }
 textarea.pb-control__input { resize: vertical; min-height: 4.5em; }
@@ -39,7 +40,7 @@ select.pb-control__input { appearance: none; -webkit-appearance: none; padding-r
 .pb-check { display: grid; grid-template-columns: 24px 1fr; column-gap: var(--pb-space-3); align-items: center; min-height: var(--pb-target); }
 .pb-check input { width: 20px; height: 20px; margin: 0 2px; accent-color: var(--pb-navy); cursor: pointer; }
 .pb-check__label { font: 400 var(--pb-text-body)/1.35 var(--pb-font-body); cursor: pointer; padding: 8px 0; }
-.pb-check__hint { grid-column: 2; margin: -6px 0 6px; font: 400 13px/1.4 var(--pb-font-body); color: var(--pb-n500); }
+.pb-check__hint { grid-column: 2; margin: -6px 0 6px; font: 400 13px/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
 
 /* Radio group */
 .pb-radiogroup { display: flex; flex-direction: column; gap: var(--pb-space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -58,11 +59,11 @@ select.pb-control__input { appearance: none; -webkit-appearance: none; padding-r
 .pb-choice__label { font: 400 var(--pb-text-body)/1.35 var(--pb-font-body); }
 .pb-radiogroup--card .pb-choice { padding: var(--pb-space-3) var(--pb-space-4); border-width: 1px; }
 .pb-radiogroup--card .pb-choice__label { font-weight: 600; }
-.pb-choice__desc { font: 400 13px/1.4 var(--pb-font-body); color: var(--pb-n500); }
+.pb-choice__desc { font: 400 13px/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
 .pb-choice__tag { flex: none; }
 .pb-choice.is-disabled { cursor: not-allowed; }
 .pb-choice--locked { background: var(--pb-n50); }
 .pb-choice--locked .pb-choice__label { font-weight: 600; }
-.pb-choice__lock { order: -1; flex: none; color: var(--pb-n500); }
+.pb-choice__lock { order: -1; flex: none; color: var(--pb-text-secondary); }
 /* Keep the (disabled) radio in the accessibility tree; the lock icon is the visual indicator. */
 .pb-choice--locked input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }

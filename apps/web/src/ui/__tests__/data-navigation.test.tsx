@@ -111,7 +111,7 @@ describe('Sidebar, BottomNav, AppShell', () => {
   it('Sidebar is a named nav landmark; the current page has aria-current and counts are announced', () => {
     render(<MemoryRouter initialEntries={['/shop']}><Sidebar label="Shop sections" brand={<span>Brand</span>} items={items} footer={<p>Pilot · day 9 of 14</p>} /></MemoryRouter>);
     const nav = screen.getByRole('navigation', { name: 'Shop sections' });
-    const queue = within(nav).getByRole('link', { name: 'Print queue, 3 items' });
+    const queue = within(nav).getByRole('link', { name: /^Print queue\s*3 items$/ });
     expect(queue).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('link', { name: 'History' })).not.toHaveAttribute('aria-current');
     expect(screen.getByText('Pilot · day 9 of 14')).toBeInTheDocument();

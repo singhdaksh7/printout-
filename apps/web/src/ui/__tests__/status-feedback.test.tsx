@@ -68,6 +68,11 @@ describe('Banner', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('supports the orange (tip) tone as a polite status', () => {
+    render(<Banner tone="orange" title="Is the QR standee on the counter?">Customers scan pb.link/x.</Banner>);
+    expect(screen.getByRole('status')).toHaveClass('pb-banner--orange');
+  });
+
   it('renders ordered steps and actions, and dismisses', async () => {
     const onDismiss = vi.fn();
     render(

@@ -68,5 +68,5 @@
 .pb-seg--md .pb-seg__text { min-height: 34px; padding: 0 var(--pb-space-4); font-size: 14px; }
 .pb-seg__input:checked + .pb-seg__text { background: var(--pb-white); color: var(--pb-navy); box-shadow: 0 1px 2px rgba(20, 33, 61, 0.12); }
 .pb-seg__input:focus-visible + .pb-seg__text { outline: 3px solid var(--pb-info); outline-offset: 2px; }
-.pb-seg__count { font-weight: 500; color: var(--pb-n500); }
+.pb-seg__count { font-weight: 500; color: var(--pb-n700); }
 .pb-seg__input:checked + .pb-seg__text .pb-seg__count { color: var(--pb-n700); }

@@ -10,6 +10,7 @@
 .pb-banner--ok { background: var(--pb-ok-soft); color: var(--pb-ok); }
 .pb-banner--warn { background: var(--pb-warn-soft); color: var(--pb-warn); }
 .pb-banner--err { background: var(--pb-err-soft); color: var(--pb-err); }
+.pb-banner--orange { background: var(--pb-orange-soft); color: var(--pb-orange-ink); } /* tips and prompts, e.g. the QR standee reminder */
 .pb-banner__icon { flex: none; margin-top: 1px; }
 .pb-banner__body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .pb-banner__title { margin: 0; font-weight: 700; }
@@ -42,6 +43,6 @@
 .pb-empty { display: flex; flex-direction: column; align-items: center; gap: var(--pb-space-2); padding: var(--pb-space-7) var(--pb-space-4); text-align: center; }
 .pb-empty__icon { color: var(--pb-n300); margin-bottom: var(--pb-space-2); }
 .pb-empty__title { margin: 0; font: 600 var(--pb-text-h2)/1.3 var(--pb-font-display); }
-.pb-empty__text { max-width: 44ch; color: var(--pb-n500); }
+.pb-empty__text { max-width: 44ch; color: var(--pb-text-secondary); }
 .pb-empty__action { margin-top: var(--pb-space-3); display: flex; flex-wrap: wrap; gap: var(--pb-space-2); justify-content: center; }
 .pb-empty__callout { margin-top: var(--pb-space-4); max-width: 560px; width: 100%; text-align: left; }

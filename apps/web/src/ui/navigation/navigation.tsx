@@ -22,8 +22,8 @@ export interface NavItem {
   comingSoon?: boolean;
 }
 
-function countLabel(item: NavItem) {
-  return item.count === undefined ? undefined : `${item.count} ${item.count === 1 ? 'item' : 'items'}`;
+function countNoun(count: number) {
+  return count === 1 ? 'item' : 'items';
 }
 
 export interface SidebarProps {
@@ -55,12 +55,13 @@ export function Sidebar({ label, brand, items, footer, onNavigate, className }: 
                   <Badge onDark className="pb-nav__tag" aria-hidden="true">Soon</Badge>
                 </span>
               ) : (
-                <NavLink to={it.to} end={it.end} onClick={onNavigate} className={({ isActive }) => cx('pb-nav', isActive && 'is-active')} aria-label={it.count !== undefined && (it.count > 0 || it.showZero) ? `${it.label}, ${countLabel(it)}` : undefined}>
+                <NavLink to={it.to} end={it.end} onClick={onNavigate} className={({ isActive }) => cx('pb-nav', isActive && 'is-active')}>
                   <Icon name={it.icon} size={20} />
                   <span className="pb-nav__text">{it.label}</span>
                   {it.tag && <Badge onDark className="pb-nav__tag">{it.tag}</Badge>}
                   {it.alert && <Badge tone="err" className="pb-nav__tag">{it.alert}</Badge>}
-                  {it.count !== undefined && (it.count > 0 || it.showZero) && <Badge tone="orange" className="pb-nav__tag" aria-hidden="true">{it.count}</Badge>}
+                  {/* The accessible name is built from content, so it always contains the visible text (WCAG 2.5.3). */}
+                  {it.count !== undefined && (it.count > 0 || it.showZero) && <Badge tone="orange" className="pb-nav__tag">{it.count}<span className="pb-sr-only"> {countNoun(it.count)}</span></Badge>}
                 </NavLink>
               )}
             </li>

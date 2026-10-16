@@ -234,6 +234,7 @@ export default function ComponentShowcase() {
             <Banner tone="info" title="Printer is offline">You can still send. It prints when the shop is back online.</Banner>
             <Banner tone="ok" title="File deleted">Deleted at 4:12 pm after printing. Receipt DR-20261014-0193.</Banner>
             <Banner tone="warn" title="Pilot ends in 5 days">Choose a plan to keep your queue running.</Banner>
+            <Banner tone="orange" title="Tip">Orange-soft banner for prompts that are not warnings.</Banner>
             <Banner tone="err" title="Upload failed">Your internet dropped at 62%. Tap Retry to continue from where it stopped.</Banner>
             <Banner tone="err" icon="monitor" title="Print agent is offline since 11:43 · printing paused" steps={['Check COUNTER-PC is switched on and not asleep.', 'Check the PC has internet.']} actions={<><Button size="sm" variant="dark" iconStart="refresh-cw">Check again</Button><span className="pb-caption">Last checked 11:47:10</span></>}>
               New jobs still arrive and wait here.
@@ -251,7 +252,7 @@ export default function ComponentShowcase() {
             <div className="sc-row"><Skeleton variant="block" width={120} height={32} /><Skeleton variant="block" width={64} height={28} /></div>
           </Demo>
           <Demo title="EmptyState">
-            <Card padding="none"><EmptyState icon="printer" title="No jobs waiting" callout={<Banner tone="warn" icon="qr-code" title="Is the QR standee on the counter?" actions={<Button size="sm" variant="outline">Print standee</Button>}>Customers scan pb.link/sharma-xerox.</Banner>}>New jobs appear here with a sound when a customer taps Send to shop.</EmptyState></Card>
+            <Card padding="none"><EmptyState icon="printer" title="No jobs waiting" callout={<Banner tone="orange" icon="qr-code" title="Is the QR standee on the counter?" actions={<Button size="sm" variant="outline">Print standee</Button>}>Customers scan pb.link/sharma-xerox.</Banner>}>New jobs appear here with a sound when a customer taps Send to shop.</EmptyState></Card>
             <Card padding="none"><EmptyState icon="search" title="No shops match “Kota”" action={<><Button variant="outline">Clear search</Button><Button variant="primary">Onboard a shop in Kota</Button></>}>Search covers shop name, city, shop ID and owner phone.</EmptyState></Card>
           </Demo>
         </Section>

@@ -64,11 +64,14 @@ export function BarChart({ data, title, summary, yMax, yTicks, valueLabels = tru
           );
         })}
       </svg>
-      <table className="pb-sr-only">
-        <caption>{title}</caption>
-        <thead><tr><th scope="col">Label</th><th scope="col">{valueName}</th></tr></thead>
-        <tbody>{data.map((d, i) => <tr key={i}><th scope="row">{d.label}</th><td>{d.value}</td></tr>)}</tbody>
-      </table>
+      {/* Wrapper, not the table itself: overflow:hidden is ignored on table boxes, which let this widen the page on phones. */}
+      <div className="pb-sr-only">
+        <table>
+          <caption>{title}</caption>
+          <thead><tr><th scope="col">Label</th><th scope="col">{valueName}</th></tr></thead>
+          <tbody>{data.map((d, i) => <tr key={i}><th scope="row">{d.label}</th><td>{d.value}</td></tr>)}</tbody>
+        </table>
+      </div>
     </figure>
   );
 }

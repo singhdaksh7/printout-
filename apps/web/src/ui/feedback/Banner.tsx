@@ -4,9 +4,9 @@ import { cx } from '../cx';
 import { Icon, type IconName } from '../icons/Icon';
 import './feedback.css';
 
-export type BannerTone = 'info' | 'ok' | 'warn' | 'err';
+export type BannerTone = 'info' | 'ok' | 'warn' | 'err' | 'orange';
 
-const DEFAULT_ICON: Record<BannerTone, IconName> = { info: 'info', ok: 'circle-check', warn: 'triangle-alert', err: 'triangle-alert' };
+const DEFAULT_ICON: Record<BannerTone, IconName> = { info: 'info', ok: 'circle-check', warn: 'triangle-alert', err: 'triangle-alert', orange: 'info' };
 
 export interface BannerProps {
   tone?: BannerTone;
