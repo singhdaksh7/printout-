@@ -81,7 +81,7 @@ describe('printing devices list', () => {
     await screen.findByTestId('device-card');
     expect(container.querySelector('ul.dev-list')).not.toBeNull();
     expect(container.querySelector('table')).toBeNull();
-    expect(container.querySelector('.dev-name.sh-wrap')).not.toBeNull();
+    expect(container.querySelector('.dev-name.pb-wrap')).not.toBeNull();
   });
 });
 
