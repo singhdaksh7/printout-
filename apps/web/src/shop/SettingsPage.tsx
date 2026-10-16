@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { describeError, getQr, getSettings, putSettings, type ShopSettings } from '../lib/shop-api';
-import { Banner, Skeleton, useToast, useUnsavedGuard } from './components';
+import { Banner, Button, Card, Checkbox, Chip, Icon, Skeleton, TextArea, TextField, useToast } from '../ui';
+import { useUnsavedGuard } from './components';
 
 interface Form { displayName: string; address: string; publicContact: string; brandColor: string; acceptsOrders: boolean }
 const toForm = (s: ShopSettings | null): Form => ({
@@ -72,64 +73,46 @@ export default function SettingsPage() {
     } finally { setSaving(false); }
   }
 
-  if (loadError) return <section><h1>Settings</h1><Banner onRetry={() => setAttempt((n) => n + 1)}>{loadError}</Banner></section>;
-  if (!saved) return <section><h1>Settings</h1><Skeleton lines={5} label="Loading settings" /></section>;
+  if (loadError) return <section className="pb-theme pb-page"><h1 className="pb-h1">Settings</h1><Banner tone="err" actions={<Button size="sm" variant="dark" onClick={() => setAttempt((n) => n + 1)}>Retry</Button>}>{loadError}</Banner></section>;
+  if (!saved) return <section className="pb-theme pb-page"><h1 className="pb-h1">Settings</h1><Skeleton lines={5} label="Loading settings" /></section>;
 
+  const swatch = /^#[0-9a-fA-F]{6}$/.test(form.brandColor) ? form.brandColor : 'transparent';
   return (
-    <section aria-labelledby="set-title">
-      <div className="sh-pagehead">
-        <h1 id="set-title">Settings</h1>
-        {dirty && <span className="sh-chip sh-chip-warn" role="status">Unsaved changes</span>}
+    <section aria-labelledby="set-title" className="pb-theme pb-page pb-settings-page">
+      <div className="pb-pagehead">
+        <h1 id="set-title" className="pb-h1">Settings</h1>
+        {dirty && <Chip tone="warn" role="status">Unsaved changes</Chip>}
       </div>
-      {url && <p className="sh-muted sh-wrap">Your public shop page: <a href={url} target="_blank" rel="noopener noreferrer">{url}</a></p>}
-      {error && <Banner>{error}</Banner>}
-      <Link className="sh-card dev-link-card" to="/shop/devices">
-        <span><strong>Printing Devices</strong><br /><small className="sh-muted">Connect a phone or PC to print your orders.</small></span>
-        <span aria-hidden="true">›</span>
+      {url && <p className="pb-muted pb-wrap">Your public shop page: <a href={url} target="_blank" rel="noopener noreferrer">{url}</a></p>}
+      {error && <Banner tone="err">{error}</Banner>}
+      <Link className="pb-card pb-card--pad-md pb-linkcard" to="/shop/devices">
+        <span><strong>Printing Devices</strong><br /><small className="pb-muted">Connect a phone or PC to print your orders.</small></span>
+        <Icon name="chevron-right" size={20} />
       </Link>
-      <form className="sh-card sh-form" onSubmit={submit} noValidate>
+      <Card>
+      <form className="pb-settings-form" onSubmit={submit} noValidate>
         {present.has('displayName') && (
-          <Field label="Shop name" error={errors.displayName}>
-            <input value={form.displayName} maxLength={100} onChange={(e) => set('displayName', e.target.value)} aria-invalid={!!errors.displayName} />
-          </Field>
+          <TextField label="Shop name" value={form.displayName} maxLength={100} error={errors.displayName} onChange={(e) => set('displayName', e.target.value)} />
         )}
         {present.has('address') && (
-          <Field label="Address" error={errors.address}>
-            <textarea rows={2} value={form.address} maxLength={300} onChange={(e) => set('address', e.target.value)} aria-invalid={!!errors.address} />
-          </Field>
+          <TextArea label="Address" rows={2} value={form.address} maxLength={300} error={errors.address} onChange={(e) => set('address', e.target.value)} />
         )}
-        <Field label="Public contact" hint="Shown to customers, e.g. a counter phone or email." error={errors.publicContact}>
-          <input value={form.publicContact} maxLength={100} onChange={(e) => set('publicContact', e.target.value)} aria-invalid={!!errors.publicContact} />
-        </Field>
-        <Field label="Brand colour" hint="Hex colour, e.g. #1D4ED8." error={errors.brandColor}>
-          <div className="sh-colour-row">
-            <input value={form.brandColor} placeholder="#1D4ED8" maxLength={7} onChange={(e) => set('brandColor', e.target.value)} aria-invalid={!!errors.brandColor} />
-            <span className="sh-swatch" style={{ background: /^#[0-9a-fA-F]{6}$/.test(form.brandColor) ? form.brandColor : 'transparent' }} aria-hidden="true" />
-          </div>
-        </Field>
+        <TextField label="Public contact" helperText="Shown to customers, e.g. a counter phone or email." value={form.publicContact} maxLength={100} error={errors.publicContact} onChange={(e) => set('publicContact', e.target.value)} />
+        <TextField
+          label="Brand colour" helperText="Hex colour, e.g. #1D4ED8." placeholder="#1D4ED8" value={form.brandColor} maxLength={7} error={errors.brandColor}
+          endAdornment={<span className="pb-swatch" style={{ background: swatch }} aria-hidden="true" />}
+          onChange={(e) => set('brandColor', e.target.value)}
+        />
         {present.has('acceptsOrders') && (
-          <label className="sh-switch">
-            <input type="checkbox" checked={form.acceptsOrders} onChange={(e) => set('acceptsOrders', e.target.checked)} />
-            <span>Accepting new orders</span>
-          </label>
+          <Checkbox label="Accepting new orders" checked={form.acceptsOrders} onChange={(e) => set('acceptsOrders', e.target.checked)} />
         )}
-        <div className="sh-actions">
-          <button className="sh-btn sh-btn-primary" type="submit" disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save settings'}</button>
-          <button className="sh-btn" type="button" disabled={!dirty || saving} onClick={() => { setForm(saved); setErrors({}); setError(null); }}>Reset</button>
+        <div className="pb-ratecard__actions">
+          <Button variant="primary" type="submit" disabled={!dirty || saving} loading={saving}>{saving ? 'Saving…' : 'Save settings'}</Button>
+          <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setForm(saved); setErrors({}); setError(null); }}>Reset</Button>
         </div>
       </form>
+      </Card>
       {toast}
     </section>
-  );
-}
-
-function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string | undefined; children: React.ReactNode }) {
-  return (
-    <label className="sh-field">
-      <span>{label}</span>
-      {children}
-      {hint && <small className="sh-muted">{hint}</small>}
-      {error && <small className="sh-field-error" role="alert">{error}</small>}
-    </label>
   );
 }

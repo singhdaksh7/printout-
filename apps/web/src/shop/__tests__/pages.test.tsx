@@ -155,7 +155,7 @@ describe('analytics', () => {
     expect(await screen.findByText('Estimated order value')).toBeInTheDocument();
     expect(screen.getByText('₹1234.50')).toBeInTheDocument();
     expect(screen.getByText('77')).toBeInTheDocument();
-    expect(screen.getByText(/B&W 3/)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /B&W 3 orders/ })).toBeInTheDocument();
     expect(screen.getByText('#CENT-9')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/revenue/i);
   });
