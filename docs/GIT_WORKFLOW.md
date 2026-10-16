@@ -9,7 +9,7 @@ feature/<dev>-<topic>  --PR-->  development  --release PR-->  production
 | Branch | Role | Who changes it |
 |---|---|---|
 | `development` | shared integration; always green | pull requests from feature, fix and hotfix back-merge branches |
-| `production` | stable, releasable | reviewed release pull requests from `development`, and reviewed hotfix pull requests |
+| `production` | stable, releasable | release pull requests from `development`, and hotfix pull requests; always through a PR with green CI |
 
 Temporary branches: `feature/daksh-<topic>`, `feature/bhaiya-<topic>`, `fix/daksh-<topic>`, `fix/bhaiya-<topic>`, `hotfix/<topic>`. Use lowercase words and hyphens.
 
@@ -31,14 +31,14 @@ corepack pnpm --filter @printout/api check
 
 # publish the branch and open a PR into development
 git push -u origin feature/daksh-rate-card-export
-gh pr create --base development --fill --reviewer AmardeepManav   # Amardeep: --reviewer singhdaksh7; add --draft while in progress
+gh pr create --base development --fill   # optional: --reviewer AmardeepManav (or singhdaksh7); add --draft while in progress
 ```
 
 Rules: one logical feature per branch; keep it small enough to review; rebase or merge `development` into your branch if it has moved (never force-push a branch someone else has checked out); do not commit secrets, `.env` files, database dumps or large binaries (design PDFs stay out of Git).
 
 ## Pull requests into `development`
 
-- One approval from the other developer (see Review policy); you cannot approve your own PR.
+- No approval is required (see Merge policy); asking the other developer for a review is optional and encouraged for risky changes.
 - All CI jobs green (below). Resolve review conversations.
 - Prefer squash merge for a single-topic branch; use a merge commit if the individual commits are worth keeping.
 - After merge, delete the remote feature branch (`gh pr merge --delete-branch`, or the button). Local branches and worktrees are yours to keep or remove.
@@ -68,39 +68,38 @@ CI uses disposable databases only and has no secrets. It never deploys and never
 5. gitleaks failure: remove the secret and rotate it if it was real; add an allowlist entry only for a fake fixture.
 6. Flaky test: fix or quarantine with a ticket; do not re-run until green and ignore it.
 
-## Review policy
+## Merge policy
 
-Two developers: **singhdaksh7** (Daksh) and **AmardeepManav** (senior, write access). Every pull request into `development` or `production` needs **exactly one approving review**, from the other developer, plus green CI. It does not need both developers: with two people, "one independent approval" means the one who did not open the PR.
+Two developers with **equal authority**: **singhdaksh7** (Daksh) and **AmardeepManav** (senior, write access). Either of them may merge any pull request, including their own, as soon as the required CI checks pass. There is **no required approval** on `development` or `production`; the safety nets are the mandatory pull request, the five green CI checks and resolved conversations.
 
-- Daksh opens a PR: AmardeepManav reviews and approves it.
-- AmardeepManav opens a PR: Daksh reviews and approves it.
-- Releases (`development` to `production`) follow the same rule: one independent approval and all CI checks green.
-- `.github/CODEOWNERS` lists both developers for the whole repository. GitHub then requests a review from every owner except the author, so each developer is asked to review the other's work automatically. Code-owner review is **not** a requirement (`require_code_owner_review: false`), so one approval from either of them is enough.
-- You cannot approve your own PR. Ask the other developer for review (`gh pr create --reviewer AmardeepManav` or `--reviewer singhdaksh7`; CODEOWNERS also does it automatically).
-- "Require approval of the most recent reviewable push" is **off** (`require_last_push_approval: false`). New commits dismiss earlier approvals (`dismiss_stale_reviews_on_push: true`), so re-request review after pushing changes to an approved PR; set that to false too if the team prefers not to re-approve.
+- Reviews are optional. Ask for one when a change is risky: `gh pr create --reviewer AmardeepManav` (or `--reviewer singhdaksh7`).
+- `.github/CODEOWNERS` lists both developers for the whole repository, only so GitHub offers each as a reviewer of the other's PRs (it requests everyone except the author). Code-owner review is **not** required (`require_code_owner_review: false`), and nobody is required to approve.
+- A PR author can merge their own PR. Nothing can bypass failing CI.
+- A review that requests changes is a human signal, not a technical block here: resolve it before merging.
+- Releases (`development` to `production`) still go through a PR, must be green, and follow the release verification steps below (staging checks, migration and backup readiness) before anyone merges.
 
 ## Protection settings (to be enabled by the repository owner)
 
-Not enabled yet. Reference payloads are in `.github/rulesets/`; required check names must match the contexts GitHub reports for the CI jobs (confirmed on runs of this repository). Enable via Settings > Rules > Rulesets, or `gh api -X POST repos/singhdaksh7/printout-/rulesets --input .github/rulesets/development.json` (and `production.json`).
+Not enabled yet. Reference payloads are in `.github/rulesets/`; required check names match the contexts reported on real CI runs. Enable via Settings > Rules > Rulesets, or `gh api -X POST repos/singhdaksh7/printout-/rulesets --input .github/rulesets/development.json` (and `production.json`).
 
 | Rule | `development` | `production` |
 |---|---|---|
 | Require pull request | yes | yes |
-| Required approvals | 1, from any collaborator other than the author | 1, same |
+| Required approving reviews | 0 | 0 |
 | Code-owner review required | no | no |
 | Approval of the most recent push | no | no |
 | Required checks (branch must be up to date) | all five CI checks | all five CI checks |
 | Resolve conversations | yes | yes |
 | Block force push and deletion | yes | yes |
-| Bypass actors | none | none |
+| Bypass actors | none (failing CI cannot be bypassed) | none |
 
-Direct pushes are blocked as a consequence of "require pull request" (there is no separate push switch in rulesets). GitHub plan notes: the repository is public and owned by a personal account, so rulesets, required checks and required reviews are available at no cost. A personal-account repository cannot limit who may merge to a named team and cannot require review from a specific person, so the guarantee is "one approval from a collaborator who is not the author". Both developers have at least write access, which is what makes their approvals count. Because there are no bypass actors, a PR cannot be merged while the other developer is unavailable; if an emergency bypass is wanted, the owner can add themselves as a bypass actor, knowing it weakens the guarantee.
+Direct pushes are blocked as a consequence of "require pull request" (rulesets have no separate push switch). The author may merge their own PR because zero approvals are required. GitHub plan notes: the repository is public and owned by a personal account, so rulesets, required checks and required pull requests are available at no cost. Because there are no bypass actors, even the owner cannot push straight to a protected branch or merge with red checks; an emergency must go through a hotfix PR with green CI.
 
 ## Release: `development` to `production`
 
 1. `development` is green and the staging checklist below passes.
-2. `gh pr create --base production --head development --title "Release YYYY-MM-DD" --reviewer <the other developer>`; the diff is the release notes.
-3. One independent approval (the developer who did not open the release PR) and all required checks green.
+2. `gh pr create --base production --head development --title "Release YYYY-MM-DD" `; the diff is the release notes. A review from the other developer is optional but recommended for a release.
+3. All required checks green and the verification steps below complete before merging.
 4. Database: read the target's `_prisma_migrations`, take and trial-restore a backup (`deploy/backup-db.sh`, `deploy/restore-db.sh`), and rehearse the new migrations on a restored copy.
 5. Merge the PR. **Merging does not deploy and does not run migrations.**
 6. Deploy deliberately from the server: `bash deploy/deploy.sh` (order: backup, migrate, up, health wait). Then run `deploy/smoke.mjs` and watch `/ready`, logs and the uptime monitor.
@@ -115,7 +114,7 @@ Deploy the branch to a staging stack with a copy of production-like data (never 
 ```bash
 git fetch origin && git switch -c hotfix/short-description origin/production
 # fix, test, commit
-gh pr create --base production        # reviewed, CI green, then merge
+gh pr create --base production        # CI green, then merge
 # deploy using the release steps above
 git switch -c hotfix/back-merge origin/development
 git merge origin/production           # bring the released fix back
