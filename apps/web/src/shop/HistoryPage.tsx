@@ -240,7 +240,7 @@ export default function HistoryPage() {
       </div>
 
       {query && (
-        <div className="pb-stats" aria-label={`Summary for ${label}`}>
+        <div className="pb-stats pb-historystats" aria-label={`Summary for ${label}`}>
           <StatTile label={`${label}: orders`} value={s ? String(s.total) : '–'} loading={h.loading && !s && !h.summaryError} />
           <StatTile label="Print initiated" value={s ? String(s.printInitiated) : '–'} hint="Times Print was pressed. Does not confirm paper came out." />
           <StatTile label="Cancelled" value={s ? String(s.byStatus.CANCELLED) : '–'} />

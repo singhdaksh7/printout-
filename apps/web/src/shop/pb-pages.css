@@ -97,6 +97,8 @@
 .pb-historycard__meta dt { font: 600 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
 .pb-historycard__meta dd { margin: 0; font: 400 var(--pb-text-label)/1.4 var(--pb-font-body); overflow-wrap: anywhere; }
 @media (max-width: 767px) {
+  .pb-historystats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); }
+  .pb-historystats > :first-child { grid-column: 1 / -1; }
   .pb-historyfilters > * { flex: 1 1 100%; max-width: none; }
   .pb-historyfilters .pb-seg { width: 100%; overflow-x: auto; }
 }

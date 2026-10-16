@@ -140,7 +140,7 @@ Thin wrappers that only word and colour values the caller already has: no fetchi
 
 The library is additive. Screens keep their current markup until migrated, one family at a time, each as its own commit:
 
-1. Shop: **done**: queue, order detail, rate card, QR and standee, devices, analytics (the app's History-type screen; the design's History table needs an endpoint that does not exist), settings, shell and sign-in. Staff and Reports appear in the sidebar as non-interactive "Soon" items.
+1. Shop: **done**: queue, order detail, rate card, QR and standee, devices, History (3.pdf p15: table on desktop, cards on phones, IST date presets and custom range, status and code/file search, summary tiles, Load more, metadata-only CSV export; built on `DataTable`, `SegmentedControl`, `Select`, `TextField`, `StatTile`, `LoadMore`, `OrderStatusChip`, no new components), analytics (kept, linked from History), settings, shell and sign-in. Staff and Reports appear in the sidebar as non-interactive "Soon" items.
 2. Platform Admin: **done**: shell, dashboard, shops, shop detail, orders metadata, plans, subscriptions, audit log and sign-in. No 2FA, agent monitoring, support sessions or deletion audit (no backend).
 3. Customer: after approved designs are supplied.
 
@@ -150,7 +150,7 @@ The library is additive. Screens keep their current markup until migrated, one f
 
 Deliberate differences from `3.pdf` (backend or scope, not omissions by accident):
 
-- **No stat tiles, printer/agent pill, pilot card, Staff/Reports/Billing/History nav, "Sound on" header control or logo.** There is no data behind them (printed-today and pages-today counts, printer health, plans), or they belong to the shell, which is the next stage. Nothing is faked.
+- **No stat tiles, printer/agent pill, pilot card, Staff/Reports/Billing nav, "Sound on" header control or logo.** There is no data behind them (printed-today and pages-today counts, printer health, plans), or they belong to the shell, which is the next stage. Nothing is faked.
 - **Status vocabulary is the API's** (`New`, `Print started`, `Print confirmed (legacy)`, ...), not Queued/Printing/Printed, because the API does not confirm physical printing. `JobStatusChip` (design wording) exists but is not used until the API can back it.
 - **Order detail is a page, not a drawer.** Keeping the route preserves deep links, the "Back to queue" link and the existing end-to-end flows; it is also what `3.pdf` p24 shows on phones. `Drawer` is available for a later decision.
 - **The cancel dialog has no reason list.** The API's cancel transition takes no reason, so asking for one would not be honest.
