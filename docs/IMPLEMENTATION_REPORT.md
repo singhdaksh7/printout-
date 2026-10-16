@@ -78,3 +78,7 @@ Not ready to deploy from this report alone: the work is unpushed, the migration 
 4. ~~History endpoint~~ built (order history list, summary, CSV). Open: export row cap (5,000) and whether to add a customer-reference column.
 5. Apply the migration to staging, then production, when ready.
 6. Stop the disposable test database when done: `docker rm -f printout-e2e-pg`.
+
+## 16. Admin account security (branch `feature/daksh-admin-security`)
+
+Platform admins can change their own email and password at `/admin/account` (current password required, all sessions ended, transactional, audited). Backend: `routes/admin-account.ts` and the shared `password-policy.ts`; UI: `admin/AccountPage.tsx` (Account link in sidebar and top bar; `AuthProvider.endSession()` added). The `admin:update` and `bootstrap-admin` CLIs are unchanged in behaviour and covered by tests. Details: API_CONTRACT (Platform admin) and SECURITY_REVIEW (Admin account self-service). Not included: OTP/2FA, public admin registration, email verification.

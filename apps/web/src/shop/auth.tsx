@@ -14,6 +14,8 @@ interface AuthApi {
   state: AuthState;
   login(email: string, password: string): Promise<SessionData>;
   logout(): Promise<void>;
+  /** Drops the local session WITHOUT calling the API (the server already ended it, e.g. after a credential change). */
+  endSession(): void;
   retry(): void;
 }
 const Ctx = createContext<AuthApi | null>(null);
@@ -59,9 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCsrfToken(null);
     setState({ status: 'anon' });
   }, []);
+  const endSession = useCallback(() => { setCsrfToken(null); setState({ status: 'anon' }); }, []);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  const value = useMemo(() => ({ state, login, logout, retry }), [state, login, logout, retry]);
+  const value = useMemo(() => ({ state, login, logout, endSession, retry }), [state, login, logout, endSession, retry]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

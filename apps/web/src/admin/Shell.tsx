@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../shop/auth';
 import { AppShell, BottomNav, Button, Chip, Sidebar, TopBar, type NavItem } from '../ui';
 
@@ -23,7 +23,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/orders', label: 'Orders', icon: 'list-ordered' },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: 'credit-card' },
   { to: '/admin/plans', label: 'Plans', icon: 'receipt' },
-  { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' }
+  { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' },
+  { to: '/admin/account', label: 'Account', icon: 'lock' }
 ];
 /** Phone tab bar: Plans is reached from the Subscriptions page so that five labels fit 360px. */
 const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/subscriptions', '/admin/audit'];
@@ -45,7 +46,7 @@ export default function Shell() {
         <TopBar
           start={<Chip tone="info" dot={false}>Platform admin</Chip>}
           end={<>
-            <span className="pb-shopname pb-muted" title={name}>{name}</span>
+            <Link to="/admin/account" className="pb-shopname ad-accountlink" title={name} aria-label={`Account settings for ${name}`}>{name}</Link>
             <Button variant="outline" size="sm" iconStart="log-out" onClick={out} disabled={leaving}>Log out</Button>
           </>}
         />

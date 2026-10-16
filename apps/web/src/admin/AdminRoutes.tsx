@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '../shop/auth';
 import { Button } from '../ui';
+import AccountPage from './AccountPage';
 import AuditPage from './AuditPage';
 import DashboardPage from './DashboardPage';
 import LoginPage from './LoginPage';
@@ -40,6 +41,7 @@ export default function AdminRoutes() {
             <Route path="subscriptions" element={<SubscriptionsPage />} />
             <Route path="plans" element={<PlansPage />} />
             <Route path="audit" element={<AuditPage />} />
+            <Route path="account" element={<AccountPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
