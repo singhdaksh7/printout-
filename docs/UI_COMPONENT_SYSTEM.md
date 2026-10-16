@@ -3,7 +3,7 @@
 Shared React/TypeScript component library for the PrintoutBuddy web app (shop dashboard and platform admin; customer screens wait for approved designs).
 Source of truth for styling: `docs/design/1.pdf` (brand and design system), `2.pdf` (Platform Admin), `3.pdf` (Shopkeeper). Code lives in `apps/web/src/ui/`.
 
-**Status.** Foundations and components are implemented, tested and shown in the development-only showcase. Screens have **not** been migrated yet; the existing `sh-*`, `cx-*` and admin styles are untouched and keep working. See [Migration](#migration).
+**Status.** Foundations and components are implemented, tested and shown in the development-only showcase. **Shopkeeper stage 1 (print queue and order detail) is migrated**; every other screen still uses the existing `sh-*`, `cx-*` and admin styles, which keep working. See [Migration](#migration).
 
 ## Using the library
 
@@ -73,6 +73,7 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 | `buttonClass()` | `{ variant, size, fullWidth, className }` | same | Use on `<Link>` or `<a>` that must look like a button. |
 | `IconButton` | `icon`, `label` (required), `variant` `ghost`/`outline`, `size` `sm`/`md` | | `aria-label` + title, 44px target, disabled |
 | `SegmentedControl` | `label`, `options[{value,label,count?,disabled?}]`, `value`, `onChange`, `size` | `sm` `md` | native radios: Tab enters, arrows move and select; counts; disabled options |
+| `Tabs` | `label`, `tabs[{key,label,count?,disabled?}]`, `value`, `onChange`, `idPrefix`, `panelId?` | pill track | WAI-ARIA tabs (automatic activation): selected tab is the only Tab stop, Left/Right wrap and skip disabled tabs, Home/End; tab ids `${idPrefix}-tab-${key}` for the panel's `aria-labelledby`. Use for filters over one panel; use `SegmentedControl` for a plain setting. |
 
 ### Inputs
 
@@ -97,10 +98,11 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 
 | Component | API | Notes |
 |---|---|---|
-| `Banner` | `tone` `info` `ok` `warn` `err` `orange`, `title`, `icon`, `steps`, `actions`, `onDismiss`, `layout` `box`/`bar` | errors `role="alert"`, others `role="status"` |
+| `Banner` | `tone` `info` `ok` `warn` `err` `orange`, `title`, `icon`, `steps`, `actions`, `onDismiss`, `layout` `box`/`bar` | errors `role="alert"`, others `role="status"`. `steps` are numbered and laid out in up to three columns from 768px, stacked below (as in `3.pdf` p14). |
 | `ToastRegion` | `message` | polite live region, always mounted; navy toast |
+| `useToast()` | `show(message)`, `node` | `show` then render `node` once; clears itself (default 4 s) |
 | `Skeleton` | `variant` `text`/`block`, `lines`, `width`, `height`, `label` | text variant is a labelled `aria-busy` region; block is decorative |
-| `EmptyState` | `icon`, `title`, `children`, `action`, `callout` | one action at most |
+| `EmptyState` | `icon`, `title`, `titleAs` `h2`/`h3`/`h4`, `children`, `action`, `callout` | one action at most; pick the heading level that fits the page |
 
 ### Layout, overlays, data, navigation
 
@@ -108,11 +110,11 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 |---|---|---|
 | `Card`, `CardHeader` | `as`, `padding`, `accent` `warn`/`err`; header `title`, `as` h2-h4, `meta`, `actions` | no shadow (overlays only) |
 | `StatTile` | `label`, `value`, `hint`, `accent`, `tag`, `loading` | `tag="Sample"` for placeholder numbers |
-| `KeyValueList` | `items[{label,value,mono?}]`, `layout` `inline`/`stacked` | `dl` |
+| `KeyValueList` | `items[{label,value,mono?,strong?}]`, `layout` `inline`/`stacked` | `dl`; `strong` emphasises a total row |
 | `Timeline` | `items[{time,children,tone?}]` | `ol` |
 | `Modal` | `title`, `footer`, `tone` `default`/`danger`, `size`, `eyebrow`, `initialFocusRef`, `busy` | mount = open; traps focus; Escape and scrim close unless `busy`; returns focus |
 | `Drawer` | `title`, `header`, `footer`, `initialFocusRef`, `busy` | right panel (full screen on phones), same focus handling |
-| `DataTable` | `columns`, `rows`, `getRowKey`, `caption`, `selectedKey`, `highlightKeys`, `onRowClick`, `loading`, `empty`, `renderCard`, `cardsBelow` | captioned table in a keyboard-scrollable region; cards below 768px when `renderCard` is given (never both in the DOM); skeleton rows; row click ignores clicks on inner buttons |
+| `DataTable` | `columns`, `rows`, `getRowKey`, `caption`, `selectedKey`, `highlightKeys`, `onRowClick`, `loading`, `loadingLabel`, `empty`, `renderCard`, `cardsBelow`, `rowAttributes` | captioned table in a keyboard-scrollable region; cards below 768px when `renderCard` is given (never both in the DOM); skeleton rows; row click ignores clicks on inner buttons |
 | `LoadMore` | `hasMore`, `loading`, `onClick`, `error`, `endLabel`, `summary` | cursor pagination control |
 | `Sidebar`, `BottomNav`, `TopBar`, `AppShell` | `NavItem {to,label,icon,end,count,showZero,tag,alert,comingSoon}`; `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
 | Charts | `BarChart`, `HBarList`, `HeartbeatStrip`, `SegmentedBar` | SVG/CSS, no dependency; each has a text alternative (hidden data table, list text, or summary) |
@@ -132,15 +134,28 @@ Thin wrappers that only word and colour values the caller already has: no fetchi
 
 ### Not built (no verified use yet)
 
-`Tabs`, `Stepper` (agent setup is out of scope), `CodeField` (OTP/2FA out of scope), `FilterChip`, `PlanCard`, numbered `Pagination`, `Logo` (approved source files not supplied). Add them when a screen needs them.
+`Stepper` (agent setup is out of scope), `CodeField` (OTP/2FA out of scope), `FilterChip`, `PlanCard`, numbered `Pagination`, `Logo` (approved source files not supplied). Add them when a screen needs them.
 
 ## Migration
 
 The library is additive. Screens keep their current markup until migrated, one family at a time, each as its own commit:
 
-1. Shop: queue and order detail, then rate card, QR, devices ("Printers"), history, settings, shell last.
+1. Shop: **queue and order detail (done, stage 1)**, then rate card, QR, devices ("Printers"), history, settings, shell last.
 2. Platform Admin: overview, shops, shop detail, audit log, plans and subscriptions.
 3. Customer: after approved designs are supplied.
+
+### Stage 1: print queue and order detail (migrated)
+
+`shop/QueuePage.tsx`, `shop/OrderDetailPage.tsx`, styled with `shop/pb-pages.css`. Same routes (`/shop`, `/shop/orders/:id`), API calls, polling, realtime refresh, sound, retention countdowns, print/reprint/save/cancel behaviour and status wording. Built from `DataTable` (rows on desktop, cards below 768px), `Tabs`, `OrderStatusChip`, `Button`, `Banner`, `Modal`, `EmptyState`, `Card`, `KeyValueList`, `Timeline`, `LoadMore`, `useToast`. The page content uses the design's 1200px width via a scoped `:has()` rule, because the un-migrated shell caps content at 760px; remove it with the shell migration.
+
+Deliberate differences from `3.pdf` (backend or scope, not omissions by accident):
+
+- **No stat tiles, printer/agent pill, pilot card, Staff/Reports/Billing/History nav, "Sound on" header control or logo.** There is no data behind them (printed-today and pages-today counts, printer health, plans), or they belong to the shell, which is the next stage. Nothing is faked.
+- **Status vocabulary is the API's** (`New`, `Print started`, `Print confirmed (legacy)`, ...), not Queued/Printing/Printed, because the API does not confirm physical printing. `JobStatusChip` (design wording) exists but is not used until the API can back it.
+- **Order detail is a page, not a drawer.** Keeping the route preserves deep links, the "Back to queue" link and the existing end-to-end flows; it is also what `3.pdf` p24 shows on phones. `Drawer` is available for a later decision.
+- **The cancel dialog has no reason list.** The API's cancel transition takes no reason, so asking for one would not be honest.
+- **Save file** stays next to Print (it is an existing feature the design does not show).
+- **Tabs** are the real filters (New / Recent / Cancelled / expired), not Active / All today.
 
 Rules: keep routes, API calls, auth and business logic as they are; features without a backend render as `comingSoon` or not at all (never fake live); keep `shop/components.tsx` and `admin/ui.tsx` exports working by re-exporting from `ui/` so imports do not break mid-migration.
 
@@ -152,7 +167,7 @@ Rules: keep routes, API calls, auth and business logic as they are; features wit
 | Unit and component tests | `pnpm --filter @printout/web test` | roles, keyboard, loading, ids and descriptions, token values and contrast, showcase smoke test |
 | Production bundle | `pnpm --filter @printout/web build && pnpm --filter @printout/web verify:bundle` | fails if the showcase leaks into `dist` (negative-controlled against a development build) |
 | UI browser checks | `pnpm e2e:ui` | axe WCAG 2.1 A/AA at 1280, 855 and 375px, with the modal and drawer open; fonts load; focus ring; focus trap; reduced motion; no horizontal scroll; screenshots into `e2e-ui/artifacts/` |
-| App end-to-end | `pnpm e2e` | existing suites (need the API and database) |
+| App end-to-end | `pnpm e2e` | existing suites plus `09-shop-stage1-ui` (axe on the migrated region and screenshots of every queue/detail state at 1440 and 390px). Needs Docker Postgres: it truncates the private `printout_e2e` database only. If port 55433 is unavailable (Windows can reserve it) run `E2E_DB_PORT=<port> E2E_PG_CONTAINER=<disposable postgres container> pnpm e2e` against a throwaway database with the migrations applied. |
 
 Screenshots are reviewed by eye against the matching PDF page (same widths: 1280 desktop, 855 tablet as in `2.pdf` p20, 375 phone as in `3.pdf` p23-24); the designs use sample data, so layout, spacing, colour and type are compared, not pixels.
 
