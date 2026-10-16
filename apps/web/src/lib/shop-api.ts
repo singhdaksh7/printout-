@@ -202,6 +202,51 @@ export async function fetchHistoryCsv(p: HistoryQuery): Promise<{ blob: Blob; fi
   return { blob: await res.blob(), filename: name ?? `order-history-${p.from}_to_${p.to}.csv`, truncated: res.headers.get('x-export-truncated') === 'true' };
 }
 
+// ---- estimated order value report (Asia/Kolkata calendar days, inclusive). Quotes only: no customer payments are recorded. ----
+export interface RevenueBucket { key: string; orders: number; valuePaise: number; pages: number }
+export interface RevenueTotals {
+  orderCount: number; countedOrders: number; estimatedOrderValuePaise: number; averageEstimatedOrderValuePaise: number | null; pagesRequested: number;
+  ordersWithUnknownPages: number; zeroValueOrders: number; printStarted: number; cancelled: number; expired: number; excludedQuotedValuePaise: number;
+}
+export interface RevenueDay { date: string; orders: number; countedOrders: number; estimatedOrderValuePaise: number; pagesRequested: number }
+export interface RevenueReport {
+  timezone: string;
+  range: { from: string; to: string; days: number };
+  basis: 'ESTIMATED_ORDER_VALUE';
+  collected: { available: false; reason: string };
+  totals: RevenueTotals;
+  daily: RevenueDay[];
+  breakdown: { colourMode: RevenueBucket[]; sides: RevenueBucket[]; paperSize: RevenueBucket[]; status: RevenueBucket[] };
+  comparison: {
+    previousRange: { from: string; to: string };
+    available: boolean;
+    reason: 'NO_PREVIOUS_ORDERS' | 'PREVIOUS_PERIOD_INCOMPLETE' | null;
+    previous: RevenueTotals;
+    changePct: { estimatedOrderValue: number | null; orderCount: number | null; pagesRequested: number | null };
+  };
+}
+export interface RevenueQuery { from: string; to: string }
+export const getRevenue = (p: RevenueQuery, signal?: AbortSignal) =>
+  shopRequest<RevenueReport>(`/shop/analytics/revenue?${new URLSearchParams({ from: p.from, to: p.to })}`, signal ? { signal } : {});
+
+/** Same authenticated-GET download pattern as the history export, so failures surface as ApiError instead of a broken download. */
+export async function fetchRevenueCsv(p: RevenueQuery): Promise<{ blob: Blob; filename: string; truncated: boolean }> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1/shop/analytics/revenue/export.csv?${new URLSearchParams({ from: p.from, to: p.to })}`, { credentials: 'include' });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.');
+  }
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    const err = new ApiError(res.status, json?.error?.code ?? 'REQUEST_ERROR', json?.error?.message ?? `Request failed (${res.status})`, json?.error?.details, json?.error?.requestId);
+    if (res.status === 401) onUnauthorized?.();
+    throw err;
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1];
+  return { blob: await res.blob(), filename: name ?? `estimated-order-value-${p.from}_to_${p.to}.csv`, truncated: res.headers.get('x-export-truncated') === 'true' };
+}
+
 export const getAnalytics = () => shopRequest<Record<string, unknown>>('/shop/analytics');
 export const getSettings = () => shopRequest<ShopSettings | null>('/shop/settings');
 export const putSettings = (s: ShopSettings) => shopRequest<ShopSettings>('/shop/settings', { method: 'PUT', body: s });

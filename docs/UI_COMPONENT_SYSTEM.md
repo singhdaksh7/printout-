@@ -117,7 +117,7 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 | `DataTable` | `columns`, `rows`, `getRowKey`, `caption`, `selectedKey`, `highlightKeys`, `onRowClick`, `loading`, `loadingLabel`, `empty`, `renderCard`, `cardsBelow`, `rowAttributes` | captioned table in a keyboard-scrollable region; cards below 768px when `renderCard` is given (never both in the DOM); skeleton rows; row click ignores clicks on inner buttons |
 | `LoadMore` | `hasMore`, `loading`, `onClick`, `error`, `endLabel`, `summary` | cursor pagination control |
 | `Sidebar`, `BottomNav`, `TopBar`, `AppShell` | `NavItem {to,label,icon,end,count,showZero,tag,alert,comingSoon}`; `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
-| Charts | `BarChart`, `HBarList`, `HeartbeatStrip`, `SegmentedBar` | SVG/CSS, no dependency; each has a text alternative (hidden data table, list text, or summary) |
+| Charts | `BarChart`, `HBarList`, `HeartbeatStrip`, `SegmentedBar` | SVG/CSS, no dependency; each has a text alternative (hidden data table, list text, or summary). `BarDatum.tooltip` adds SVG `<title>` hover text. The Analytics order value report (`shop/RevenuePanel.tsx`) pairs the chart with an exact data table in a keyboard-scrollable region (`role=region`, `tabIndex=0`) |
 
 ### Domain presentation (`ui/domain`)
 

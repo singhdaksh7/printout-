@@ -10,6 +10,8 @@ export interface BarDatum {
   value: number;
   /** `highlight` is the single orange bar (the peak); `muted` marks a partial/in-progress bucket. */
   tone?: 'default' | 'highlight' | 'muted';
+  /** Hover/long-press text for the bar (SVG <title>), e.g. "10 Mar: ₹1,250.00 from 4 orders". */
+  tooltip?: string;
 }
 
 export interface BarChartProps {
@@ -57,7 +59,7 @@ export function BarChart({ data, title, summary, yMax, yTicks, valueLabels = tru
           const h = Math.max(0, (d.value / max) * innerH);
           return (
             <g key={`${d.label}-${i}`}>
-              <rect x={x} y={y(d.value)} width={barW} height={h} rx={3} className={cx('pb-chart__bar', d.tone && d.tone !== 'default' && `pb-chart__bar--${d.tone}`)} />
+              <rect x={x} y={y(d.value)} width={barW} height={h} rx={3} className={cx('pb-chart__bar', d.tone && d.tone !== 'default' && `pb-chart__bar--${d.tone}`)}>{d.tooltip && <title>{d.tooltip}</title>}</rect>
               {valueLabels && d.value > 0 && <text x={x + barW / 2} y={y(d.value) - 5} textAnchor="middle" className="pb-chart__value">{d.value}</text>}
               {i % labelEvery === 0 && <text x={x + barW / 2} y={height - 8} textAnchor="middle" className="pb-chart__tick">{d.label}</text>}
             </g>

@@ -15,10 +15,15 @@ TypeScript, Fastify, Prisma and PostgreSQL in `apps/api`; React, TypeScript and 
 | Schema additions and unresolved decisions | `docs/SCHEMA_ALIGNMENT.md` |
 | UI library, tokens, migration status | `docs/UI_COMPONENT_SYSTEM.md` |
 | Git branches and pending approvals | `docs/GIT_WORKFLOW.md` |
+| Real-time order notifications (outbox, SSE, bell, sound) | `docs/REALTIME_NOTIFICATIONS.md` |
 
 ## Database and schema rules
 
 Additive, forward-only migrations in `apps/api/prisma/migrations`; never edit an applied migration; never drop or rename in the same release as the code that stops using a column. `Order` is authoritative; `PrintJob`, `Membership`, `PrintAgent`, `Printer`, `DeletionReceipt`, `CustomerSession`, `Invoice`, `Payment` exist but are unused. Do not invent status mappings or wipe-flag names. Validate on a disposable database only (never an unknown or production database); use separate databases for migrations, API tests (`TEST_DATABASE_URL`, truncated by the tests) and e2e (`printout_e2e`, truncated by the suite).
+
+## Real-time notifications (do not build a second system)
+
+Shop new-order notifications are durable (`ShopNotification`, written in the order-creation transaction) and pushed as `notification.created` on the existing single `/shop/events` stream; the inbox API is `GET /shop/notifications`, `POST /shop/notifications/:id/read`, `POST /shop/notifications/read-all`. The browser state lives in `apps/web/src/shop/notifications.tsx` (provider), `NotificationBell.tsx`, and `alert-sound.ts` (the one shared opt-in sound, preference key `printout.shop.sound`). Rules: payloads carry only order id and number; events are emitted only after commit; the sound rings only for live notifications, never for refresh, reconnect or history; reuse the one `RealtimeProvider` connection.
 
 ## Design tokens
 
@@ -57,3 +62,5 @@ Windows Print Agent; Kotlin/Ktor backend; OTP login and admin 2FA; staff roles a
 ## Keep out of the skill
 
 Secrets, credentials, personal paths, binary fonts and the large design PDFs.
+
+Order value report (built on the Analytics page): `GET /shop/analytics/revenue` and `/revenue/export.csv`. It shows ESTIMATED order value from the stored quote `Order.totalPaise` only. There are no customer payment records, so never label it revenue, earnings or money collected; collected revenue, refunds and net earnings stay unavailable until a verified payment source exists. Rules: IST days, counted = not CANCELLED/EXPIRED, integer paise, no re-pricing of history.
