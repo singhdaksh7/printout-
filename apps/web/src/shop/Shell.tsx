@@ -6,6 +6,8 @@ import { AppShell, Banner, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, 
 import { ShopErrorBoundary, UnsavedContext, UNSAVED_PROMPT } from './components';
 import { useAutoRefresh, useDebounced } from './hooks';
 import { useRealtime, useRealtimeRefresh } from './realtime';
+import { NotificationBell } from './NotificationBell';
+import { NotificationsProvider } from './notifications';
 
 /** Sidebar (desktop and tablet) destinations. Staff and Reports have no backend yet, so they are labelled Coming soon and are not links. */
 const NAV_ITEMS: NavItem[] = [
@@ -23,7 +25,8 @@ const NAV_ITEMS: NavItem[] = [
 const PHONE_PATHS = ['/shop', '/shop/history', '/shop/analytics', '/shop/devices', '/shop/pricing'];
 
 const CONN_LABEL = { live: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', offline: 'Offline' } as const;
-const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'err' };
+// Never red: a lost live connection is recoverable and the queue keeps working (it refreshes on focus and every 45s).
+const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'warn' };
 
 function useNewOrderBadge() {
   const [count, setCount] = useState(0);
@@ -77,6 +80,7 @@ export default function Shell() {
   const moreItems = items.filter((i) => !PHONE_PATHS.includes(i.to));
   return (
     <UnsavedContext.Provider value={guard}>
+      <NotificationsProvider>
       <AppShell
         notice={(!online || conn === 'offline') ? <Banner tone="warn" layout="bar">You are offline. Orders may be out of date until the connection returns.</Banner> : undefined}
         sidebar={<Sidebar label="Shop sections" brand={<BrandLogo onDark />} items={items} onNavigate={onNavClick} />}
@@ -84,6 +88,7 @@ export default function Shell() {
           <TopBar
             start={<span className="pb-shopname" title={shopName}>{shopName}</span>}
             end={<>
+              <NotificationBell />
               <Chip tone={CONN_TONE[conn]} className="shop-conn" role="status" aria-live="polite" aria-label={`Connection: ${CONN_LABEL[conn]}`}>{CONN_LABEL[conn]}</Chip>
               <Button variant="outline" size="sm" iconStart="log-out" onClick={doLogout} disabled={leaving}>Log out</Button>
             </>}
@@ -93,6 +98,7 @@ export default function Shell() {
       >
         <ShopErrorBoundary><Outlet /></ShopErrorBoundary>
       </AppShell>
+      </NotificationsProvider>
     </UnsavedContext.Provider>
   );
 }

@@ -281,11 +281,37 @@ paths:
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/events:
     get:
-      summary: "Server-Sent Events for the shop"
+      summary: "Server-Sent Events for the shop (also streams notification.created)"
       security:
         - ownerSession: []
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/notifications:
+    get:
+      summary: "Durable shop notifications, newest first (cursor / after / limit / unreadOnly)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: { items, nextCursor, hasMore, latestCursor, unreadCount } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/notifications/read-all:
+    post:
+      summary: "Mark every notification of the shop as read"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: { updated, unreadCount } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/notifications/{id}/read:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Mark one notification as read (404 for another shop's id)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: { notification, unreadCount } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/devices:
     get:

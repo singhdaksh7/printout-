@@ -7,6 +7,7 @@ import { normalisePrintOptions, printOptionsSchema, quote, type QuoteResult } fr
 import { signQuote, verifyQuote } from '../domain/quote-token.js';
 import { subscriptionAllowsIntake } from '../domain/eligibility.js';
 import { AppError, notFound } from '../errors.js';
+import { recordOrderCreated, toNotificationDto } from '../notifications/shop-notifications.js';
 import { isUniqueViolation, json, type AppContext } from './context.js';
 
 const slugParam = z.object({ slug: z.string().regex(/^[a-z0-9-]{3,80}$/) });
@@ -139,7 +140,7 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
     );
 
     try {
-      const order = await prisma.$transaction(async (tx) => {
+      const { order, notification } = await prisma.$transaction(async (tx) => {
         const claimed = await tx.document.updateMany({
           where: { id: doc.id, shopId: shop.id, status: DocumentStatus.AVAILABLE, expiresAt: { gt: now }, order: { is: null } },
           data: { updatedAt: now }
@@ -151,7 +152,7 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
           data: { orderCounter: { increment: 1 } },
           select: { orderCounter: true }
         });
-        return tx.order.create({
+        const created = await tx.order.create({
           data: {
             shopId: shop.id,
             documentId: doc.id,
@@ -165,7 +166,17 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
             histories: { create: { toStatus: OrderStatus.NEW } }
           }
         });
+        // Transactional outbox: the notification commits (or rolls back) together with the order. The shop row is still
+        // row-locked here, so per-shop notification seq order equals commit order.
+        const row = await recordOrderCreated(tx, { shopId: shop.id, orderId: created.id, orderNumber: created.orderNumber });
+        return { order: created, notification: row };
       });
+      try {
+        // Post-commit fan-out is best effort: the durable row is the source of truth and clients recover via the cursor list.
+        ctx.notifications.publish(shop.id, toNotificationDto(notification));
+      } catch {
+        /* ignored */
+      }
       events.emit(shop.id, 'order.created', {
         id: order.id,
         orderNumber: order.orderNumber,
