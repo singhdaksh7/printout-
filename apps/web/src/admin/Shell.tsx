@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../shop/auth';
-import { AppShell, BottomNav, Button, Chip, Sidebar, TopBar, type NavItem } from '../ui';
+import { AppShell, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, type NavItem } from '../ui';
 
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const { state, retry } = useAuth();
@@ -26,8 +26,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' },
   { to: '/admin/account', label: 'Account', icon: 'lock' }
 ];
-/** Phone tab bar: Plans is reached from the Subscriptions page so that five labels fit 360px. */
-const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/subscriptions', '/admin/audit'];
+/** Phone tab bar: four destinations plus "More" (Subscriptions, Plans, Account). "Subscriptions" does not fit a 60px tab at 360px, so it lives under More. */
+const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/audit'];
 
 export default function Shell() {
   const { state, logout } = useAuth();
@@ -41,7 +41,7 @@ export default function Shell() {
   }
   return (
     <AppShell
-      sidebar={<Sidebar label="Admin sections" brand={<span className="pb-brandmark">PrintoutBuddy<small className="ad-brandsub">Platform admin</small></span>} items={NAV_ITEMS} />}
+      sidebar={<Sidebar label="Admin sections" brand={<BrandLogo onDark sub="Platform admin" />} items={NAV_ITEMS} />}
       topbar={
         <TopBar
           start={<Chip tone="info" dot={false}>Platform admin</Chip>}
@@ -51,7 +51,7 @@ export default function Shell() {
           </>}
         />
       }
-      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} />}
+      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} moreItems={NAV_ITEMS.filter((i) => !PHONE_PATHS.includes(i.to))} />}
     >
       <div className="pb-page pb-theme"><Outlet /></div>
     </AppShell>

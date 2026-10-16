@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { Button, SegmentedControl, TextField } from '../ui';
 import { MAX_COPIES, copiesError as validateCopies, type Config } from './config';
 
 type Props = {
@@ -10,12 +11,8 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
   const id = useId();
   return (
     <div className="cx-field">
-      <span className="cx-label" id={id}>{label}</span>
-      <div className="cx-seg" role="radiogroup" aria-labelledby={id}>
-        {options.map((o) => (
-          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} className={`cx-seg-btn${value === o.v ? ' is-on' : ''}`} onClick={() => onChange(o.v)}>{o.t}</button>
-        ))}
-      </div>
+      <span className="cx-label" id={id} aria-hidden="true">{label}</span>
+      <SegmentedControl label={label} className="cx-seg" value={value} onChange={onChange} options={options.map((o) => ({ value: o.v, label: o.t }))} />
     </div>
   );
 }
@@ -35,12 +32,12 @@ export function ConfigureCard({ cfg, onChange, pageCount, copiesError, pagesErro
       <div className="cx-field">
         <label className="cx-label" htmlFor={copiesId}>Copies</label>
         <div className="cx-stepper">
-          <button type="button" className="cx-btn cx-step" aria-label="Decrease copies" onClick={() => step(-1)} disabled={n <= 1}>−</button>
+          <Button variant="outline" className="cx-step" aria-label="Decrease copies" onClick={() => step(-1)} disabled={n <= 1}>−</Button>
           <input id={copiesId} className="cx-input cx-tnum cx-copies" inputMode="numeric" autoComplete="off" value={cfg.copies}
             aria-invalid={!!copiesError} aria-describedby={copiesError ? `${copiesId}-e` : undefined}
             onChange={(e) => onChange({ copies: e.target.value.replace(/[^\d]/g, '').slice(0, 5) })}
             onBlur={() => { if (validateCopies(cfg.copies)) return; onChange({ copies: String(Number(cfg.copies)) }); }} />
-          <button type="button" className="cx-btn cx-step" aria-label="Increase copies" onClick={() => step(1)} disabled={n >= MAX_COPIES}>+</button>
+          <Button variant="outline" className="cx-step" aria-label="Increase copies" onClick={() => step(1)} disabled={n >= MAX_COPIES}>+</Button>
         </div>
         {copiesError && <p className="cx-field-err" id={`${copiesId}-e`} role="alert">{copiesError}</p>}
       </div>
@@ -49,11 +46,8 @@ export function ConfigureCard({ cfg, onChange, pageCount, copiesError, pagesErro
         options={pageCount !== null && pageCount <= 1 ? [{ v: 'all', t: 'All pages' }] : [{ v: 'all', t: 'All pages' }, { v: 'custom', t: 'Custom' }]} />
       {cfg.pageMode === 'custom' && (
         <div className="cx-field">
-          <label className="cx-label" htmlFor={pagesId}>Pages to print{pageCount ? ` (1–${pageCount})` : ''}</label>
-          <input id={pagesId} className="cx-input" placeholder="e.g. 1-5, 8, 10-12" autoComplete="off" autoCapitalize="off" spellCheck={false}
-            value={cfg.pageText} aria-invalid={!!pagesMsg} aria-describedby={pagesMsg ? `${pagesId}-e` : undefined}
-            onChange={(e) => onChange({ pageText: e.target.value })} />
-          {pagesMsg && <p className="cx-field-err" id={`${pagesId}-e`} role="alert">{pagesMsg}</p>}
+          <TextField id={pagesId} label={`Pages to print${pageCount ? ` (1–${pageCount})` : ''}`} placeholder="e.g. 1-5, 8, 10-12" autoComplete="off" autoCapitalize="off" spellCheck={false}
+            value={cfg.pageText} error={pagesMsg} onChange={(e) => onChange({ pageText: e.target.value })} />
         </div>
       )}
     </section>

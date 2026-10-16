@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Checkbox } from '../inputs/Checkbox';
 import { RadioGroup } from '../inputs/RadioGroup';
+import { Switch } from '../inputs/Switch';
 import { Select } from '../inputs/Select';
 import { TextArea } from '../inputs/TextArea';
 import { TextField } from '../inputs/TextField';
@@ -97,6 +98,27 @@ describe('Select', () => {
     render(<Select label="City" error="Pick a city"><option>Delhi</option></Select>);
     expect(screen.getByLabelText('City')).toHaveAccessibleDescription('Pick a city');
     expect(screen.getByLabelText('City')).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
+describe('Switch', () => {
+  it('is a labelled switch that toggles by click and by Space, with the hint as description', async () => {
+    const onChange = vi.fn();
+    render(<Switch label="Sound for new orders" hint="Plays when an order arrives" onChange={onChange} />);
+    const sw = screen.getByRole('switch', { name: 'Sound for new orders' });
+    expect(sw).toHaveAccessibleDescription('Plays when an order arrives');
+    expect(sw).not.toBeChecked();
+    await userEvent.click(screen.getByText('Sound for new orders'));
+    sw.focus();
+    await userEvent.keyboard(' ');
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('reflects the checked state and can be disabled', () => {
+    render(<Switch label="Sound" checked readOnly disabled />);
+    const sw = screen.getByRole('switch', { name: 'Sound' });
+    expect(sw).toBeChecked();
+    expect(sw).toBeDisabled();
   });
 });
 

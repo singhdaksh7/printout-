@@ -18,6 +18,7 @@ export { TextField, type TextFieldProps } from './inputs/TextField';
 export { TextArea, type TextAreaProps } from './inputs/TextArea';
 export { Select, type SelectProps } from './inputs/Select';
 export { Checkbox, type CheckboxProps } from './inputs/Checkbox';
+export { Switch, type SwitchProps } from './inputs/Switch';
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './inputs/RadioGroup';
 export { describedBy, useFieldIds } from './inputs/FieldFrame';
 
@@ -50,7 +51,7 @@ export { LoadMore, type LoadMoreProps } from './data/LoadMore';
 export { useMediaQuery } from './useMediaQuery';
 
 // Navigation
-export { AppShell, BottomNav, Sidebar, TopBar, type AppShellProps, type BottomNavProps, type NavItem, type SidebarProps, type TopBarProps } from './navigation/navigation';
+export { AppShell, BottomNav, BrandLogo, Sidebar, TopBar, type AppShellProps, type BottomNavProps, type BrandLogoProps, type NavItem, type SidebarProps, type TopBarProps } from './navigation/navigation';
 
 // Charts
 export { BarChart, HBarList, HeartbeatStrip, SegmentedBar, type BarChartProps, type BarDatum, type HBarDatum, type HBarListProps, type HeartbeatState, type HeartbeatStripProps, type Segment, type SegmentedBarProps } from './charts/charts';

@@ -3,7 +3,7 @@ import {
   AppShell, Badge, Banner, BarChart, BottomNav, Button, Card, CardHeader, Checkbox, Chip, DataTable, Drawer, EmptyState, FileDeletedLine,
   HBarList, HeartbeatStrip, Icon, IconButton, JOB_STATUS, JobCode, JobStatusChip, KeyValueList, LoadMore, Modal, ORDER_STATUS_DISPLAY, OrderStatusChip,
   PRESENCE, PresenceChip, ProgressBar, RadioGroup, RetentionNotice, SHOP_STATUS, SegmentedBar, SegmentedControl, Select, ShopStatusChip, Sidebar,
-  Skeleton, Spinner, StatTile, Tabs, TextArea, TextField, Timeline, ToastRegion, TopBar, buttonClass, ICON_NAMES,
+  Skeleton, Spinner, StatTile, Switch, Tabs, TextArea, TextField, Timeline, ToastRegion, TopBar, buttonClass, ICON_NAMES,
   type Column, type HeartbeatState, type JobStatusKind, type LegacyOrderStatus, type NavItem, type PresenceKind
 } from '..';
 import './showcase.css';
@@ -191,6 +191,8 @@ export default function ComponentShowcase() {
               <Checkbox label="Sound on" hint="Plays when a new job arrives" defaultChecked />
               <Checkbox label="Select all agents" indeterminate checked={checkAll} onChange={(e) => setCheckAll(e.target.checked)} />
               <Checkbox label="Disabled option" disabled />
+              <Switch label="Sound for new orders" hint="Plays a short beep when an order arrives" defaultChecked />
+              <Switch label="Disabled switch" disabled />
             </Demo>
             <Demo title="RadioGroup · list (cancel reasons)">
               <RadioGroup legend="Reason" value={reason} onChange={setReason} options={[
