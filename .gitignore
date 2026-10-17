@@ -20,3 +20,7 @@ docs/design/
 # Visual QA full-size captures (regenerate with VQA_LABEL=before|after pnpm e2e -g "visual QA"); the committed evidence is docs/visual-qa/compare/*.jpg and the JSON reports
 docs/visual-qa/before/*.png
 docs/visual-qa/after/*.png
+
+# Local worktrees
+Print-*/
+
