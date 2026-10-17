@@ -123,3 +123,26 @@ Device (header `Authorization: Bearer pbd_...`, no cookies/CSRF; the tenant is t
 Device error codes: `401 UNAUTHORIZED` (missing/unknown/malformed credential), `401 DEVICE_REVOKED` (checked on every request, effective immediately), `403 SHOP_SUSPENDED`, `403 SUBSCRIPTION_INACTIVE`, `400 PAIRING_CODE_INVALID`.
 
 Credential handling: 256-bit random, shown once at pairing, stored only as sha256; never logged (Authorization header is redacted) and never returned again. Lost credential = revoke and pair again.
+
+
+## Windows print agent (additive)
+
+All paths under `/api/v1`. Device routes need `Authorization: Bearer pbd_...` of a WINDOWS device; shop routes need the owner session (+ CSRF on mutations). New error codes: `PRINT_JOB_NOT_FOUND` (404), `LEASE_MISMATCH`, `JOB_CANCEL_REQUESTED`, `ACTIVE_PRINT_JOB_EXISTS`, `DUPLICATE_RISK_NOT_ACKNOWLEDGED`, `PRINTER_NOT_AUTHORIZED`, `PRINTER_UNAVAILABLE`, `PRINTER_UNSUPPORTED_OPTIONS` (all 409). SSE: `printJob.updated {id, orderId, status}`.
+
+Job status: `QUEUED, CLAIMED, DOWNLOADING, SUBMITTING, SUBMITTED_TO_SPOOLER, PRINT_INITIATED, FAILED, CANCEL_REQUESTED, CANCELED, NEEDS_RECONCILIATION`. There is no "printed" status.
+
+| Method + path | Who | Notes |
+| --- | --- | --- |
+| `PUT /device/printers` `{printers:[{name,driverName?,connectivity,statusDetail?,supportsColour,supportsDuplex,paperSizes?}]}` | device | upserts; keeps `authorized`/`isDefault`; unreported -> `present:false` |
+| `POST /device/print-jobs/claim` `{}` | device | `{job|null, resumed}`; one in-flight job per device; job has `leaseId`, `options`, `documentName` |
+| `GET /device/print-jobs/active` | device | non-terminal jobs of this device |
+| `POST /device/print-jobs/:id/download` `{leaseId}` | device | `{url, expiresAt, mimeType, byteSize, sha256}` |
+| `POST /device/print-jobs/:id/progress` `{leaseId,status,spoolerJobId?,spoolerState?,errorCode?,errorMessage?}` | device | explicit edges; same status = lease renewal |
+| `POST /device/credential/rotate` `{}` | device | `{deviceCredential, credentialVersion, previousValidForSeconds}` once |
+| `GET /shop/devices` | owner | each device now has `printers[]` |
+| `PATCH /shop/devices/:id/printers/:printerId` `{authorized?,isDefault?}` | owner | one default per shop |
+| `POST /shop/orders/:id/print-jobs` `{clientRequestId,printerId?,reprint?,acknowledgeDuplicateRisk?}` | owner | 201 created / 200 replay; starts retention via the normal print engine |
+| `GET /shop/print-jobs[?orderId=]` | owner | active + last 24 h |
+| `POST /shop/print-jobs/:id/cancel` / `retry` / `reconcile` | owner | `reconcile` `{resolution: PRINTED|NOT_PRINTED_REQUEUE|NOT_PRINTED_GIVE_UP, clientRequestId?}` |
+
+Compatibility: no existing field or route changed; `DeviceView.printers` is new. Migration `20261017031501_windows_print_agent` only adds enums, tables and nullable columns.

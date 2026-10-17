@@ -10,10 +10,12 @@ import { Banner, Button, Card, CardHeader, EmptyState, Icon, KeyValueList, Modal
 import { pageSelectionText } from './components';
 import { retentionHyphen } from '../lib/retention';
 import { useAuth } from './auth';
+import { PrintJobPanel } from './PrintJobPanel';
 import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useAutoRefresh, useDebounced, useTick } from './hooks';
 import { useRealtimeRefresh } from './realtime';
 import './pb-pages.css';
+import './windows-printing.css';
 
 const fmtDateTime = (iso?: string | null) => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -225,6 +227,7 @@ export default function OrderDetailPage() {
           <p className="pb-muted">The file has been deleted, so it can no longer be printed or saved. Order details are kept.</p>
         )}
       </Card>
+      <PrintJobPanel orderId={id} canPrint={printable} onChanged={() => void load()} />
 
       {/* ---- retention / document state ---- */}
       <Card as="section" aria-label="Document">

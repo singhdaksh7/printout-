@@ -1,5 +1,5 @@
 // Testable SSE client. EventSource is injectable; reconnect with exponential backoff when the browser gives up.
-export const SHOP_EVENT_NAMES = ['order.created', 'order.updated', 'order.statusChanged', 'document.deletionScheduled', 'document.deleted', 'notification.created'] as const;
+export const SHOP_EVENT_NAMES = ['order.created', 'order.updated', 'order.statusChanged', 'document.deletionScheduled', 'document.deleted', 'notification.created', 'printJob.updated'] as const;
 export type ShopEventName = (typeof SHOP_EVENT_NAMES)[number];
 export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline';
 export interface ShopEvent { type: string; data: Record<string, unknown> | null; id: string }
