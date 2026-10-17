@@ -5,7 +5,7 @@ import { Button } from '../actions/Button';
 import { DataTable, type Column } from '../data/DataTable';
 import { LoadMore } from '../data/LoadMore';
 import { EmptyState } from '../feedback/EmptyState';
-import { AppShell, BottomNav, BrandLogo, Sidebar, TopBar, type NavItem } from '../navigation/navigation';
+import { AppShell, BottomNav, BrandLogo, BrandMark, Sidebar, TopBar, type NavItem } from '../navigation/navigation';
 
 interface Row { id: string; code: string; file: string }
 const rows: Row[] = [{ id: 'a', code: '4823', file: 'Project_report.docx' }, { id: 'b', code: '4821', file: 'Marksheet_2026.pdf' }];
@@ -197,9 +197,17 @@ describe('Sidebar, BottomNav, AppShell', () => {
 
   it('BrandLogo renders the wordmark and an optional sub line, with the tile hidden from assistive tech', () => {
     const { container } = render(<BrandLogo sub="Platform admin" />);
-    expect(screen.getByText('PrintoutBuddy')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'PrintoutBuddy' })).toBeInTheDocument();
     expect(screen.getByText('Platform admin')).toBeInTheDocument();
-    expect(container.querySelector('.pb-brand__tile')).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelector('.pb-brandmark-svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('BrandLogo compact is the mark alone with an accessible name; BrandMark is decorative without a title', () => {
+    const { container, rerender } = render(<BrandLogo compact />);
+    expect(screen.getByRole('img', { name: 'PrintoutBuddy' })).toBeInTheDocument();
+    expect(container.querySelector('.pb-brand__name')).toBeNull();
+    rerender(<BrandMark />);
+    expect(screen.queryByRole('img')).toBeNull();
   });
 
   it('AppShell provides a skip link and a main landmark and renders slots', () => {
