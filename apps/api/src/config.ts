@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
+import { buildKeyring } from './two-factor/crypto.js';
 
 const bool = z
   .enum(['true', 'false', '1', '0'])
@@ -104,6 +105,19 @@ const schema = z
     /** Notifications older than this are hidden immediately and deleted by the retention worker. */
     NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
 
+    /**
+     * Admin two-factor secrets at rest: 32 random bytes, base64 (`openssl rand -base64 32`). Independent of every other
+     * secret. Unset = two-factor enrollment is unavailable (existing admin sign-in is unchanged); an admin who already
+     * has 2FA enabled cannot sign in while it is unset (fail closed, never a silent bypass).
+     */
+    TWO_FACTOR_ENCRYPTION_KEY: optionalString,
+    /** Comma-separated retired keys still needed to open existing secrets during rotation (see docs/ADMIN_2FA.md). */
+    TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS: optionalString,
+    /** Seconds a password-verified sign-in may wait for the second factor. */
+    TWO_FACTOR_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
+    /** Wrong second-factor attempts allowed per challenge before it is destroyed and the password must be re-entered. */
+    TWO_FACTOR_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     LOCAL_UPLOAD_DIR: z.string().default('.data/uploads'),
     S3_ENDPOINT: optionalString,
@@ -116,6 +130,15 @@ const schema = z
     ALLOW_LOCAL_STORAGE_IN_PRODUCTION: bool.default('false')
   })
   .superRefine((cfg, ctx) => {
+    if (cfg.TWO_FACTOR_ENCRYPTION_KEY) {
+      try {
+        buildKeyring(cfg.TWO_FACTOR_ENCRYPTION_KEY, cfg.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS);
+      } catch (error) {
+        ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY'], message: error instanceof Error ? error.message : 'invalid key' });
+      }
+    } else if (cfg.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS) {
+      ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS'], message: 'TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS requires TWO_FACTOR_ENCRYPTION_KEY' });
+    }
     if (cfg.STORAGE_DRIVER === 's3') {
       for (const key of ['S3_ENDPOINT', 'S3_REGION', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
         if (!cfg[key]) ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required when STORAGE_DRIVER=s3` });
@@ -158,6 +181,16 @@ const schema = z
       }
       if (cfg.SSE_HEARTBEAT_MS > 25_000) {
         ctx.addIssue({ code: 'custom', path: ['SSE_HEARTBEAT_MS'], message: 'SSE_HEARTBEAT_MS must be <= 25000 in production (proxy idle timeouts)' });
+      }
+      if (cfg.TWO_FACTOR_ENCRYPTION_KEY) {
+        const twoFactorKeys = [cfg.TWO_FACTOR_ENCRYPTION_KEY, ...(cfg.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS ?? '').split(',').map((k) => k.trim()).filter(Boolean)];
+        const reuse = [cfg.SESSION_SECRET, cfg.CSRF_SECRET, cfg.QUOTE_SECRET, cfg.STORAGE_URL_SECRET];
+        if (reuse.includes(cfg.TWO_FACTOR_ENCRYPTION_KEY)) {
+          ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY'], message: 'TWO_FACTOR_ENCRYPTION_KEY must differ from every other secret' });
+        }
+        if (new Set(twoFactorKeys).size !== twoFactorKeys.length) {
+          ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS'], message: 'TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS must not repeat a key' });
+        }
       }
       if (cfg.TRUST_PROXY === undefined && cfg.TRUST_PROXY_CIDRS === undefined) {
         ctx.addIssue({
@@ -230,6 +263,9 @@ export function configWarnings(config: Config): string[] {
     }
     if (config.STORAGE_DRIVER === 'local') {
       warnings.push('STORAGE_DRIVER=local in production: documents live on a single-node volume that is not backed up');
+    }
+    if (!config.TWO_FACTOR_ENCRYPTION_KEY) {
+      warnings.push('TWO_FACTOR_ENCRYPTION_KEY is not set: admin two-factor enrollment is unavailable (set it before asking admins to enroll)');
     }
     if (config.UPLOAD_MAX_BYTES > 52_428_800) {
       warnings.push(`UPLOAD_MAX_BYTES=${config.UPLOAD_MAX_BYTES}: the reverse proxy body cap must be at least UPLOAD_MAX_BYTES + 1 MiB`);

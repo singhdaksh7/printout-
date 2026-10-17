@@ -81,6 +81,7 @@ async function main(): Promise<number> {
     await prisma.$transaction([
       prisma.user.update({ where: { id: user.id }, data }),
       prisma.session.updateMany({ where: { userId: user.id, invalidatedAt: null }, data: { invalidatedAt: new Date() } }),
+      prisma.adminLoginChallenge.deleteMany({ where: { userId: user.id } }),
       prisma.auditLog.create({ data: { shopId: null, actorUserId: null, action: 'admin.credentials.update', targetType: 'user', targetId: user.id, metadata: { emailChanged: !!next, passwordChanged: !!password } } })
     ]);
     console.log(`Updated platform admin${next ? ` (email is now ${next})` : ''}${password ? ' (password changed)' : ''}; existing sessions invalidated.`);

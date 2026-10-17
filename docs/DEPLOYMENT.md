@@ -249,3 +249,8 @@ Break-even is roughly 6-12 paying shops. Prices are estimates.
 - No built-in log shipping/metrics; add Grafana Agent/Loki or a hosted uptime service if needed.
 - Image builds happen on the VPS by default (about 2 GB free disk, a few minutes of CPU); use a registry (`--pull`) to avoid that.
 - Dependency advisories: `docs/DEPENDENCIES.md`.
+
+
+## Admin two-factor authentication
+
+Set `TWO_FACTOR_ENCRYPTION_KEY` (`openssl rand -base64 32`, separate from all other secrets) and follow the migration order, rollout, lost-device and key-rotation procedures in `docs/ADMIN_2FA.md`. Order: migrate, then deploy the API with the key, then ask admins to enroll.

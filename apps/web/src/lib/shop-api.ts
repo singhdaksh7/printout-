@@ -104,8 +104,17 @@ export const errorCode = (e: unknown) => (e instanceof ApiError ? e.code : '');
 
 // ---- endpoints ---------------------------------------------------------------------------------------
 export const fetchSession = () => api<SessionData>('/auth/session');
+/** An admin with two-factor enabled gets this instead of a session: a code is still required (see verifySecondFactor). */
+export interface TwoFactorRequired { twoFactorRequired: true; expiresInSeconds: number }
+export type LoginResult = SessionData | TwoFactorRequired;
+export const isTwoFactorRequired = (r: LoginResult): r is TwoFactorRequired => 'twoFactorRequired' in r && r.twoFactorRequired === true;
+export type SecondFactorMethod = 'totp' | 'recovery';
 export const login = (email: string, password: string) =>
-  api<SessionData>('/auth/login', { method: 'POST', body: { email, password } });
+  api<LoginResult>('/auth/login', { method: 'POST', body: { email, password } });
+/** Second step of an admin sign-in; the pending-challenge cookie set by login() identifies the attempt. */
+export const verifySecondFactor = (method: SecondFactorMethod, code: string) =>
+  api<SessionData & { recoveryCodesRemaining?: number }>('/auth/login/2fa', { method: 'POST', body: { method, code } });
+export const cancelSecondFactor = () => api<void>('/auth/login/2fa/cancel', { method: 'POST', body: {} });
 export const logout = () => api<void>('/auth/logout', { method: 'POST', body: {} });
 
 export interface OrderQuery { status?: string; active?: boolean; print?: 'pending' | 'initiated'; cursor?: string | undefined }

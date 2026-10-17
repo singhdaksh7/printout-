@@ -87,10 +87,29 @@ paths:
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /auth/login:
     post:
-      summary: "Password login (owner or admin)"
+      summary: "Password login (owner or admin). An admin with 2FA enabled receives { twoFactorRequired: true } and a pending-challenge cookie instead of a session"
       security: []
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/login/2fa:
+    post:
+      summary: "Second step of an admin sign-in (needs the printout_2fa pending-challenge cookie from /auth/login); issues the session only after a valid, unused TOTP or recovery code"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [method, code], properties: { method: { type: string, enum: [totp, recovery] }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 401 INVALID_TWO_FACTOR_CODE, 401 TWO_FACTOR_CHALLENGE_INVALID, 429 RATE_LIMITED, 503 TWO_FACTOR_UNAVAILABLE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/login/2fa/cancel:
+    post:
+      summary: "Abandon the pending second-factor sign-in (204)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /auth/logout:
     post:
@@ -553,6 +572,74 @@ paths:
       responses:
         '200': { description: 'Success: { data: { signedOut: true } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope: 400 VALIDATION_ERROR, 403 INVALID_CURRENT_PASSWORD, 409 CONFLICT, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa:
+    get:
+      summary: "Two-step verification status"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/enroll:
+    post:
+      summary: "Start enrollment: password re-auth, returns PENDING secret as otpauth URI + manual key (shown once)"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 409 TWO_FACTOR_ALREADY_ENABLED, 503 TWO_FACTOR_UNAVAILABLE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/enroll/verify:
+    post:
+      summary: "Confirm enrollment with a TOTP code; enables 2FA, returns recovery codes once, ends other sessions"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [code], properties: { code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_TWO_FACTOR_CODE, 409 NO_PENDING_ENROLLMENT', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/recovery-codes/acknowledge:
+    post:
+      summary: "Record that the recovery codes were saved (204)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/recovery-codes:
+    post:
+      summary: "Regenerate recovery codes (password + authenticator code); old codes stop working"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, code], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 403 INVALID_TWO_FACTOR_CODE, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/disable:
+    post:
+      summary: "Disable 2FA (password + authenticator or recovery code); ends other sessions"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, code], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, method: { type: string, enum: [totp, recovery], default: totp }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 403 INVALID_TWO_FACTOR_CODE, 409 TWO_FACTOR_NOT_ENABLED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /admin/audit-logs:
     get:
       summary: "Audit entries (cursor)"

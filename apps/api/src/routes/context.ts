@@ -8,6 +8,7 @@ import type { ShopEvents } from '../events.js';
 import type { ShopNotificationHub } from '../notifications/shop-notifications.js';
 import type { Notifier } from '../notifications/types.js';
 import type { Storage } from '../storage.js';
+import type { TwoFactorKeyring } from '../two-factor/crypto.js';
 
 export interface AppContext {
   config: Config;
@@ -17,6 +18,8 @@ export interface AppContext {
   /** Durable shop notifications: post-commit fan-out to open streams (see notifications/shop-notifications.ts). */
   notifications: ShopNotificationHub;
   loginThrottle: LoginThrottle;
+  /** Keys for admin two-factor secrets; null when TWO_FACTOR_ENCRYPTION_KEY is unset (2FA unavailable, fail closed for enrolled admins). */
+  twoFactorKeys: TwoFactorKeyring | null;
   /** Device push signals (NEW_PRINT_REQUEST etc.). Never carries URLs, keys or credentials. */
   notifier: Notifier;
 }
@@ -36,6 +39,12 @@ declare module 'fastify' {
 
 export const SESSION_COOKIE = 'printout_session';
 export const COOKIE_PATH = '/api/v1';
+/**
+ * Pending second-factor sign-in. A different cookie NAME and a narrower PATH than the session: it is never sent to,
+ * and never read by, any authenticated route (authenticate() only looks at SESSION_COOKIE / the Session table).
+ */
+export const CHALLENGE_COOKIE = 'printout_2fa';
+export const CHALLENGE_COOKIE_PATH = '/api/v1/auth/login/2fa';
 
 export const json = <T>(data: T) => ({ data });
 
@@ -148,6 +157,25 @@ export function clearSessionCookie(ctx: AppContext, reply: FastifyReply): void {
     secure: ctx.config.NODE_ENV === 'production',
     sameSite: ctx.config.COOKIE_SAMESITE,
     path: COOKIE_PATH
+  });
+}
+
+export function setChallengeCookie(ctx: AppContext, reply: FastifyReply, raw: string, expires: Date): void {
+  reply.setCookie(CHALLENGE_COOKIE, raw, {
+    httpOnly: true,
+    secure: ctx.config.NODE_ENV === 'production',
+    sameSite: ctx.config.COOKIE_SAMESITE,
+    path: CHALLENGE_COOKIE_PATH,
+    expires
+  });
+}
+
+export function clearChallengeCookie(ctx: AppContext, reply: FastifyReply): void {
+  reply.clearCookie(CHALLENGE_COOKIE, {
+    httpOnly: true,
+    secure: ctx.config.NODE_ENV === 'production',
+    sameSite: ctx.config.COOKIE_SAMESITE,
+    path: CHALLENGE_COOKIE_PATH
   });
 }
 

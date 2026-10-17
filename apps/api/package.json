@@ -14,6 +14,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "admin:update": "tsx prisma/update-admin.ts",
+    "admin:2fa-reset": "tsx prisma/reset-admin-2fa.ts",
+    "admin:2fa-rekey": "tsx prisma/rekey-2fa.ts",
     "worker": "tsx src/worker.ts"
   },
   "prisma": {
