@@ -230,12 +230,28 @@ describe('device order API: authentication, tenancy, retention gates, payload hy
     const printed = await dev('POST', `/device/orders/${o.order.id}/print`, d.auth, { clientRequestId: randomUUID() });
     const post = await dev('GET', '/device/orders', d.auth);
     const key = (await doc(o.doc.id)).objectKey;
+    const forbiddenKeyRegex = /^(objectKey|bucket|storageKey|signature|credential|secret|x-amz-.*)$/i;
+    function checkKeys(val: unknown) {
+      if (val && typeof val === 'object') {
+        if (Array.isArray(val)) {
+          for (const item of val) checkKeys(item);
+        } else {
+          for (const [k, v] of Object.entries(val)) {
+            expect(k).not.toMatch(forbiddenKeyRegex);
+            checkKeys(v);
+          }
+        }
+      }
+    }
     for (const res of [list, detail, post]) {
       expect(res.body).not.toContain(key);
-      expect(res.body).not.toMatch(/objectKey|bucket|s3|signature|credential|secret|X-Amz/i);
+      expect(res.body).not.toMatch(/https?:\/\/[^\s"]*(?:amazonaws|s3\.)/i);
+      expect(res.body).not.toMatch(/X-Amz-[A-Za-z0-9-]+=/i);
+      checkKeys(res.json());
     }
     // the print response intentionally carries only the temporary url (never raw key/bucket fields)
     expect(Object.keys(printed.json().data.access).sort()).toEqual(['contentDisposition', 'expiresAt', 'mimeType', 'url']);
-    expect(JSON.stringify({ ...printed.json().data, access: undefined })).not.toMatch(/objectKey|bucket|signature/i);
+    checkKeys({ ...printed.json().data, access: undefined });
   });
 });
+

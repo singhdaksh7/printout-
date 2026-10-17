@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { describeError, getQr, type QrInfo } from '../lib/shop-api';
 import { useAuth } from './auth';
@@ -79,7 +79,8 @@ export default function QrPage() {
           </div>
         </Card>
         <div className="pb-qr-actions pb-qr-actions--main">
-          <Button variant="primary" onClick={() => { if (!posterMode) setParams({ poster: '1' }); setTimeout(() => window.print(), 50); }}>Print A4 poster</Button>
+          <Link className="pb-btn pb-btn--primary pb-btn--md" to="/shop/qr/poster">Design a branded poster</Link>
+          <Button variant="outline" onClick={() => { if (!posterMode) setParams({ poster: '1' }); setTimeout(() => window.print(), 50); }}>Print A4 poster</Button>
           {posterMode && <Button variant="ghost" onClick={() => setParams({})}>Back to QR</Button>}
         </div>
       </div>

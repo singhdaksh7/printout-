@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { describeError, getQr, getSettings, putSettings, type ShopSettings } from '../lib/shop-api';
 import { Banner, Button, Card, Checkbox, Chip, Icon, Skeleton, TextArea, TextField, useToast } from '../ui';
 import { useUnsavedGuard } from './components';
+import HoursSection from './HoursSection';
+import './hours.css';
 
 interface Form { displayName: string; address: string; publicContact: string; brandColor: string; acceptsOrders: boolean }
 const toForm = (s: ShopSettings | null): Form => ({
@@ -15,7 +17,7 @@ function validate(f: Form, has: Set<string>): Partial<Record<keyof Form, string>
   if (has.has('displayName') && (f.displayName.trim().length < 1 || f.displayName.length > 100)) e.displayName = 'Enter a shop name (up to 100 characters).';
   if (f.address.length > 300) e.address = 'Address is too long (max 300 characters).';
   if (f.publicContact.length > 100) e.publicContact = 'Contact is too long (max 100 characters).';
-  if (f.brandColor && !/^#[0-9a-fA-F]{6}$/.test(f.brandColor)) e.brandColor = 'Use a colour like #1D4ED8.';
+  if (f.brandColor && !/^#[0-9a-fA-F]{6}$/.test(f.brandColor)) e.brandColor = 'Use a colour like #E8772E.';
   return e;
 }
 
@@ -99,7 +101,7 @@ export default function SettingsPage() {
         )}
         <TextField label="Public contact" helperText="Shown to customers, e.g. a counter phone or email." value={form.publicContact} maxLength={100} error={errors.publicContact} onChange={(e) => set('publicContact', e.target.value)} />
         <TextField
-          label="Brand colour" helperText="Hex colour, e.g. #1D4ED8." placeholder="#1D4ED8" value={form.brandColor} maxLength={7} error={errors.brandColor}
+          label="Brand colour" helperText="Hex colour, e.g. #E8772E." placeholder="#E8772E" value={form.brandColor} maxLength={7} error={errors.brandColor}
           endAdornment={<span className="pb-swatch" style={{ background: swatch }} aria-hidden="true" />}
           onChange={(e) => set('brandColor', e.target.value)}
         />
@@ -112,6 +114,7 @@ export default function SettingsPage() {
         </div>
       </form>
       </Card>
+      <HoursSection />
       {toast}
     </section>
   );

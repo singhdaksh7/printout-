@@ -6,7 +6,8 @@
 /* printing devices */
 .dev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--pb-space-4); grid-template-columns: minmax(0, 1fr); }
 .dev-card { margin: 0; min-width: 0; }
-.dev-card.is-revoked { opacity: .75; }
+/* Disconnected devices are muted with a flat tint and a dashed border, not opacity: fading the whole card dropped the chips below 4.5:1. The "Disconnected" chip carries the meaning. */
+.dev-card.is-revoked { background: var(--pb-n50); border-style: dashed; --pb-text-secondary: var(--pb-n700); }
 .dev-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2); }
 .dev-name { flex: 1 1 100%; margin: 0 !important; font: 600 var(--pb-text-body)/1.3 var(--pb-font-display); }
 .dev-meta { display: grid; gap: var(--pb-space-2); margin: var(--pb-space-3) 0 0; }

@@ -152,7 +152,7 @@ test('admin phone: More offers Subscriptions, Plans and Account; the header stay
   const ctx = await newMobileContext(browser, VIEWPORTS.s360);
   const page = await ctx.newPage();
   await page.goto('/admin/login');
-  await expect(page.getByText('PrintoutBuddy')).toBeVisible();
+  await expect(page.getByRole('img', { name: 'PrintoutBuddy' }).first()).toBeVisible();
   await page.getByLabel('Email').fill('admin@printout.test');
   await page.getByLabel('Password').fill(SEED_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();

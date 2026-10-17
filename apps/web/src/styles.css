@@ -1,8 +1,11 @@
 /* Global tokens only. Area-specific styles live in their own folders. */
-:root { --brand:#1d4ed8; --bg:#f6f7f9; --surface:#fff; --text:#111827; --muted:#6b7280; --border:#e5e7eb; --danger:#b91c1c; --ok:#047857; --radius:12px; font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+:root { --brand:#E8772E; --bg:#f6f7f9; --surface:#fff; --text:#111827; --muted:#6b7280; --border:#e5e7eb; --danger:#b91c1c; --ok:#047857; --radius:12px; font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
 * { box-sizing: border-box; }
 html, body { margin:0; background:var(--bg); color:var(--text); overflow-x:hidden; }
 body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-.page-loading { padding:2rem; text-align:center; color:var(--muted); }
+.page-loading { display:flex; flex-direction:column; align-items:center; gap:12px; padding:4rem 1rem; text-align:center; color:var(--pb-n700,#3B4558); font:500 15px/1.4 var(--pb-font-body, system-ui, sans-serif); }
+.page-loading svg { animation: pb-pulse 1.4s ease-in-out infinite; }
+@keyframes pb-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .page-loading svg { animation: none; } }
 button, input, select, textarea { font: inherit; }
 img, svg { max-width:100%; }

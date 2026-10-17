@@ -134,7 +134,7 @@ export default function ShopDetailPage() {
                 { label: 'Accepting orders', value: data.shop.acceptsOrders ? 'Yes' : 'No' },
                 { label: 'Created', value: fmtDate(data.shop.createdAt) },
                 ...data.owners.map((o) => ({ label: 'Owner', value: <span className="pb-wrap">{o.displayName} · {o.email}</span> }))
-              ]} />
+              ]} layout="stacked" />
             </Card>
             <Card as="section" aria-labelledby="use-h">
               <CardHeader id="use-h" title="Usage" />
@@ -155,7 +155,7 @@ export default function ShopDetailPage() {
                 <KeyValueList items={data.pricingRules.map((r) => ({
                   label: `${r.colourMode === 'colour' ? 'Colour' : 'B&W'} · ${r.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · ${r.paperSize}${r.active ? '' : ' (inactive)'}`,
                   value: `${inr(r.pricePerSheetPaise)} / sheet`
-                }))} />
+                }))} layout="stacked" />
               )}
             </Card>
           </div>

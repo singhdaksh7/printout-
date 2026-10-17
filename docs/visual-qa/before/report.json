@@ -1,0 +1,776 @@
+[
+ {
+  "screen": "customer-1-landing",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-2-options-quote",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-3-validation-error",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-4-confirmation",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-5-tracking",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-6-not-found",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+ },
+ {
+  "screen": "customer-1-landing",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-2-options-quote",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-3-validation-error",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-4-confirmation",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-5-tracking",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-6-not-found",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+ },
+ {
+  "screen": "customer-1-landing",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-2-options-quote",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-3-validation-error",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-4-confirmation",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-5-tracking",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-6-not-found",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+ },
+ {
+  "screen": "customer-1-landing",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-2-options-quote",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-3-validation-error",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-4-confirmation",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-5-tracking",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "customer-6-not-found",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+ },
+ {
+  "screen": "shop-0-login",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-1-queue",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-2-notifications",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-3-order-detail",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-4-history",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-5-revenue",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-6-devices",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-7-rate-card",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-8-qr",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-9-settings",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-0-login",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-1-queue",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-2-notifications",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-3-order-detail",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+  ]
+ },
+ {
+  "screen": "shop-4-history",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-5-revenue",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-6-devices",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-7-rate-card",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-8-qr",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-9-settings",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-0-login",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-1-queue",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-2-notifications",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-3-order-detail",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-4-history",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-5-revenue",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-6-devices",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-7-rate-card",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-8-qr",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-9-settings",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-0-login",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-1-queue",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "shop-2-notifications",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-3-order-detail",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-4-history",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-5-revenue",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-6-devices",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-7-rate-card",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-8-qr",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "shop-9-settings",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-0-login",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "admin-1-dashboard",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-2-shops",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-3-shop-new",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-4-shop-detail",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-5-orders",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-6-subscriptions",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-7-plans",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-8-audit",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-9-account",
+  "width": "360",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-0-login",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "admin-1-dashboard",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-2-shops",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-3-shop-new",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-4-shop-detail",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-5-orders",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-6-subscriptions",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-7-plans",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-8-audit",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-9-account",
+  "width": "390",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-0-login",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "admin-1-dashboard",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-2-shops",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-3-shop-new",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-4-shop-detail",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-5-orders",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-6-subscriptions",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-7-plans",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-8-audit",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-9-account",
+  "width": "768",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-0-login",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "screen": "admin-1-dashboard",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-2-shops",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-3-shop-new",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-4-shop-detail",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-5-orders",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-6-subscriptions",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-7-plans",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-8-audit",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ },
+ {
+  "screen": "admin-9-account",
+  "width": "1440",
+  "overflow": false,
+  "axe": [],
+  "console": []
+ }
+]
