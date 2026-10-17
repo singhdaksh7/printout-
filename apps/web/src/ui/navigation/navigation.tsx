@@ -150,21 +150,74 @@ function MoreSheet({ label, items, onClose, onNavigate }: { label: string; items
   );
 }
 
+export interface BrandMarkProps {
+  /** "simple" drops the smile and uses three larger pixels; the approved set uses it at 48 px and below. */
+  variant?: 'full' | 'simple';
+  /** "orange" is the primary tile; "navy" is for backgrounds that are orange or busy. */
+  tile?: 'orange' | 'navy';
+  size?: number;
+  /** Set when the mark stands alone (collapsed nav, favicon-like uses); otherwise it is decorative. */
+  title?: string;
+  className?: string;
+}
+
+const MARK_PIXELS: ReadonlyArray<readonly [number, number, number]> = [
+  [32.1, 72, 1], [41.6, 72, 1], [51.1, 72, 0.55], [60.6, 72, 0.4], [36.9, 82.4, 0.5], [55.9, 82.4, 0.4]
+];
+
+/** The approved Buddy printer mark (docs/design/1.pdf): paper on top, a face on the printer body, pixels fading out below. */
+export function BrandMark({ variant = 'full', tile = 'orange', size = 36, title, className }: BrandMarkProps) {
+  const navy = tile === 'navy';
+  const tileFill = navy ? 'var(--pb-navy)' : 'var(--pb-orange)';
+  const body = navy ? 'var(--pb-orange)' : 'var(--pb-navy)';
+  const light = 'var(--pb-paper)';
+  const face = navy ? 'var(--pb-navy)' : light;
+  return (
+    <svg
+      className={cx('pb-brandmark-svg', className)} width={size} height={size} viewBox="0 0 100 100" focusable="false"
+      role={title ? 'img' : undefined} aria-label={title} aria-hidden={title ? undefined : true}
+    >
+      <rect width="100" height="100" rx="23" fill={tileFill} />
+      {variant === 'simple' ? (
+        <>
+          <rect x="30" y="12" width="40" height="15" rx="4.5" fill={light} />
+          <rect x="12" y="31" width="76" height="40" rx="16" fill={body} />
+          <circle cx="36" cy="51" r="6.5" fill={face} /><circle cx="64" cy="51" r="6.5" fill={face} />
+          {[24, 42.5, 61].map((x) => <rect key={x} x={x} y="77" width="14.5" height="12" rx="3" fill={light} />)}
+        </>
+      ) : (
+        <>
+          <rect x="32.1" y="11.9" width="36" height="14" rx="4" fill={light} />
+          <rect x="16" y="29" width="68" height="38" rx="15" fill={body} />
+          <circle cx="39" cy="44" r="4.6" fill={face} /><circle cx="61" cy="44" r="4.6" fill={face} />
+          <path d="M42.3 53.6Q50 61.5 57.7 53.6" fill="none" stroke={face} strokeWidth="4" strokeLinecap="round" />
+          {MARK_PIXELS.map(([x, y, o]) => <rect key={`${x}-${y}`} x={x} y={y} width="7.3" height="7.3" rx="1.7" fill={light} fillOpacity={o} />)}
+        </>
+      )}
+    </svg>
+  );
+}
+
 export interface BrandLogoProps {
   /** Second line under the name, e.g. "Platform admin". */
   sub?: string;
   /** For the navy sidebar. */
   onDark?: boolean;
+  /** Mark only, for collapsed navigation and tight spaces. */
+  compact?: boolean;
   className?: string;
 }
 
-/** The product lockup: orange brand tile with the printer mark, then the PrintoutBuddy wordmark (Rubik 700). */
-export function BrandLogo({ sub, onDark, className }: BrandLogoProps) {
+/** The product lockup: the Buddy printer mark, then the PrintoutBuddy wordmark (Rubik 700, "Buddy" in orange). */
+export function BrandLogo({ sub, onDark, compact, className }: BrandLogoProps) {
+  if (compact) return <span className={cx('pb-brand', className)}><BrandMark size={32} variant="simple" title="PrintoutBuddy" /></span>;
   return (
     <span className={cx('pb-brand', onDark && 'pb-brand--on-dark', className)}>
-      <span className="pb-brand__tile" aria-hidden="true"><Icon name="printer" size={20} /></span>
+      <BrandMark size={36} />
       <span className="pb-brand__text">
-        <span className="pb-brand__name">PrintoutBuddy</span>
+        <span className="pb-brand__name" role="img" aria-label="PrintoutBuddy">
+          <span aria-hidden="true">Printout<span className="pb-brand__accent">Buddy</span></span>
+        </span>
         {sub && <span className="pb-brand__sub">{sub}</span>}
       </span>
     </span>

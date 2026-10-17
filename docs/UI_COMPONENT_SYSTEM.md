@@ -117,7 +117,7 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 | `Drawer` | `title`, `header`, `footer`, `initialFocusRef`, `busy` | right panel (full screen on phones), same focus handling |
 | `DataTable` | `columns`, `rows`, `getRowKey`, `caption`, `selectedKey`, `highlightKeys`, `onRowClick`, `loading`, `loadingLabel`, `empty`, `renderCard`, `cardsBelow`, `rowAttributes` | captioned table in a keyboard-scrollable region; cards below 768px when `renderCard` is given (never both in the DOM); skeleton rows; row click ignores clicks on inner buttons |
 | `LoadMore` | `hasMore`, `loading`, `onClick`, `error`, `endLabel`, `summary` | cursor pagination control |
-| `Sidebar`, `BottomNav`, `TopBar`, `AppShell`, `BrandLogo` | `NavItem {to,label,shortLabel,icon,end,count,showZero,tag,alert,comingSoon}`; `BottomNav` takes `items` (visible tabs) and `moreItems` (a "More" button opening a focus-trapped sheet; closes on Escape, scrim or navigation and returns focus); `BrandLogo {sub,onDark}` is the orange tile + wordmark used on sign-in pages, sidebars and the customer header; `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
+| `Sidebar`, `BottomNav`, `TopBar`, `AppShell`, `BrandLogo` | `NavItem {to,label,shortLabel,icon,end,count,showZero,tag,alert,comingSoon}`; `BottomNav` takes `items` (visible tabs) and `moreItems` (a "More" button opening a focus-trapped sheet; closes on Escape, scrim or navigation and returns focus); `BrandLogo {sub,onDark,compact}` is the approved Buddy printer mark + wordmark ("Buddy" in orange-ink, or orange on navy) used on sign-in pages, sidebars and the customer header, and `compact` is the simple mark alone for narrow spaces; `BrandMark {variant:'full'|'simple',tile:'orange'|'navy',size,title}` is the mark itself (full from 64 px, simple at 48 px and below, as in `1.pdf` p1); `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
 | Charts | `BarChart`, `HBarList`, `HeartbeatStrip`, `SegmentedBar` | SVG/CSS, no dependency; each has a text alternative (hidden data table, list text, or summary). `BarDatum.tooltip` adds SVG `<title>` hover text. The Analytics order value report (`shop/RevenuePanel.tsx`) pairs the chart with an exact data table in a keyboard-scrollable region (`role=region`, `tabIndex=0`) |
 
 ### Domain presentation (`ui/domain`)
@@ -135,7 +135,7 @@ Thin wrappers that only word and colour values the caller already has: no fetchi
 
 ### Not built (no verified use yet)
 
-`Stepper` (agent setup is out of scope), `CodeField` (OTP/2FA out of scope), `FilterChip`, `PlanCard`, numbered `Pagination`, `Logo` (approved source files not supplied). Add them when a screen needs them.
+`Stepper` (agent setup is out of scope), `CodeField` (OTP/2FA out of scope), `FilterChip`, `PlanCard`, numbered `Pagination`, (the logo is `BrandMark`/`BrandLogo`, traced from the approved raster in `1.pdf` p1; static copies live in `apps/web/public/brand-mark*.svg`, `icon.svg` is the simple mark for the favicon and `icon-192/512.png` the full mark). Add them when a screen needs them.
 
 ## Migration
 

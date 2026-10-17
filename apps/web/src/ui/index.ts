@@ -51,7 +51,7 @@ export { LoadMore, type LoadMoreProps } from './data/LoadMore';
 export { useMediaQuery } from './useMediaQuery';
 
 // Navigation
-export { AppShell, BottomNav, BrandLogo, Sidebar, TopBar, type AppShellProps, type BottomNavProps, type BrandLogoProps, type NavItem, type SidebarProps, type TopBarProps } from './navigation/navigation';
+export { AppShell, BottomNav, BrandLogo, BrandMark, Sidebar, TopBar, type AppShellProps, type BottomNavProps, type BrandLogoProps, type NavItem, type SidebarProps, type TopBarProps } from './navigation/navigation';
 
 // Charts
 export { BarChart, HBarList, HeartbeatStrip, SegmentedBar, type BarChartProps, type BarDatum, type HBarDatum, type HBarListProps, type HeartbeatState, type HeartbeatStripProps, type Segment, type SegmentedBarProps } from './charts/charts';

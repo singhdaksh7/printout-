@@ -66,7 +66,9 @@
 /* Brand lockup */
 .pb-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--pb-navy); }
 .pb-brand--on-dark { color: var(--pb-white); }
-.pb-brand__tile { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: var(--pb-radius-md); background: var(--pb-orange); color: var(--pb-navy); }
+.pb-brandmark-svg { flex: none; display: block; }
+.pb-brand__accent { color: var(--pb-orange-ink); }
+.pb-brand--on-dark .pb-brand__accent { color: var(--pb-orange); }
 .pb-brand__text { display: flex; flex-direction: column; min-width: 0; }
 .pb-brand__name { font: 700 18px/1.2 var(--pb-font-display); }
 .pb-brand__sub { font: 400 12px/1.3 var(--pb-font-body); color: var(--pb-text-secondary); }
