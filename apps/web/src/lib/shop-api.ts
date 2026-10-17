@@ -279,6 +279,17 @@ export type DevicePresence = 'ONLINE' | 'OFFLINE' | 'REVOKED';
 export interface DeviceView {
   id: string; name: string; platform: DevicePlatform; status: DeviceStatus; presence: DevicePresence;
   lastSeenAt: string | null; createdAt: string; revokedAt: string | null; appVersion: string | null;
+  /** Windows agents only: printers the computer reports. */
+  printers?: PrinterView[];
+}
+export interface PrinterView {
+  id: string; deviceId: string; name: string; driverName: string | null;
+  connectivity: 'ONLINE' | 'OFFLINE' | 'ERROR' | 'UNKNOWN'; statusDetail: string | null;
+  supportsColour: boolean; supportsDuplex: boolean; paperSizes: string[];
+  /** false when the computer no longer reports it (uninstalled). */
+  present: boolean;
+  /** Owner decisions: the agent may only print on an authorized printer. */
+  authorized: boolean; isDefault: boolean; lastReportedAt: string;
 }
 /** The raw pairing code is returned exactly once; keep it in component state only. */
 export interface PairingCode { code: string; expiresAt: string }
@@ -291,3 +302,32 @@ export const renameDevice = (id: string, name: string) =>
   shopRequest<{ device: DeviceView }>(`/shop/devices/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } });
 export const revokeDevice = (id: string) =>
   shopRequest<{ device: DeviceView }>(`/shop/devices/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: {} });
+
+// ---- Windows print queue (print jobs) ------------------------------------------------------------------
+/** There is deliberately no "printed" status: PRINT_INITIATED means the Windows print queue accepted the job. */
+export type PrintJobStatus =
+  | 'QUEUED' | 'CLAIMED' | 'DOWNLOADING' | 'SUBMITTING' | 'SUBMITTED_TO_SPOOLER' | 'PRINT_INITIATED'
+  | 'FAILED' | 'CANCEL_REQUESTED' | 'CANCELED' | 'NEEDS_RECONCILIATION';
+export interface PrintJobView {
+  id: string; orderId: string; deviceId: string; printerId: string; printerName: string | null; status: PrintJobStatus; attempt: number;
+  spoolerJobId: number | null; spoolerState: string | null; errorCode: string | null; errorMessage: string | null;
+  /** A retry could print pages twice (the job may have reached the printer). */
+  duplicateRisk: boolean; needsReconciliation: boolean; resolution: string | null;
+  printInitiatedAt: string | null; createdAt: string; updatedAt: string;
+}
+export type Reconciliation = 'PRINTED' | 'NOT_PRINTED_REQUEUE' | 'NOT_PRINTED_GIVE_UP';
+
+export const updatePrinter = (deviceId: string, printerId: string, patch: { authorized?: boolean; isDefault?: boolean }) =>
+  shopRequest<{ printer: PrinterView }>(`/shop/devices/${encodeURIComponent(deviceId)}/printers/${encodeURIComponent(printerId)}`, { method: 'PATCH', body: patch });
+export const listPrintJobs = (orderId?: string, signal?: AbortSignal) =>
+  shopRequest<{ jobs: PrintJobView[] }>(`/shop/print-jobs${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`, signal ? { signal } : {});
+export const enqueuePrintJob = (orderId: string, opts: { printerId?: string; reprint?: boolean; acknowledgeDuplicateRisk?: boolean } = {}) =>
+  shopRequest<{ job: PrintJobView; created: boolean }>(`/shop/orders/${encodeURIComponent(orderId)}/print-jobs`, { method: 'POST', body: { clientRequestId: newRequestId(), ...opts } });
+export const cancelPrintJob = (id: string) =>
+  shopRequest<{ job: PrintJobView }>(`/shop/print-jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {} });
+export const retryPrintJob = (id: string, acknowledgeDuplicateRisk = false) =>
+  shopRequest<{ job: PrintJobView }>(`/shop/print-jobs/${encodeURIComponent(id)}/retry`, { method: 'POST', body: { clientRequestId: newRequestId(), ...(acknowledgeDuplicateRisk ? { acknowledgeDuplicateRisk: true } : {}) } });
+export const reconcilePrintJob = (id: string, resolution: Reconciliation) =>
+  shopRequest<{ job: PrintJobView; next: PrintJobView | null }>(`/shop/print-jobs/${encodeURIComponent(id)}/reconcile`, {
+    method: 'POST', body: { resolution, ...(resolution === 'NOT_PRINTED_REQUEUE' ? { clientRequestId: newRequestId() } : {}) }
+  });

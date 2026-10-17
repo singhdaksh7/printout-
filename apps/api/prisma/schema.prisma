@@ -72,6 +72,8 @@ model Shop {
   orders             Order[]
   documents          Document[]
   devices            ShopDevice[]
+  devicePrinters     DevicePrinter[]
+  devicePrintJobs    DevicePrintJob[]
   devicePairingCodes DevicePairingCode[]
   auditLogs          AuditLog[]
   subscription       Subscription?
@@ -259,28 +261,35 @@ enum DeviceStatus {
 /// A paired printing device (future Android app / Windows agent). Authenticates with a high-entropy bearer credential;
 /// only its SHA-256 digest is stored. shopId is the ONLY tenant source for every device request.
 model ShopDevice {
-  id                 String         @id @default(cuid())
-  shopId             String
-  shop               Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name               String
-  platform           DevicePlatform
-  status             DeviceStatus   @default(ACTIVE)
+  id                           String           @id @default(cuid())
+  shopId                       String
+  shop                         Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name                         String
+  platform                     DevicePlatform
+  status                       DeviceStatus     @default(ACTIVE)
   /// sha256 hex of the raw credential (credential is 256-bit random, so a fast digest is appropriate). Never the raw value.
-  credentialHash     String         @unique
+  credentialHash               String           @unique
   /// Bumped on credential rotation (future). Rotation = new hash + version+1.
-  credentialVersion  Int            @default(1)
-  appVersion         String?
-  osVersion          String?
+  credentialVersion            Int              @default(1)
+  appVersion                   String?
+  osVersion                    String?
   /// FCM registration token (ANDROID). Never returned by any API, never logged.
-  pushToken          String?
-  pushTokenUpdatedAt DateTime?
-  lastSeenAt         DateTime?
-  revokedAt          DateTime?
-  revokedByUserId    String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  pushToken                    String?
+  pushTokenUpdatedAt           DateTime?
+  lastSeenAt                   DateTime?
+  revokedAt                    DateTime?
+  revokedByUserId              String?
+  /// Rotation: the superseded credential stays valid until previousCredentialValidUntil (lost-response safety), then is dead.
+  previousCredentialHash       String?
+  previousCredentialValidUntil DateTime?
+  credentialRotatedAt          DateTime?
+  printers                     DevicePrinter[]
+  printJobs                    DevicePrintJob[]
+  createdAt                    DateTime         @default(now())
+  updatedAt                    DateTime         @updatedAt
 
   @@index([shopId, status])
+  @@index([previousCredentialHash])
 }
 
 /// One-time, short-lived pairing code created by a shop owner. Only an HMAC of the code is stored.
@@ -503,4 +512,95 @@ model ShopNotification {
   @@index([shopId, seq])
   @@index([shopId, readAt])
   @@index([createdAt])
+}
+
+enum PrinterConnectivity {
+  ONLINE
+  OFFLINE
+  ERROR
+  UNKNOWN
+}
+
+/// A printer reported by a Windows print agent. `authorized` / `isDefault` are decisions of the shop owner, never of the agent.
+/// The agent may only print to an authorized, present printer of its own device. One default per shop.
+model DevicePrinter {
+  id             String              @id @default(cuid())
+  shopId         String
+  shop           Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  deviceId       String
+  device         ShopDevice          @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  name           String
+  driverName     String?
+  connectivity   PrinterConnectivity @default(UNKNOWN)
+  statusDetail   String?
+  supportsColour Boolean             @default(false)
+  supportsDuplex Boolean             @default(false)
+  paperSizes     Json?
+  /// false when the last report no longer listed it (uninstalled).
+  present        Boolean             @default(true)
+  authorized     Boolean             @default(false)
+  isDefault      Boolean             @default(false)
+  lastReportedAt DateTime            @default(now())
+  jobs           DevicePrintJob[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([deviceId, name])
+  @@index([shopId, isDefault])
+}
+
+/// Print dispatch lifecycle. There is deliberately NO "printed" state: neither the spooler nor this platform has a hardware
+/// acknowledgement. PRINT_INITIATED means "the spooler accepted the job and began processing it".
+enum DevicePrintJobStatus {
+  QUEUED
+  CLAIMED
+  DOWNLOADING
+  SUBMITTING
+  SUBMITTED_TO_SPOOLER
+  PRINT_INITIATED
+  FAILED
+  CANCEL_REQUESTED
+  CANCELED
+  NEEDS_RECONCILIATION
+}
+
+/// One dispatch of an order to one authorized printer of one Windows device. deviceId/printerId are fixed at enqueue, so no
+/// other device or shop can claim it. Lease fields are written only by the atomic claim and by the lease holder's progress calls.
+model DevicePrintJob {
+  id                 String                @id @default(cuid())
+  shopId             String
+  shop               Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId            String
+  documentId         String
+  deviceId           String
+  device             ShopDevice            @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  printerId          String
+  printer            DevicePrinter         @relation(fields: [printerId], references: [id], onDelete: Cascade)
+  status             DevicePrintJobStatus  @default(QUEUED)
+  /// Status before CANCEL_REQUESTED (decides which agent reports are still legal).
+  statusBeforeCancel DevicePrintJobStatus?
+  attempt            Int                   @default(0)
+  leaseId            String?
+  leaseExpiresAt     DateTime?
+  clientRequestId    String
+  /// Snapshot of the order's print options at enqueue time: { copies, colourMode, sides, paperSize, pageSelection }.
+  options            Json
+  /// Set when the agent declared intent to hand the job to the spooler. Non-null => a retry may duplicate pages.
+  submittingAt       DateTime?
+  spoolerJobId       Int?
+  spoolerState       String?
+  printInitiatedAt   DateTime?
+  errorCode          String?
+  errorMessage       String?
+  requestedByUserId  String?
+  cancelRequestedAt  DateTime?
+  resolvedByUserId   String?
+  resolution         String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@unique([shopId, clientRequestId])
+  @@index([shopId, orderId])
+  @@index([deviceId, status])
+  @@index([shopId, status, createdAt])
 }

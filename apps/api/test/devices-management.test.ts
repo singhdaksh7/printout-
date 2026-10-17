@@ -43,7 +43,7 @@ describe('owner device management', () => {
     expect(devices[0].presence).toBe('ONLINE');
     expect(devices[1].presence).toBe('REVOKED');
     expect(Object.keys(devices[0]).sort()).toEqual(
-      ['appVersion', 'createdAt', 'id', 'lastSeenAt', 'name', 'platform', 'presence', 'revokedAt', 'status'].sort()
+      ['appVersion', 'createdAt', 'id', 'lastSeenAt', 'name', 'platform', 'presence', 'printers', 'revokedAt', 'status'].sort()
     );
     expect(devices[0].appVersion).toBe('1.2.3');
     const text = res.body;
