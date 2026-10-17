@@ -23,6 +23,7 @@ import { authRoutes } from './routes/auth.js';
 import { json, type AppContext } from './routes/context.js';
 import { publicRoutes } from './routes/public.js';
 import { shopConfigRoutes } from './routes/shop-config.js';
+import { shopHoursRoutes } from './routes/shop-hours.js';
 import { shopEventRoutes } from './routes/shop-events.js';
 import { shopNotificationRoutes } from './routes/shop-notifications.js';
 import { ShopNotificationHub } from './notifications/shop-notifications.js';
@@ -159,6 +160,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));
+      await api.register((i) => shopHoursRoutes(i, ctx));
       await api.register((i) => shopRevenueRoutes(i, ctx));
       await api.register((i) => shopEventRoutes(i, ctx));
       await api.register((i) => shopNotificationRoutes(i, ctx));

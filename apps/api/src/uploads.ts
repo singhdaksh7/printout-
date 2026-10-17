@@ -4,6 +4,7 @@ import { DocumentStatus, type Document, type PrismaClient } from '@prisma/client
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { publicIntakeWhere } from './domain/eligibility.js';
+import { assertAcceptingByHours } from './domain/hours-view.js';
 import { AppError } from './errors.js';
 import { inspectStoredObject } from './pdf/index.js';
 import { deriveSecret, generateObjectKey, hmacHex, safeEqualHex, StorageError, type Storage } from './storage/index.js';
@@ -87,8 +88,9 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesOptions> = async (app,
     async (request) => {
       const slug = slugParam.parse(request.params.slug);
       const body = initiateBody.parse(request.body);
-      const shop = await prisma.shop.findFirst({ where: { slug, acceptsOrders: true, AND: [publicIntakeWhere] }, select: { id: true } });
+      const shop = await prisma.shop.findFirst({ where: { slug, acceptsOrders: true, AND: [publicIntakeWhere] }, select: { id: true, settings: true } });
       if (!shop) throw new AppError(404, 'SHOP_UNAVAILABLE', 'This shop is not accepting orders');
+      assertAcceptingByHours(shop.settings);
       if (body.byteSize === 0) throw new AppError(422, 'EMPTY_FILE', 'The file is empty');
       if (body.byteSize > config.UPLOAD_MAX_BYTES) {
         throw new AppError(413, 'FILE_TOO_LARGE', 'File exceeds the maximum allowed size', { maxBytes: config.UPLOAD_MAX_BYTES });

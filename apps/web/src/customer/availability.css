@@ -1,0 +1,13 @@
+.cx-avail .cx-h2 { margin-bottom: var(--pb-space-2); }
+.cx-avail__status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2); margin: 0; }
+.cx-avail__detail { color: var(--pb-n700); }
+.cx-avail__note { margin: var(--pb-space-2) 0 0; padding: var(--pb-space-2) var(--pb-space-3); border-radius: var(--pb-radius-md); background: var(--pb-warn-soft); color: var(--pb-navy); overflow-wrap: anywhere; }
+.cx-avail__today { margin: var(--pb-space-2) 0 0; font-weight: 600; }
+.cx-avail__week { margin-top: var(--pb-space-3); border-top: 1px solid var(--pb-n200); padding-top: var(--pb-space-2); }
+.cx-avail__week summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; }
+.cx-avail__week summary:focus-visible { outline: 2px solid var(--pb-navy); outline-offset: 2px; border-radius: var(--pb-radius-sm); }
+.cx-avail__week table { width: 100%; border-collapse: collapse; }
+.cx-avail__week th, .cx-avail__week td { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--pb-n100); vertical-align: top; font-weight: 400; }
+.cx-avail__week th { width: 40%; font-weight: 600; padding-right: var(--pb-space-3); }
+.cx-avail__week tr.is-today th, .cx-avail__week tr.is-today td { font-weight: 700; }
+.cx-avail__week ul { margin: 0; padding-left: var(--pb-space-4); }

@@ -120,8 +120,25 @@ model ShopSettings {
   shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   publicContact String?
   brandColor    String?
+  /// IANA timezone in which operatingHours and specialClosures are interpreted.
+  timezone      String   @default("Asia/Kolkata")
+  /// Weekly schedule: {"mon":[{"start":"09:00","end":"18:00"}],...}. NULL = no schedule configured (availability unknown, ordering unrestricted).
+  operatingHours Json?
+  /// [{"date":"YYYY-MM-DD","reason":"Diwali"}] - the whole local calendar day is closed.
+  specialClosures Json   @default("[]")
+  /// {"reason":"..." | null,"startedAt":ISO,"until":ISO | null}. Active while until is null or in the future.
+  temporaryClosure Json?
+  /// Emergency reopen: until this instant the shop counts as open regardless of schedule or closures.
+  reopenUntil   DateTime?
+  afterHoursPolicy AfterHoursPolicy @default(ACCEPT)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+/// ACCEPT = customers may still submit orders while the shop is closed (legacy behaviour). BLOCK = new submissions rejected (SHOP_CLOSED).
+enum AfterHoursPolicy {
+  ACCEPT
+  BLOCK
 }
 
 model PricingRule {

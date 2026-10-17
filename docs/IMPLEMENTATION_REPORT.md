@@ -96,3 +96,15 @@ Platform admins can change their own email and password at `/admin/account` (cur
 ## 18. Real-time order notifications
 
 Added on `feature/daksh-realtime-notifications`: durable shop notifications (transactional outbox table `ShopNotification`, additive migration `20261016195159_shop_notifications`), inbox API (`GET /shop/notifications`, `POST /shop/notifications/:id/read`, `POST /shop/notifications/read-all`), `notification.created` on the existing `/shop/events` stream, a bounded cross-process poller, retention sweep in the worker, and the shop notification bell (unread badge, panel, toast, optional shared sound, multi-tab de-duplication). Design, guarantees and limits: `docs/REALTIME_NOTIFICATIONS.md`. The Print queue's old "beep on any refresh that finds a new order" was replaced by the single live-notification sound (it rang on reload and reconnect).
+
+## 20. Shop operating hours and availability
+
+Added on `feature/daksh-shop-hours`: additive migration `20261017100000_shop_operating_hours` (timezone, weekly hours, special closures, temporary closure, emergency reopen, after-hours policy on `ShopSettings`), pure timezone-aware availability engine (`apps/api/src/domain/hours.ts`), owner API (`/shop/hours*`), additive `availability` on the public shop endpoint, `SHOP_CLOSED` enforcement on upload initiation, quotes and (inside the row-locked order transaction) orders, the Settings "Operating hours" card and the customer availability panel. Default for every existing shop is unchanged behaviour (no schedule, ACCEPT). Semantics, race analysis and limits: `docs/SHOP_HOURS.md`.
+
+## 19. QR poster generator (branch `feature/daksh-qr-poster`)
+
+Shopkeepers can design and download a branded A4 or A5 poster (three templates: Classic, Premium, Minimal) from `QR & standee` -> **Design a branded poster** (`/shop/qr/poster`). The QR encodes exactly the shop's `<WEB_ORIGIN>/p/<slug>` from the existing `GET /shop/qr`; the existing QR page and counter poster are unchanged. One layout model (`shop/poster/layout.ts`) feeds the live SVG preview, the vector PDF (`pdf-lib`, standard Helvetica, QR as a single filled path) and a 300 dpi PNG. No API change, no schema change, no migration: settings live in the browser, validated on load. Formats, QR rules, safety and tests: `docs/QR_POSTER.md`.
+
+New dependencies: `pdf-lib` (already a root dev dependency for e2e; now a web runtime dependency, loaded only on the poster page chunk, about 186 kB gzip) and `jsqr` (web dev dependency, tests only). The Printout Buddy mark is isolated in `shop/poster/brand.ts` pending the Branding work.
+
+Known limitations: shop names outside the PDF font range (for example Devanagari) print as `?` with an in-app warning; there is no shop logo in the product so none is printed; poster choices are per browser, not per shop on the server.
