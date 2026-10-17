@@ -187,3 +187,7 @@ Screenshots are reviewed by eye against the matching PDF page (same widths: 1280
 3. Native semantics first; label, description and error wiring through `ui/inputs/FieldFrame`; focus through `useFocusTrap` for overlays.
 4. Add tests (role/name queries, keyboard), add it to the showcase, run `pnpm e2e:ui`.
 5. Document API, variants and states here.
+
+## Operating hours screens (no new library components)
+
+`apps/web/src/shop/HoursSection.tsx` (Settings > Operating hours) and `apps/web/src/customer/AvailabilityPanel.tsx` (`/p/:slug`) compose existing components only (Card/CardHeader, Switch, TextField (`type=time|date`), Select, RadioGroup, Banner, Chip, Button, IconButton, Skeleton, useToast). Screen-specific layout lives in `shop/hours.css` and `customer/availability.css` using `--pb-*` tokens, no hex values. Each time input has a hidden-but-programmatic label that includes the day ("Monday opens"); days are `fieldset`s; the weekly list on the customer page is a native `<details>` and a `<table>` with row headers. Layout checked at 360, 390, 768 and 1440 px (`e2e/12-shop-hours.spec.ts`).

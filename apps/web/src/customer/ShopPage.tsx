@@ -8,6 +8,7 @@ import { getRecentOrders, rememberOrder } from '../lib/customer-storage';
 import { Button, TextField } from '../ui';
 import { ConfigureCard } from './ConfigureCard';
 import { UploadCard } from './UploadCard';
+import { AvailabilityPanel } from './AvailabilityPanel';
 import { Alert, NotFound, Skeleton } from './parts';
 import { buildOptions, describeOptions, initialConfig, type Config } from './config';
 import { newRequestId, useOnline, useQuote, useUpload } from './hooks';
@@ -30,16 +31,32 @@ export function ShopPage() {
     return () => c.abort();
   }, [slug, reload]);
 
+  const refreshing = useRef(false);
+  const refresh = useCallback(() => {
+    if (refreshing.current) return;
+    refreshing.current = true;
+    getShop(slug).then((d) => setShop({ s: 'ok', shop: d })).catch(() => { /* keep showing the last known state */ }).finally(() => { refreshing.current = false; });
+  }, [slug]);
+  const loaded = shop.s === 'ok';
+  useEffect(() => {
+    if (!loaded) return;
+    const id = window.setInterval(refresh, 60_000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
+  }, [loaded, refresh]);
+
   if (shop.s === 'loading') return <main className="cx-page" aria-busy="true"><div className="cx-card" role="status" aria-label="Loading shop"><Skeleton lines={3} /></div></main>;
   if (shop.s === 'missing') return <NotFound title="Shop not found" body="We couldn't find this shop. Check the link or scan the shop's QR code again." />;
   if (shop.s === 'error') {
     return <main className="cx-page"><div className="cx-card cx-center"><Alert>{shop.message}</Alert><Button variant="primary" onClick={() => setReload((n) => n + 1)}>Try again</Button></div></main>;
   }
   const unavailable = !shop.shop.acceptsOrders || (shop.shop.status !== undefined && shop.shop.status !== 'ACTIVE');
-  return <ShopFlow slug={slug} shop={shop.shop} unavailable={unavailable} />;
+  const closed = !unavailable && !!shop.shop.availability?.orderingBlocked;
+  return <ShopFlow slug={slug} shop={shop.shop} unavailable={unavailable} closed={closed} onRefresh={refresh} />;
 }
 
-function ShopFlow({ slug, shop, unavailable }: { slug: string; shop: PublicShop; unavailable: boolean }) {
+function ShopFlow({ slug, shop, unavailable, closed, onRefresh }: { slug: string; shop: PublicShop; unavailable: boolean; closed: boolean; onRefresh: () => void }) {
   const navigate = useNavigate();
   const online = useOnline();
   const upload = useUpload(slug);
@@ -77,10 +94,22 @@ function ShopFlow({ slug, shop, unavailable }: { slug: string; shop: PublicShop;
     } catch (e) {
       const m = customerErrorMessage(e, 'order');
       if (m.code === 'QUOTE_EXPIRED' || m.code === 'INVALID_QUOTE') { attempt.current = null; refresh(); }
+      if (m.code === 'SHOP_CLOSED') onRefresh();
       setSubmitError(m);
       lock.current = false; setSubmitting(false);
     }
   };
+
+  if (closed) {
+    return (
+      <main className="cx-page"><Header shop={shop} />
+        <AvailabilityPanel availability={shop.availability} />
+        <div className="cx-card"><h2 className="cx-h2">Closed for new orders</h2>
+          <p className="cx-muted">{shop.displayName} is closed and isn&apos;t taking new orders right now. Please come back when it opens. Orders you already placed are not affected.</p>
+          {recent.length > 0 && <p><Link to={`/t/${encodeURIComponent(recent[0]!.token)}`}>Track my last order</Link></p>}</div>
+      </main>
+    );
+  }
 
   if (unavailable) {
     return (
@@ -96,6 +125,7 @@ function ShopFlow({ slug, shop, unavailable }: { slug: string; shop: PublicShop;
   return (
     <main className="cx-page">
       <Header shop={shop} />
+      <AvailabilityPanel availability={shop.availability} />
       {recent.length > 0 && upload.state.phase === 'idle' && (
         <nav className="cx-card cx-recent" aria-label="My recent orders">
           <h2 className="cx-h2">My recent orders</h2>
