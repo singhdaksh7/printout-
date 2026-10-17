@@ -41,3 +41,7 @@ On a copy holding seeded data (2 shops, 3 users, 60 orders, 60 documents, 3 audi
 ## Rollback
 
 The migration is purely additive. To undo on a database that has not started using the new tables, drop the new tables and added columns. The three new enum values stay (Postgres cannot remove enum values); no application code depends on them.
+
+## Shop operating hours (migration `20261017100000_shop_operating_hours`)
+
+Additive only: enum `AfterHoursPolicy`; `ShopSettings.timezone` (default `Asia/Kolkata`), `operatingHours` JSONB (null = none), `specialClosures` JSONB (default `[]`), `temporaryClosure` JSONB, `reopenUntil` timestamp, `afterHoursPolicy` (default `ACCEPT`). No backfill, no drops, no renames; existing rows keep today's behaviour. JSON shapes and interval, overnight, closure and policy semantics are specified in `docs/SHOP_HOURS.md`. Rollback: older code ignores the columns; removal would be a separate, approved migration. Validated on a disposable database (`migrate deploy`, `migrate diff` shows no drift).

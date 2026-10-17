@@ -6,6 +6,7 @@ import { quoteSecret } from '../config.js';
 import { normalisePrintOptions, printOptionsSchema, quote, type QuoteResult } from '../domain/pricing.js';
 import { signQuote, verifyQuote } from '../domain/quote-token.js';
 import { subscriptionAllowsIntake } from '../domain/eligibility.js';
+import { assertAcceptingByHours, publicAvailability } from '../domain/hours-view.js';
 import { AppError, notFound } from '../errors.js';
 import { recordOrderCreated, toNotificationDto } from '../notifications/shop-notifications.js';
 import { isUniqueViolation, json, type AppContext } from './context.js';
@@ -40,9 +41,11 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
     return shop;
   }
 
-  async function orderingShop(slug: string) {
+  /** `hours: false` defers the operating-hours gate (orders re-check it after idempotent replays and inside the transaction). */
+  async function orderingShop(slug: string, opts: { hours?: boolean } = {}) {
     const shop = await activeShop(slug);
     if (!shop.acceptsOrders || !subscriptionAllowsIntake(shop.subscription)) throw new AppError(409, 'SHOP_UNAVAILABLE', 'This shop is not accepting orders right now');
+    if (opts.hours !== false) assertAcceptingByHours(shop.settings);
     return shop;
   }
 
@@ -62,6 +65,8 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
       address: shop.address,
       publicContact: shop.settings?.publicContact ?? null,
       acceptsOrders: shop.acceptsOrders && subscriptionAllowsIntake(shop.subscription),
+      // Server-computed from authoritative settings; clients must not derive open/closed from their own clock.
+      availability: publicAvailability(shop.settings),
       retentionMinutes: config.PRINT_RETENTION_MINUTES,
       branding: shop.settings ? { brandColor: shop.settings.brandColor } : undefined,
       printCapabilities: { paperSizes: ['A4'], colourModes: ['bw', 'colour'], sides: ['single', 'duplex'] }
@@ -101,7 +106,7 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
   app.post('/public/shops/:slug/orders', { config: limit }, async (request) => {
     const { slug } = slugParam.parse(request.params);
     const body = orderBody.parse(request.body);
-    const shop = await orderingShop(slug);
+    const shop = await orderingShop(slug, { hours: false });
 
     const payload = verifyQuote(quoteSecret(config), body.quoteId);
     if (payload.shopId !== shop.id) throw new AppError(422, 'INVALID_QUOTE', 'Quote is invalid');
@@ -116,6 +121,9 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
       }
       return orderResponse(existing);
     }
+
+    // Fast pre-check (the authoritative one runs inside the transaction below). Idempotent replays above stay allowed.
+    assertAcceptingByHours(shop.settings);
 
     const now = new Date();
     const doc = await prisma.document.findFirst({ where: { id: payload.documentId, shopId: shop.id }, include: { order: { select: { id: true } } } });
@@ -152,6 +160,9 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
           data: { orderCounter: { increment: 1 } },
           select: { orderCounter: true }
         });
+        // The shop row is now locked, and settings mutations lock it too: evaluate hours at THIS instant against the
+        // committed settings, so an order is accepted iff the shop is open (or policy = ACCEPT) when it is written.
+        assertAcceptingByHours(await tx.shopSettings.findUnique({ where: { shopId: shop.id } }));
         const created = await tx.order.create({
           data: {
             shopId: shop.id,

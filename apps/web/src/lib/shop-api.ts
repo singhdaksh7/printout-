@@ -1,4 +1,5 @@
 import { api, ApiError, setCsrfToken } from './api';
+import type { AfterHoursPolicy, Availability, SpecialClosure, WeeklyHours } from './hours';
 
 export type OrderStatus = 'NEW' | 'ACCEPTED' | 'PRINTING' | 'PRINTED' | 'READY' | 'COLLECTED' | 'CANCELLED' | 'EXPIRED';
 export const ALL_STATUSES: OrderStatus[] = ['NEW', 'ACCEPTED', 'PRINTING', 'PRINTED', 'READY', 'COLLECTED', 'CANCELLED', 'EXPIRED'];
@@ -249,6 +250,25 @@ export async function fetchRevenueCsv(p: RevenueQuery): Promise<{ blob: Blob; fi
 
 export const getAnalytics = () => shopRequest<Record<string, unknown>>('/shop/analytics');
 export const getSettings = () => shopRequest<ShopSettings | null>('/shop/settings');
+// ---- operating hours (Settings -> Operating hours) ---------------------------------------------------
+export interface TemporaryClosure { reason?: string | null; startedAt: string; until?: string | null }
+export interface ShopHours {
+  timezone: string;
+  weeklyHours: WeeklyHours | null;
+  specialClosures: SpecialClosure[];
+  afterHoursPolicy: AfterHoursPolicy;
+  temporaryClosure: TemporaryClosure | null;
+  reopenUntil: string | null;
+  availability: Availability;
+}
+export type HoursUpdate = Partial<{ timezone: string; weeklyHours: WeeklyHours | null; specialClosures: SpecialClosure[]; afterHoursPolicy: AfterHoursPolicy }>;
+export const getHours = () => shopRequest<ShopHours>('/shop/hours');
+export const putHours = (b: HoursUpdate) => shopRequest<ShopHours>('/shop/hours', { method: 'PUT', body: b });
+export const setTemporaryClosure = (b: { reason?: string | null; until?: string | null }) => shopRequest<ShopHours>('/shop/hours/temporary-closure', { method: 'PUT', body: b });
+export const clearTemporaryClosure = () => shopRequest<ShopHours>('/shop/hours/temporary-closure', { method: 'DELETE' });
+export const startReopen = (minutes: number) => shopRequest<ShopHours>('/shop/hours/reopen', { method: 'POST', body: { minutes } });
+export const endReopen = () => shopRequest<ShopHours>('/shop/hours/reopen', { method: 'DELETE' });
+
 export const putSettings = (s: ShopSettings) => shopRequest<ShopSettings>('/shop/settings', { method: 'PUT', body: s });
 
 // ---- printing devices (Settings -> Printing Devices) ---------------------------------------------------

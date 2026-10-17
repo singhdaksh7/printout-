@@ -1,5 +1,6 @@
 import { api, ApiError } from './api';
 import type { PageRange } from './customer-pages';
+import type { Availability, Day, Interval, SpecialClosure, WeeklyHours } from './hours';
 
 export type PageSelection = { mode: 'all' } | { mode: 'ranges'; ranges: PageRange[] };
 export type PrintOptions = { paperSize: 'A4'; colourMode: 'bw' | 'colour'; sides: 'single' | 'duplex'; copies: number; pageSelection: PageSelection };
@@ -7,7 +8,16 @@ export type PrintOptions = { paperSize: 'A4'; colourMode: 'bw' | 'colour'; sides
 export type UploadLimits = { acceptedMimeTypes: string[]; maxBytes: number; maxPdfPages: number; imagePageCount: number };
 export const DEFAULT_LIMITS: UploadLimits = { acceptedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxBytes: 52428800, maxPdfPages: 200, imagePageCount: 1 };
 
-export type PublicShop = { slug: string; displayName: string; address?: string | null; acceptsOrders: boolean; status?: string; retentionMinutes?: number };
+export type PublicAvailability = Availability & {
+  serverTime: string;
+  timezone: string;
+  orderingBlocked: boolean;
+  today: { date: string; day: Day; closedAllDay: boolean; reason: string | null; intervals: Interval[] } | null;
+  weeklyHours: WeeklyHours | null;
+  upcomingClosures: SpecialClosure[];
+  temporaryClosure: { reason: string | null; until: string | null } | null;
+};
+export type PublicShop = { slug: string; displayName: string; address?: string | null; acceptsOrders: boolean; status?: string; retentionMinutes?: number; availability?: PublicAvailability };
 export type InitiateResult = { uploadId: string; uploadUrl: string; requiredHeaders?: Record<string, string>; expiresAt: string; limits?: Partial<UploadLimits> };
 export type CompleteResult = { documentId: string; detectedMimeType: string; byteSize: number; pageCount: number | null; expiresAt: string; documentStatus?: string };
 export type Quote = { quoteId: string; selectedPageCount: number; sheetsPerCopy: number; totalSheets: number; unitPricePaise: number; totalPaise: number; currency: string; expiresAt: string; printOptions?: PrintOptions };
@@ -93,6 +103,7 @@ const MESSAGES: Record<string, string> = {
   RATE_LIMITED: 'Too many attempts. Please wait a minute and try again.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
   SHOP_UNAVAILABLE: 'This shop is not accepting orders right now.',
+  SHOP_CLOSED: 'This shop is closed and is not taking new orders right now. Please come back when it opens.',
   INVALID_PAGE_RANGE: 'Those pages are not valid for this document. Check the page numbers.',
   NO_PRICING_RULE: "This shop hasn't set a price for that option. Try a different combination.",
   QUOTE_EXPIRED: 'Your price quote expired. We are refreshing it.',
