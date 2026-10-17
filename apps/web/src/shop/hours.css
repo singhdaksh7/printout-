@@ -1,0 +1,27 @@
+.pb-hours { display: flex; flex-direction: column; gap: var(--pb-space-4); }
+.pb-hours .pb-small { font-size: var(--pb-text-label); margin: 0; }
+.pb-hours .pb-h3 { font: 600 var(--pb-text-body, 16px)/1.3 var(--pb-font-display); margin: 0; }
+.pb-hours__lead { margin: 0; }
+.pb-hours__status { padding: var(--pb-space-3); border-radius: var(--pb-radius-md); border: 1px solid var(--pb-n200); background: var(--pb-n50); overflow-wrap: anywhere; }
+.pb-hours__status--ok { background: var(--pb-ok-soft); border-color: var(--pb-ok); }
+.pb-hours__status--err { background: var(--pb-err-soft); border-color: var(--pb-err); }
+.pb-hours__form, .pb-hours__quick, .pb-hours__closenow { display: flex; flex-direction: column; gap: var(--pb-space-4); }
+.pb-hours__close, .pb-hours__reopen { display: grid; gap: var(--pb-space-3); align-items: end; grid-template-columns: 1fr; }
+.pb-hours__days { display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.pb-hours__day { border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-md); padding: var(--pb-space-3); margin: 0; min-width: 0; }
+.pb-hours__dayname { display: inline-flex; gap: var(--pb-space-3); align-items: baseline; font-weight: 600; }
+.pb-hours__state { font-weight: 400; color: var(--pb-n700); }
+.pb-hours__intervals { display: flex; flex-direction: column; gap: var(--pb-space-2); margin-top: var(--pb-space-3); }
+.pb-hours__interval { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2); }
+.pb-hours__interval .pb-field { flex: 1 1 96px; min-width: 96px; }
+.pb-hours__24 { flex: 1 1 120px; font-weight: 600; }
+.pb-hours__dayactions { display: flex; flex-wrap: wrap; gap: var(--pb-space-2); }
+.pb-hours__addclosure { display: grid; gap: var(--pb-space-3); align-items: end; grid-template-columns: 1fr; }
+.pb-hours__closures { display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.pb-hours__closurelist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--pb-space-2); }
+.pb-hours__closurelist li { display: flex; align-items: center; justify-content: space-between; gap: var(--pb-space-3); padding: var(--pb-space-2) var(--pb-space-3); border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-md); overflow-wrap: anywhere; }
+@media (min-width: 768px) {
+  .pb-hours__close { grid-template-columns: 2fr 1.2fr auto; }
+  .pb-hours__reopen { grid-template-columns: 1fr auto; }
+  .pb-hours__addclosure { grid-template-columns: 1fr 2fr auto; }
+}

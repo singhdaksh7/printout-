@@ -25,7 +25,7 @@ paths:
     parameters:
       - { name: slug, in: path, required: true, schema: { type: string } }
     get:
-      summary: "Public shop profile and rates"
+      summary: "Public shop profile and rates; includes server-computed availability (open/closed/unknown, next opening, weekly hours)"
       security: []
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
@@ -250,6 +250,51 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/hours:
+    get:
+      summary: "Operating hours, closures, policy and current availability"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    put:
+      summary: "Update timezone, weekly hours (null removes), special closures, after-hours policy"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/hours/temporary-closure:
+    put:
+      summary: "Close the shop now (reason, optional until)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "Clear temporary closure"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/hours/reopen:
+    post:
+      summary: "Emergency reopen for 5..1440 minutes"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "End emergency reopen"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/pricing-rules:
     get:
       summary: "List pricing rules"
