@@ -9,6 +9,7 @@ description = "Fake fixtures and placeholders"
 paths = [
   '''^\.env\.example$''',
   '''^apps/api/test/.*''',
+  '''^apps/windows-agent/test/.*''',
   '''^apps/api/vitest\.config\.ts$''',
   '''^apps/api/prisma/bootstrap-admin\.ts$''',
   '''^apps/api/src/password-policy\.ts$''',
