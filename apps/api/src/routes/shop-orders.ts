@@ -2,6 +2,7 @@ import { OrderStatus } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { listOrders, orderCore, orderDetail, orderListQuery, toStatusEvent } from '../domain/order-serializers.js';
+import { buildHistoryCsv, historyFilterQuery, historyListQuery, historySummary, listHistory, resolveHistoryRange } from '../domain/order-history.js';
 import { initiatePrint, issueDocumentAccess } from '../domain/print-service.js';
 import { assertRequestedTransition } from '../domain/lifecycle.js';
 import { AppError, orderNotFound } from '../errors.js';
@@ -39,6 +40,46 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     const shopId = shopIdOf(request);
     const q = orderListQuery.parse(request.query);
     return json(await listOrders(prisma, shopId, q));
+  });
+
+  /**
+   * Order history (metadata only): date-ranged (Asia/Kolkata calendar days), searchable, cursor-paginated. Registered before
+   * `/shop/orders/:id`; the static segment always wins. Never returns object keys, URLs or document content.
+   */
+  app.get('/shop/orders/history', { preHandler: limits.shopRead }, async (request) => {
+    const shopId = shopIdOf(request);
+    const q = historyListQuery.parse(request.query);
+    return json(await listHistory(prisma, shopId, q, resolveHistoryRange(q)));
+  });
+
+  app.get('/shop/orders/history/summary', { preHandler: limits.shopRead }, async (request) => {
+    const shopId = shopIdOf(request);
+    const q = historyFilterQuery.parse(request.query);
+    return json(await historySummary(prisma, shopId, q, resolveHistoryRange(q)));
+  });
+
+  /** CSV of the same filters. Session-authenticated GET (read-only), own stricter rate limit, audited, never cached. */
+  app.get('/shop/orders/history/export.csv', { preHandler: limits.shopExport }, async (request, reply) => {
+    const shopId = shopIdOf(request);
+    const auth = authOf(request);
+    const q = historyFilterQuery.parse(request.query);
+    const range = resolveHistoryRange(q);
+    const { csv, rows, truncated } = await buildHistoryCsv(prisma, shopId, q, range);
+    await audit(prisma, {
+      shopId,
+      actorUserId: auth.userId,
+      action: 'order.history_export',
+      targetType: 'shop',
+      targetId: shopId,
+      metadata: { from: range.fromYmd, to: range.toYmd, rows, truncated, hasSearch: Boolean(q.q), hasStatus: Boolean(q.status) }
+    });
+    return reply
+      .header('content-type', 'text/csv; charset=utf-8')
+      .header('content-disposition', `attachment; filename="order-history-${range.fromYmd}_to_${range.toYmd}.csv"`)
+      .header('cache-control', 'no-store')
+      .header('x-content-type-options', 'nosniff')
+      .header('x-export-truncated', truncated ? 'true' : 'false')
+      .send(csv);
   });
 
   app.get('/shop/orders/:id', { preHandler: limits.shopRead }, async (request) => {

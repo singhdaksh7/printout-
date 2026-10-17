@@ -32,6 +32,28 @@
 .pb-wrap { overflow-wrap: anywhere; }
 .pb-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Links. Plain anchors (no class) inside the theme: orange-ink + underline so they read as links without relying on colour alone.
+   Components with their own class (buttons, nav, order codes) are unaffected. Tinted banners keep the banner text colour. */
+.pb-theme a:where(:not([class])) { color: var(--pb-orange-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; border-radius: 2px; }
+.pb-theme a:where(:not([class])):visited { color: var(--pb-link-visited); }
+.pb-theme a:where(:not([class])):hover { color: var(--pb-navy); text-decoration-thickness: 2px; }
+.pb-theme a:where(:not([class])):active { color: var(--pb-navy); }
+.pb-banner a:where(:not([class])), .pb-banner a:where(:not([class])):visited { color: inherit; }
+/* A link that is the main content of a list row gets a 44px touch area without changing the layout. */
+.pb-theme .pb-linkrow a:where(:not([class])) { position: relative; }
+.pb-theme .pb-linkrow a:where(:not([class]))::after { content: ''; position: absolute; inset: -12px -4px; }
+
+/* Links. Plain anchors (no class) inside the theme: orange-ink + underline so they read as links without relying on colour alone.
+   Components with their own class (buttons, nav, order codes) are unaffected. Tinted banners keep the banner text colour. */
+.pb-theme a:where(:not([class])) { color: var(--pb-orange-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; border-radius: 2px; }
+.pb-theme a:where(:not([class])):visited { color: var(--pb-link-visited); }
+.pb-theme a:where(:not([class])):hover { color: var(--pb-navy); text-decoration-thickness: 2px; }
+.pb-theme a:where(:not([class])):active { color: var(--pb-navy); }
+.pb-banner a:where(:not([class])), .pb-banner a:where(:not([class])):visited { color: inherit; }
+/* A link that is the main content of a list row gets a 44px touch area without changing the layout. */
+.pb-theme .pb-linkrow a:where(:not([class])) { position: relative; }
+.pb-theme .pb-linkrow a:where(:not([class]))::after { content: ''; position: absolute; inset: -12px -4px; }
+
 /* Accessibility conventions */
 .pb-sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;

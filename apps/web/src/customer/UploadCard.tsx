@@ -2,6 +2,7 @@ import { useRef, useState, type DragEvent } from 'react';
 import { formatBytes } from '../lib/format';
 import type { UploadLimits } from '../lib/customer-api';
 import type { UploadState } from './hooks';
+import { Button, ProgressBar } from '../ui';
 import { Alert } from './parts';
 
 type Props = { state: UploadState; limits: UploadLimits; onFile: (f: File) => void; onCancel: () => void; onRetry: () => void; onReplace: () => void };
@@ -29,7 +30,7 @@ export function UploadCard({ state, limits, onFile, onCancel, onRetry, onReplace
       {(state.phase === 'idle') && (
         <div className={`cx-drop${drag ? ' is-drag' : ''}`}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
-          <button type="button" className="cx-btn cx-btn-primary cx-btn-lg" onClick={pick}>Choose file</button>
+          <Button variant="primary" size="lg" onClick={pick}>Choose file</Button>
           <p className="cx-muted cx-drop-hint"><span className="cx-wide-only">or drag and drop it here. </span>PDF, JPG or PNG, up to {formatBytes(limits.maxBytes)}.</p>
         </div>
       )}
@@ -43,13 +44,10 @@ export function UploadCard({ state, limits, onFile, onCancel, onRetry, onReplace
 
       {busy && (
         <div className="cx-progress-wrap">
-          <div role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100}
-            aria-valuenow={pct} className={`cx-progress${state.phase === 'verifying' ? ' is-indeterminate' : ''}`}>
-            <span style={{ width: `${pct}%` }} />
-          </div>
+          <ProgressBar value={pct} label="Upload progress" className={`cx-progress${state.phase === 'verifying' ? ' is-indeterminate' : ''}`} />
           <div className="cx-row cx-between" aria-live="polite">
             <span className="cx-tnum">{state.phase === 'verifying' ? 'Checking your file…' : state.phase === 'uploading' ? `Uploading ${pct}%` : 'Preparing…'}</span>
-            {state.phase !== 'verifying' && <button type="button" className="cx-btn cx-btn-quiet" onClick={onCancel}>Cancel</button>}
+            {state.phase !== 'verifying' && <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>}
           </div>
         </div>
       )}
@@ -58,7 +56,7 @@ export function UploadCard({ state, limits, onFile, onCancel, onRetry, onReplace
         <div className="cx-ready" aria-live="polite">
           <span className="cx-ok-dot" aria-hidden="true" />
           <span><strong className="cx-tnum">{state.doc.pageCount ?? '?'}</strong> {state.doc.pageCount === 1 ? 'page' : 'pages'} · ready</span>
-          <button type="button" className="cx-btn cx-btn-quiet cx-push" onClick={onReplace}>Replace file</button>
+          <Button variant="ghost" size="sm" className="cx-push" onClick={onReplace}>Replace file</Button>
         </div>
       )}
 
@@ -67,8 +65,8 @@ export function UploadCard({ state, limits, onFile, onCancel, onRetry, onReplace
           <Alert>{state.message}</Alert>
           <div className="cx-row cx-gap">
             {state.file && state.code !== 'INVALID_FILE_TYPE' && state.code !== 'FILE_TOO_LARGE' && state.code !== 'EMPTY_FILE' && state.code !== 'SHOP_UNAVAILABLE'
-              && <button type="button" className="cx-btn cx-btn-primary" onClick={onRetry}>Try again</button>}
-            <button type="button" className="cx-btn" onClick={pick}>Choose a different file</button>
+              && <Button variant="primary" onClick={onRetry}>Try again</Button>}
+            <Button variant="outline" onClick={pick}>Choose a different file</Button>
           </div>
         </div>
       )}

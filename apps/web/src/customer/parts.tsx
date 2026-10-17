@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Banner } from '../ui';
 
 export function NotFound({ title = 'Page not found', body = 'Check the link or scan the shop QR code again.' }: { title?: string; body?: string }) {
   return (
@@ -18,5 +19,5 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
 }
 
 export function Alert({ children, tone = 'error' }: { children: ReactNode; tone?: 'error' | 'info' }) {
-  return <div className={`cx-alert cx-alert-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>{children}</div>;
+  return <Banner tone={tone === 'error' ? 'err' : 'info'}>{children}</Banner>;
 }

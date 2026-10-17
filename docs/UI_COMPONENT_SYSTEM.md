@@ -83,6 +83,7 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 | `TextArea` | same without adornments | same |
 | `Select` | `label`, `helperText`, `error`, `hideLabel`, native `<option>` children | same; native select |
 | `Checkbox` | `label`, `hint`, `indeterminate` | native checkbox, 44px row, hint as description |
+| `Switch` | `label`, `hint`, native input props | native checkbox with `role="switch"` (Space toggles), 44px row, state shown by thumb position and colour; for settings that apply immediately (Sound for new orders) |
 | `RadioGroup` | `legend`, `options[{value,label,description?,tag?,disabled?,locked?}]`, `value`, `onChange`, `variant` `list`/`card`, `error` | fieldset + native radios (arrow keys); `locked` options are disabled, show a lock and are announced "(locked)" |
 
 ### Status
@@ -116,8 +117,8 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 | `Drawer` | `title`, `header`, `footer`, `initialFocusRef`, `busy` | right panel (full screen on phones), same focus handling |
 | `DataTable` | `columns`, `rows`, `getRowKey`, `caption`, `selectedKey`, `highlightKeys`, `onRowClick`, `loading`, `loadingLabel`, `empty`, `renderCard`, `cardsBelow`, `rowAttributes` | captioned table in a keyboard-scrollable region; cards below 768px when `renderCard` is given (never both in the DOM); skeleton rows; row click ignores clicks on inner buttons |
 | `LoadMore` | `hasMore`, `loading`, `onClick`, `error`, `endLabel`, `summary` | cursor pagination control |
-| `Sidebar`, `BottomNav`, `TopBar`, `AppShell` | `NavItem {to,label,icon,end,count,showZero,tag,alert,comingSoon}`; `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
-| Charts | `BarChart`, `HBarList`, `HeartbeatStrip`, `SegmentedBar` | SVG/CSS, no dependency; each has a text alternative (hidden data table, list text, or summary) |
+| `Sidebar`, `BottomNav`, `TopBar`, `AppShell`, `BrandLogo` | `NavItem {to,label,shortLabel,icon,end,count,showZero,tag,alert,comingSoon}`; `BottomNav` takes `items` (visible tabs) and `moreItems` (a "More" button opening a focus-trapped sheet; closes on Escape, scrim or navigation and returns focus); `BrandLogo {sub,onDark}` is the orange tile + wordmark used on sign-in pages, sidebars and the customer header; `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
+| Charts | `BarChart`, `HBarList`, `HeartbeatStrip`, `SegmentedBar` | SVG/CSS, no dependency; each has a text alternative (hidden data table, list text, or summary). `BarDatum.tooltip` adds SVG `<title>` hover text. The Analytics order value report (`shop/RevenuePanel.tsx`) pairs the chart with an exact data table in a keyboard-scrollable region (`role=region`, `tabIndex=0`) |
 
 ### Domain presentation (`ui/domain`)
 
@@ -140,9 +141,17 @@ Thin wrappers that only word and colour values the caller already has: no fetchi
 
 The library is additive. Screens keep their current markup until migrated, one family at a time, each as its own commit:
 
-1. Shop: **done**: queue, order detail, rate card, QR and standee, devices, analytics (the app's History-type screen; the design's History table needs an endpoint that does not exist), settings, shell and sign-in. Staff and Reports appear in the sidebar as non-interactive "Soon" items.
-2. Platform Admin: **done**: shell, dashboard, shops, shop detail, orders metadata, plans, subscriptions, audit log and sign-in. No 2FA, agent monitoring, support sessions or deletion audit (no backend).
-3. Customer: after approved designs are supplied.
+1. Shop: **done**: queue, order detail, rate card, QR and standee, devices, History (3.pdf p15: table on desktop, cards on phones, IST date presets and custom range, status and code/file search, summary tiles, Load more, metadata-only CSV export; built on `DataTable`, `SegmentedControl`, `Select`, `TextField`, `StatTile`, `LoadMore`, `OrderStatusChip`, no new components), analytics (kept, linked from History), settings, shell and sign-in. Staff and Reports appear in the sidebar as non-interactive "Soon" items.
+2. Platform Admin: **done**: shell, dashboard, shops, shop detail, orders metadata, plans, subscriptions, audit log and sign-in. Account settings (`/admin/account`: details, session, change email/password) uses the shared library plus a local Show/Hide `PasswordField` (TextField + Button). No 2FA, agent monitoring, support sessions or deletion audit (no backend).
+3. Customer: **done** (UI polish): `/p/:slug`, `/t/:token` and the not-found page render inside `pb-theme` with the shared `Button`, `SegmentedControl`, `TextField`, `Banner` and `ProgressBar`; the legacy blue `--brand` theme is gone from the customer area. Upload, quote, order and tracking logic are unchanged. `customer.css` keeps only the layout and the customer-only pieces (drop zone, price breakdown, tracking timeline: done green, current orange).
+
+### UI polish rules (shared)
+
+- **Links.** Plain anchors inside `.pb-theme` are orange-ink and underlined, navy on hover, a darker derived orange (`--pb-link-visited`) when visited, with the standard focus ring. Anchors with a class (buttons, nav, order codes) are not affected; links inside banners keep the banner text colour. List-row links get a 44px touch area through a pseudo-element.
+- **Phones (under 768px).** Small buttons are 44px; segmented labels never wrap; the tab bar shows five destinations plus More (shop: Queue, History, Analytics, Devices, Rate card; QR & standee and Settings under More. Admin: Dashboard, Shops, Orders, Audit log; Subscriptions, Plans and Account under More).
+- **Print action.** Print is the navy `dark` button in every list (desktop table and phone card); the single orange button on the order detail page is the only primary action there. Behaviour is unchanged.
+- **Queue.** The Status column is omitted on the New tab while no row has anything to show; the Settings cell is two fixed lines so a separator never dangles.
+- **Not added (no trustworthy data source):** an environment ("Production") chip and a global admin search from `2.pdf`.
 
 ### Stage 1: print queue and order detail (migrated)
 
@@ -150,7 +159,7 @@ The library is additive. Screens keep their current markup until migrated, one f
 
 Deliberate differences from `3.pdf` (backend or scope, not omissions by accident):
 
-- **No stat tiles, printer/agent pill, pilot card, Staff/Reports/Billing/History nav, "Sound on" header control or logo.** There is no data behind them (printed-today and pages-today counts, printer health, plans), or they belong to the shell, which is the next stage. Nothing is faked.
+- **No stat tiles, printer/agent pill, pilot card, Staff/Reports/Billing nav, "Sound on" header control or logo.** There is no data behind them (printed-today and pages-today counts, printer health, plans), or they belong to the shell, which is the next stage. Nothing is faked.
 - **Status vocabulary is the API's** (`New`, `Print started`, `Print confirmed (legacy)`, ...), not Queued/Printing/Printed, because the API does not confirm physical printing. `JobStatusChip` (design wording) exists but is not used until the API can back it.
 - **Order detail is a page, not a drawer.** Keeping the route preserves deep links, the "Back to queue" link and the existing end-to-end flows; it is also what `3.pdf` p24 shows on phones. `Drawer` is available for a later decision.
 - **The cancel dialog has no reason list.** The API's cancel transition takes no reason, so asking for one would not be honest.

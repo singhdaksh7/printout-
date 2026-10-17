@@ -81,6 +81,7 @@ model Shop {
   printJobs          PrintJob[]
   customerSessions   CustomerSession[]
   invoices           Invoice[]
+  notifications      ShopNotification[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 }
@@ -189,6 +190,7 @@ model Order {
   printOptionsSnapshot           Json
   histories                      OrderStatusHistory[]
   printJob                       PrintJob?
+  notifications                  ShopNotification[]
   createdAt                      DateTime             @default(now())
   updatedAt                      DateTime             @updatedAt
 
@@ -462,4 +464,26 @@ model Payment {
   createdAt        DateTime @default(now())
 
   @@index([invoiceId])
+}
+
+/// Durable in-app notification for a shop (transactional outbox + inbox). Written in the SAME transaction as the event it
+/// describes, so a committed order always has its notification. `seq` is the replay cursor; `dedupeKey` makes the write
+/// idempotent. Payload holds only safe metadata (order id and number): never URLs, storage keys or file names.
+model ShopNotification {
+  id        String    @id @default(cuid())
+  seq       BigInt    @unique @default(autoincrement())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type      String
+  orderId   String?
+  order     Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dedupeKey String
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([shopId, dedupeKey])
+  @@index([shopId, seq])
+  @@index([shopId, readAt])
+  @@index([createdAt])
 }

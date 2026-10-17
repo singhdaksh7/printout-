@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { ConfigError, loadConfig } from './config.js';
 import { cleanupExpiredDocuments, cleanupPairingCodes, type CleanupLogger, type CleanupResult, type CleanupStorage } from './cleanup.js';
+import { cleanupNotifications } from './notifications/shop-notifications.js';
 import { createStorage, type StorageConfig } from './storage/index.js';
 
 /**
@@ -19,6 +20,7 @@ const workerEnvSchema = z.object({
   DOCUMENT_CLEANUP_INTERVAL_MINUTES: z.coerce.number().positive().default(1),
   DOCUMENT_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive().default(100),
   DOCUMENT_STALE_UPLOAD_MINUTES: z.coerce.number().positive().default(60),
+  NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
   WORKER_RUN_ONCE: z.string().optional()
 });
 
@@ -96,6 +98,13 @@ export function startWorker(options: WorkerOptions = {}): WorkerHandle {
         if (swept.deleted > 0) log.info?.({ deleted: swept.deleted }, 'pairing code sweep finished');
       } catch (error) {
         log.error?.({ err: error instanceof Error ? error.name : 'unknown' }, 'pairing code sweep failed');
+      }
+      // Same cadence, same isolation: expired shop notifications (retention) never affect document deletion.
+      try {
+        const purged = await cleanupNotifications(prisma, { retentionDays: settings.NOTIFICATION_RETENTION_DAYS, now: new Date(nowMs) });
+        if (purged.deleted > 0) log.info?.({ deleted: purged.deleted }, 'notification retention sweep finished');
+      } catch (error) {
+        log.error?.({ err: error instanceof Error ? error.name : 'unknown' }, 'notification retention sweep failed');
       }
     }
   };

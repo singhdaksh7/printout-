@@ -5,6 +5,7 @@ import { csrfToken, equalToken, tokenHash, type LoginThrottle } from '../auth.js
 import type { Config } from '../config.js';
 import { AppError } from '../errors.js';
 import type { ShopEvents } from '../events.js';
+import type { ShopNotificationHub } from '../notifications/shop-notifications.js';
 import type { Notifier } from '../notifications/types.js';
 import type { Storage } from '../storage.js';
 
@@ -13,6 +14,8 @@ export interface AppContext {
   prisma: PrismaClient;
   storage: Storage;
   events: ShopEvents;
+  /** Durable shop notifications: post-commit fan-out to open streams (see notifications/shop-notifications.ts). */
+  notifications: ShopNotificationHub;
   loginThrottle: LoginThrottle;
   /** Device push signals (NEW_PRINT_REQUEST etc.). Never carries URLs, keys or credentials. */
   notifier: Notifier;

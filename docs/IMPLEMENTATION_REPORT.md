@@ -29,7 +29,7 @@ No new components were needed for the migrations; the existing library (`apps/we
 
 ## 7. Shopkeeper screens
 
-Done: print queue, order detail, rate card (with a worked example computed from the typed price only), QR and standee controls (poster and print rules unchanged), devices, settings, shell (sidebar, top bar, phone tab bar; Staff and Reports shown as non-interactive "Soon"), sign-in. **History:** the app has no history endpoint, so the existing Analytics screen was migrated and keeps its name and route; the design's History table (date filters, CSV export) is not built. The design's printer-health, agent and billing content is not shown because nothing backs it.
+Done: print queue, order detail, rate card (with a worked example computed from the typed price only), QR and standee controls (poster and print rules unchanged), devices, settings, shell (sidebar, top bar, phone tab bar; Staff and Reports shown as non-interactive "Soon"), sign-in. **History:** built after the first migration (`feature/daksh-order-history`): `/shop/history` with `GET /shop/orders/history`, `/summary` and `/export.csv` (see API_CONTRACT). It is metadata only (files are never opened, downloaded or reprinted from it), uses Asia/Kolkata days, and shows "Print started / Print initiated", never a physical-print confirmation. Analytics keeps its name and route (sidebar; linked from History on phones). The design's printer-health, agent and billing content is not shown because nothing backs it.
 
 ## 8. Admin screens
 
@@ -75,6 +75,24 @@ Not ready to deploy from this report alone: the work is unpushed, the migration 
 1. Review and approve pushing `development`.
 2. (Superseded) `main` stays as the production branch and is not renamed; branch protections are active (`docs/GIT_WORKFLOW.md`).
 3. Decide the open schema questions (`docs/SCHEMA_ALIGNMENT.md`).
-4. Decide whether a History endpoint (date and status filters, export) should be built.
+4. ~~History endpoint~~ built (order history list, summary, CSV). Open: export row cap (5,000) and whether to add a customer-reference column.
 5. Apply the migration to staging, then production, when ready.
 6. Stop the disposable test database when done: `docker rm -f printout-e2e-pg`.
+
+## 16. Admin account security (branch `feature/daksh-admin-security`)
+
+Platform admins can change their own email and password at `/admin/account` (current password required, all sessions ended, transactional, audited). Backend: `routes/admin-account.ts` and the shared `password-policy.ts`; UI: `admin/AccountPage.tsx` (Account link in sidebar and top bar; `AuthProvider.endSession()` added). The `admin:update` and `bootstrap-admin` CLIs are unchanged in behaviour and covered by tests. Details: API_CONTRACT (Platform admin) and SECURITY_REVIEW (Admin account self-service). Not included: OTP/2FA, public admin registration, email verification.
+
+## 17. Order value report (branch `feature/daksh-revenue-dashboard`)
+
+**Data sources and gaps (checked before building).** The only money in the schema for customer orders is `Order.totalPaise` (plus `priceSnapshot`): the price quoted from the shop's rate card when the order was created. There is no customer payment, settlement, refund or cost record; cash is settled at the counter. `Invoice`/`Payment` are the shop's own subscription billing and are unused. The dashboard therefore reports **estimated order value only**. Collected revenue, refunds, costs and net earnings are explicitly unavailable (`collected.available:false`), and no UI text, API field or CSV column claims money was received.
+
+**Metrics** (IST calendar days, inclusive, bucketed by `Order.createdAt`): order count (all statuses); counted orders (not CANCELLED/EXPIRED); estimated order value = SUM(`totalPaise`) of counted orders (integer paise, bigint in SQL); pages requested = SUM(selectedPageCount x copies), with orders lacking a page count reported separately; print started; average estimated order value; cancelled/expired counts and their excluded quoted value; breakdowns by colour mode, sides, paper size and status; zero-filled daily series; comparison with the equally long preceding window (percentages suppressed for a zero or pre-first-order baseline). History is never re-priced: the stored quote is used, so later rate-card changes do not alter past days.
+
+**Implementation.** `apps/api/src/domain/revenue.ts` (one grouped aggregate per window, CSV) and `routes/shop-revenue.ts` (two routes). No schema change and no migration, so deployment needs no database step. UI: `shop/RevenuePanel.tsx` inside the existing Analytics page, `lib/revenue.ts`, optional `tooltip` on `BarChart` bars. Tests: API `test/revenue.test.ts`, web `shop/__tests__/revenue.test.tsx`, browser `e2e/11-shop-revenue.spec.ts` (exact figures, filters, export, isolation, error/Retry, 768/390/360 px, axe).
+
+**Known limitations.** Estimates only (not money received); the quote is the price at order time, not necessarily what the customer paid at the counter; orders are dated by creation, not print or pickup; max range 93 days; export capped at 5,000 rows; the existing Analytics tiles above the report still describe "today". Collected revenue, refunds and net earnings need a future verified payment source.
+
+## 18. Real-time order notifications
+
+Added on `feature/daksh-realtime-notifications`: durable shop notifications (transactional outbox table `ShopNotification`, additive migration `20261016195159_shop_notifications`), inbox API (`GET /shop/notifications`, `POST /shop/notifications/:id/read`, `POST /shop/notifications/read-all`), `notification.created` on the existing `/shop/events` stream, a bounded cross-process poller, retention sweep in the worker, and the shop notification bell (unread badge, panel, toast, optional shared sound, multi-tab de-duplication). Design, guarantees and limits: `docs/REALTIME_NOTIFICATIONS.md`. The Print queue's old "beep on any refresh that finds a new order" was replaced by the single live-notification sound (it rang on reload and reconnect).

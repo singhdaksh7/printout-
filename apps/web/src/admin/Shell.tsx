@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../shop/auth';
-import { AppShell, BottomNav, Button, Chip, Sidebar, TopBar, type NavItem } from '../ui';
+import { AppShell, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, type NavItem } from '../ui';
 
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const { state, retry } = useAuth();
@@ -23,10 +23,11 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin/orders', label: 'Orders', icon: 'list-ordered' },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: 'credit-card' },
   { to: '/admin/plans', label: 'Plans', icon: 'receipt' },
-  { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' }
+  { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' },
+  { to: '/admin/account', label: 'Account', icon: 'lock' }
 ];
-/** Phone tab bar: Plans is reached from the Subscriptions page so that five labels fit 360px. */
-const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/subscriptions', '/admin/audit'];
+/** Phone tab bar: four destinations plus "More" (Subscriptions, Plans, Account). "Subscriptions" does not fit a 60px tab at 360px, so it lives under More. */
+const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/audit'];
 
 export default function Shell() {
   const { state, logout } = useAuth();
@@ -40,17 +41,17 @@ export default function Shell() {
   }
   return (
     <AppShell
-      sidebar={<Sidebar label="Admin sections" brand={<span className="pb-brandmark">PrintoutBuddy<small className="ad-brandsub">Platform admin</small></span>} items={NAV_ITEMS} />}
+      sidebar={<Sidebar label="Admin sections" brand={<BrandLogo onDark sub="Platform admin" />} items={NAV_ITEMS} />}
       topbar={
         <TopBar
           start={<Chip tone="info" dot={false}>Platform admin</Chip>}
           end={<>
-            <span className="pb-shopname pb-muted" title={name}>{name}</span>
+            <Link to="/admin/account" className="pb-shopname ad-accountlink" title={name} aria-label={`Account settings for ${name}`}>{name}</Link>
             <Button variant="outline" size="sm" iconStart="log-out" onClick={out} disabled={leaving}>Log out</Button>
           </>}
         />
       }
-      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} />}
+      bottomNav={<BottomNav label="Admin sections, phone" items={NAV_ITEMS.filter((i) => PHONE_PATHS.includes(i.to))} moreItems={NAV_ITEMS.filter((i) => !PHONE_PATHS.includes(i.to))} />}
     >
       <div className="pb-page pb-theme"><Outlet /></div>
     </AppShell>

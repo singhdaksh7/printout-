@@ -5,16 +5,17 @@
 
 /* ---- queue: table cells and phone cards ---------------------------------------------------------------- */
 .pb-order-id { display: flex; flex-direction: column; gap: 2px; }
-.pb-order-link { color: var(--pb-navy); text-decoration: none; }
+.pb-order-link { position: relative; color: var(--pb-navy); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+.pb-order-link::after { content: ''; position: absolute; inset: -10px -4px; } /* 44px touch area */
 .pb-order-link .pb-jobcode { white-space: nowrap; }
-.pb-order-link:hover .pb-jobcode { text-decoration: underline; }
+.pb-order-link:hover { text-decoration-color: currentColor; }
 .pb-file { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 30ch; }
 .pb-file__name { font-weight: 600; }
 .pb-file__ref, .pb-file__age { font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
 .pb-specs { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 6px; white-space: nowrap; }
-/* Settings wrap as whole items; the separator dot stays at the END of the previous item, never at the start of a line. */
-.pb-settings > span { display: inline-block; white-space: nowrap; margin-right: 6px; }
-.pb-settings > span:not(:last-child)::after { content: '·'; margin-left: 6px; color: var(--pb-text-secondary); }
+/* Settings are two fixed lines (colour · sides, pages · paper), so a separator dot can never dangle at a line end. */
+.pb-settings__line { white-space: nowrap; }
+.pb-settings__line > span:not(:last-child)::after { content: '·'; margin: 0 6px; color: var(--pb-text-secondary); }
 .pb-specs__x { color: var(--pb-text-secondary); }
 .pb-statuscell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .pb-statuscell__line { font: 400 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
@@ -23,6 +24,9 @@
 .pb-actions--stacked .pb-btn { width: 100%; }
 .pb-table td:has(.pb-actions) { min-width: 17rem; }
 .pb-table td:has(.pb-settings) { min-width: 11rem; }
+/* View is a text action: orange-ink with an underline so it reads as interactive next to Print and Save file. */
+.pb-actions .pb-actions__view { color: var(--pb-orange-ink); text-decoration: underline; text-underline-offset: 3px; }
+.pb-actions .pb-actions__view:hover:not(:disabled) { color: var(--pb-navy); }
 .pb-page > .pb-tabs { align-self: flex-start; }
 .pb-ordercard { display: flex; flex-direction: column; gap: var(--pb-space-3); }
 .pb-ordercard__top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2) var(--pb-space-3); }
@@ -64,6 +68,7 @@
 .qr-controls { display: flex; flex-direction: column; gap: var(--pb-space-4); }
 .qr-card.pb-card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--pb-space-3); }
 .qr-card .qr-url { margin: 0; }
+.qr-card .qr-url a { display: inline-block; padding: 12px 0; }
 .pb-qr-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--pb-space-3); }
 .pb-qr-actions--main { justify-content: flex-start; }
 .qr-page .qr-poster-wrap { margin-top: 0; }
@@ -83,11 +88,48 @@
 /* ---- shell ---------------------------------------------------------------------------------------------- */
 
 
-/* Five phone tabs must fit 360px: keep each label on one line. */
-.pb-bottomnav__link { font-size: 11px; }
-.pb-bottomnav__link > span:last-child { white-space: nowrap; }
+/* History (order history) */
+.pb-nowrap { white-space: nowrap; }
+.pb-historyfilters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--pb-space-3); }
+.pb-historyfilters__dates { display: flex; flex-wrap: wrap; gap: var(--pb-space-3); }
+.pb-historyfilters__search { flex: 1 1 14rem; max-width: 22rem; min-width: 0; }
+.pb-historycard__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-2) var(--pb-space-3); margin: 0; }
+.pb-historycard__meta div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pb-historycard__meta dt { font: 600 var(--pb-text-caption)/1.4 var(--pb-font-body); color: var(--pb-text-secondary); }
+.pb-historycard__meta dd { margin: 0; font: 400 var(--pb-text-label)/1.4 var(--pb-font-body); overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .pb-historystats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); }
+  .pb-historystats > :first-child { grid-column: 1 / -1; }
+  .pb-historyfilters > * { flex: 1 1 100%; max-width: none; }
+  .pb-historyfilters .pb-seg { width: 100%; overflow-x: auto; }
+}
 
 /* Queue summary strip: four tiles in one row on desktop, a compact 2x2 grid on phones (hints are hidden there to keep the queue above the fold). */
 .pb-stats--queue { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 899px) { .pb-stats--queue { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); } }
 @media (max-width: 599px) { .pb-stats--queue .pb-stat__hint { display: none; } }
+
+/* ---- Analytics: order value report (estimated quotes, never payments) ---- */
+.pb-ov { display: grid; gap: var(--pb-space-4); min-width: 0; }
+.pb-ov > * { min-width: 0; }
+.pb-ov__stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pb-ov__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-4); }
+.pb-ov__compare, .pb-ov__defs { margin: 0; overflow-wrap: anywhere; }
+.pb-ov__defs { font-size: 0.85em; }
+.pb-ov__table { margin-top: var(--pb-space-3); }
+.pb-ov__table summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; border-radius: 8px; }
+.pb-ov__table summary:focus-visible { outline: 2px solid var(--pb-orange); outline-offset: 2px; }
+.pb-ov__scroll { overflow-x: auto; max-width: 100%; }
+.pb-ov__scroll table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.pb-ov__scroll th, .pb-ov__scroll td { padding: var(--pb-space-2) var(--pb-space-3); text-align: right; border-bottom: 1px solid var(--pb-n200); white-space: nowrap; }
+.pb-ov__scroll th:first-child { text-align: left; }
+.pb-ov__scroll tfoot th, .pb-ov__scroll tfoot td { font-weight: 700; }
+@media (max-width: 899px) { .pb-ov__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-3); } .pb-ov__grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 479px) { .pb-ov__stats { grid-template-columns: minmax(0, 1fr); } }
+.pb-ov .pb-hbars__row { grid-template-columns: minmax(5rem, 9rem) minmax(2rem, 1fr) auto; }
+.pb-ov .pb-hbars__label { overflow-wrap: anywhere; }
+.pb-ov .pb-hbars__value { white-space: nowrap; }
+@media (max-width: 479px) {
+  .pb-ov .pb-hbars__row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .pb-ov .pb-hbars__track { grid-column: 1 / -1; grid-row: 2; }
+}

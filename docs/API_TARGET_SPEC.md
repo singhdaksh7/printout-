@@ -47,7 +47,7 @@ Sources: `PrintoutBuddy Architecture.pdf` p1 (API surface, Agent WebSocket messa
 | `GET /v1/admin/deletion-receipts` | Admin | Blocked | No receipts are produced (no agent); table exists, unused |
 | `POST /v1/admin/shops/{id}/suspend` | Admin | Implemented (different shape) | `PUT /admin/shops/{id}` with `status` (audit-logged, ends the shop's sessions) |
 
-Current routes with no PDF counterpart (kept): `/auth/login|logout|session`, `/shop/settings`, `/shop/qr`, `/shop/analytics`, `/shop/events`, `/shop/orders/{id}/print-confirmation|document-download`, device self routes (`/device/heartbeat|push-token|me`), admin dashboard, orders, plans, subscriptions and audit-logs.
+Current routes with no PDF counterpart (kept): `/auth/login|logout|session`, `/shop/settings`, `/shop/qr`, `/shop/analytics`, `/shop/events`, `/shop/orders/{id}/print-confirmation|document-download`, device self routes (`/device/heartbeat|push-token|me`), admin dashboard, orders, plans, subscriptions and audit-logs, and admin self-service account routes (`GET /admin/account`, `POST /admin/account/email|password`).
 
 ## Compatibility rules
 

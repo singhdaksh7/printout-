@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import { retentionPhrase } from '../lib/retention';
 import { getAnalytics, listOrders, describeError, type OrderSummary } from '../lib/shop-api';
-import { Banner, Button, Card, Checkbox, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Tabs, buttonClass, cx, type Column } from '../ui';
+import { Banner, Button, Card, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Switch, Tabs, buttonClass, cx, type Column } from '../ui';
 import { pageSelectionText } from './components';
 import { useAuth } from './auth';
-import { ageLabel, safeStorage, useAutoRefresh, useDebounced, useTick } from './hooks';
+import { useAlertSound } from './alert-sound';
+import { ageLabel, useAutoRefresh, useDebounced, useTick } from './hooks';
 import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
 import { useRealtimeRefresh } from './realtime';
 import './pb-pages.css';
@@ -180,10 +181,14 @@ function SpecsCell({ o }: { o: OrderSummary }) {
 function SettingsCell({ o }: { o: OrderSummary }) {
   return (
     <div className="pb-settings" data-testid="order-specs">
-      {o.colourMode && <span>{o.colourMode === 'colour' ? 'Colour' : 'B&W'}</span>}
-      {o.sides && <span>{o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'}</span>}
-      {o.pageSelection && <span>{pageSelectionText(o.pageSelection)}</span>}
-      <span>{o.paperSize ?? 'A4'}</span>
+      <div className="pb-settings__line">
+        {o.colourMode && <span>{o.colourMode === 'colour' ? 'Colour' : 'B&W'}</span>}
+        {o.sides && <span>{o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'}</span>}
+      </div>
+      <div className="pb-settings__line">
+        {o.pageSelection && <span>{pageSelectionText(o.pageSelection)}</span>}
+        <span>{o.paperSize ?? 'A4'}</span>
+      </div>
     </div>
   );
 }
@@ -226,7 +231,7 @@ function RowActions({ o, onChanged, stacked = false }: { o: OrderSummary; onChan
     <div className={cx('pb-actions', stacked && 'pb-actions--stacked')}>
       {f.hasFile && (
         <>
-          <Button variant={stacked ? 'primary' : 'dark'} size={stacked ? 'lg' : 'sm'} loading={busy === 'print'} disabled={busy !== null} onClick={() => void run('print')}>
+          <Button variant="dark" size={stacked ? 'md' : 'sm'} loading={busy === 'print'} disabled={busy !== null} onClick={() => void run('print')}>
             {busy === 'print' ? 'Opening…' : f.canReprint ? 'Reprint' : 'Print'}
           </Button>
           <Button variant="outline" size="sm" loading={busy === 'save'} disabled={busy !== null} onClick={() => void run('save')} title={SAVE_FILE_NOTE}>
@@ -234,7 +239,7 @@ function RowActions({ o, onChanged, stacked = false }: { o: OrderSummary; onChan
           </Button>
         </>
       )}
-      <Link className={buttonClass({ variant: 'ghost', size: 'sm' })} to={`/shop/orders/${o.id}`}>{f.hasFile ? 'View' : 'View details'}</Link>
+      <Link className={buttonClass({ variant: 'ghost', size: 'sm', className: 'pb-actions__view' })} to={`/shop/orders/${o.id}`}>{f.hasFile ? 'View' : 'View details'}</Link>
       {err && <Banner tone="err" icon={false}>{err}</Banner>}
     </div>
   );
@@ -258,29 +263,12 @@ const OrderCard = memo(function OrderCard({ o, onChanged }: { o: OrderSummary; o
   );
 });
 
-function useBeep() {
-  const [on, setOn] = useState(() => safeStorage()?.getItem('printout.shop.sound') === '1');
-  const toggle = () => setOn((v) => { safeStorage()?.setItem('printout.shop.sound', v ? '0' : '1'); return !v; });
-  const beep = useCallback(() => {
-    try {
-      const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AC) return;
-      const ctx = new AC();
-      const osc = ctx.createOscillator(), gain = ctx.createGain();
-      osc.frequency.value = 880; gain.gain.value = 0.05;
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(); osc.stop(ctx.currentTime + 0.18);
-      osc.onended = () => void ctx.close();
-    } catch { /* sound is optional */ }
-  }, []);
-  return { on, toggle, beep };
-}
-
 export default function QueuePage() {
   const [tabKey, setTabKey] = useState('new');
   const tab = TABS.find((t) => t.key === tabKey)!;
   const q = useQueue(tab);
-  const sound = useBeep();
+  // The chime itself is played once per live notification by the shop shell (shop/notifications.tsx); the queue only owns the checkbox.
+  const sound = useAlertSound();
   const { state: auth } = useAuth();
   const retentionMinutes = auth.status === 'authed' ? auth.session.retentionMinutes : undefined;
 
@@ -302,15 +290,6 @@ export default function QueuePage() {
   useRealtimeRefresh(debounced);
   useAutoRefresh(refreshAll, 45_000);
 
-  // beep for a newly arrived NEW order (only if the user switched sound on; never autoplays otherwise)
-  const lastTick = useRef(0);
-  useEffect(() => {
-    if (q.freshTick !== lastTick.current) {
-      lastTick.current = q.freshTick;
-      if (sound.on && q.newestFresh.current && Date.now() - q.newestFresh.current < 2000) sound.beep();
-    }
-  }, [q.freshTick, q.newestFresh, sound]);
-
   // when a retention countdown reaches zero, refetch once so the card flips to "File deleted"
   const expired = useTick(() => q.items.filter((o) => o.deleteAfter && o.documentStatus !== 'DELETED' && Date.parse(o.deleteAfter) <= Date.now()).length);
   const refreshSoon = useDebounced(q.refresh, 2000);
@@ -318,14 +297,16 @@ export default function QueuePage() {
 
   const empty = !q.loading && q.items.length === 0 && !q.error;
   const refresh = q.refresh;
+  // Every row on the New tab is a request nobody printed yet, so its Status cell is empty until Print is pressed: drop the column then.
+  const showStatus = tabKey !== 'new' || q.items.some((o) => o.status !== 'NEW' || !!o.printInitiatedAt || !!o.deleteAfter || o.documentStatus === 'DELETED');
   const columns = useMemo<Column<OrderSummary>[]>(() => [
     { key: 'order', header: 'Order', cell: (o) => <OrderCell o={o} /> },
     { key: 'file', header: 'File', cell: (o) => <FileCell o={o} /> },
     { key: 'specs', header: 'Pages × copies', cell: (o) => <SpecsCell o={o} /> },
     { key: 'settings', header: 'Settings', cell: (o) => <SettingsCell o={o} /> },
-    { key: 'status', header: 'Status', cell: (o) => <StatusCell o={o} /> },
+    ...(showStatus ? [{ key: 'status', header: 'Status', cell: (o: OrderSummary) => <StatusCell o={o} /> }] : []),
     { key: 'action', header: 'Action', srOnlyHeader: true, align: 'end', cell: (o) => <RowActions o={o} onChanged={refresh} /> }
-  ], [refresh]);
+  ], [refresh, showStatus]);
 
   return (
     <section aria-labelledby="queue-title" className="pb-theme pb-page pb-page--wide">
@@ -334,7 +315,7 @@ export default function QueuePage() {
           <h1 id="queue-title" className="pb-h1">Print queue</h1>
           <p className="pb-muted pb-pagehead__sub">Newest first. Files are deleted automatically {retentionPhrase(retentionMinutes)} after you press Print.</p>
         </div>
-        <Checkbox label="Sound for new orders" checked={sound.on} onChange={sound.toggle} />
+        <Switch label="Sound for new orders" checked={sound.enabled} onChange={() => sound.set(!sound.enabled)} />
       </div>
       {stats && (
         <div className="pb-stats pb-stats--queue" aria-label="Today at a glance" role="group" data-testid="queue-stats">

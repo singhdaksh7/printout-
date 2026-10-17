@@ -15,6 +15,8 @@ const RATE_LIMIT_DEFAULTS = {
   RATE_LIMIT_PRINT_CONFIRM_MAX: 60,
   RATE_LIMIT_DOCUMENT_ACCESS_MAX: 60,
   RATE_LIMIT_SHOP_MUTATION_MAX: 60,
+  /** CSV exports are heavy: per session per minute. */
+  RATE_LIMIT_SHOP_EXPORT_MAX: 6,
   RATE_LIMIT_ADMIN_READ_MAX: 600,
   RATE_LIMIT_ADMIN_MUTATION_MAX: 60,
   RATE_LIMIT_SSE_CONNECT_MAX: 30,
@@ -83,6 +85,7 @@ const schema = z
     RATE_LIMIT_PRINT_CONFIRM_MAX: optionalPositiveInt,
     RATE_LIMIT_DOCUMENT_ACCESS_MAX: optionalPositiveInt,
     RATE_LIMIT_SHOP_MUTATION_MAX: optionalPositiveInt,
+    RATE_LIMIT_SHOP_EXPORT_MAX: optionalPositiveInt,
     RATE_LIMIT_ADMIN_READ_MAX: optionalPositiveInt,
     RATE_LIMIT_ADMIN_MUTATION_MAX: optionalPositiveInt,
     RATE_LIMIT_SSE_CONNECT_MAX: optionalPositiveInt,
@@ -94,6 +97,12 @@ const schema = z
     /** Heartbeats only write lastSeenAt when the stored value is older than this (limits DB write load). */
     DEVICE_LASTSEEN_WRITE_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(30),
     SSE_MAX_CONNECTIONS_PER_SHOP: optionalPositiveInt,
+    /** Concurrent notification streams per login session (one per open tab). */
+    SSE_MAX_CONNECTIONS_PER_SESSION: z.coerce.number().int().positive().default(5),
+    /** How often an API process checks the database for notifications created by OTHER processes (0 = off). Only runs while a stream is open. */
+    NOTIFICATION_POLL_MS: z.coerce.number().int().min(0).default(3000),
+    /** Notifications older than this are hidden immediately and deleted by the retention worker. */
+    NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
 
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     LOCAL_UPLOAD_DIR: z.string().default('.data/uploads'),
