@@ -26,7 +26,8 @@ export const SHOP_EVENT_NAMES = [
   'order.updated',
   'order.statusChanged',
   'document.deletionScheduled',
-  'document.deleted'
+  'document.deleted',
+  'printJob.updated'
 ] as const;
 export type ShopEventName = (typeof SHOP_EVENT_NAMES)[number];
 

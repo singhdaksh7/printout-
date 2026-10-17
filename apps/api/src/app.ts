@@ -12,6 +12,8 @@ import { ShopEvents } from './events.js';
 import { NoopNotifier } from './notifications/noop.js';
 import type { Notifier } from './notifications/types.js';
 import { deviceOrderRoutes } from './routes/device-orders.js';
+import { devicePrintRoutes } from './routes/device-print.js';
+import { shopPrintJobRoutes } from './routes/shop-print-jobs.js';
 import { devicePairingRoutes } from './routes/device-pairing.js';
 import { deviceSelfRoutes } from './routes/device-self.js';
 import { shopDeviceRoutes } from './routes/shop-devices.js';
@@ -167,6 +169,8 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopDeviceRoutes(i, ctx));
       await api.register((i) => deviceOrderRoutes(i, ctx));
       await api.register((i) => deviceSelfRoutes(i, ctx));
+      await api.register((i) => devicePrintRoutes(i, ctx));
+      await api.register((i) => shopPrintJobRoutes(i, ctx));
     },
     { prefix: '/api/v1' }
   );
