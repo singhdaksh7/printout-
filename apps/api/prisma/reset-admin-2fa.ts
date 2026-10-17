@@ -20,6 +20,7 @@
  */
 import { PrismaClient, Role } from '@prisma/client';
 import os from 'node:os';
+import { unwrapHash } from '../src/auth.js';
 
 const MIN_REASON = 10;
 
@@ -56,6 +57,8 @@ async function main(): Promise<number> {
       /* some containers have no passwd entry */
     }
     await prisma.$transaction([
+      // Restore the plain password hash (the rollback-guard prefix is only valid while 2FA is on).
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash: unwrapHash(user.passwordHash) } }),
       prisma.adminTwoFactor.deleteMany({ where: { userId: user.id } }),
       prisma.adminRecoveryCode.deleteMany({ where: { userId: user.id } }),
       prisma.adminLoginChallenge.deleteMany({ where: { userId: user.id } }),

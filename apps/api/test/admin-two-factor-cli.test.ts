@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { hashPassword, verifyPassword } from '../src/auth.js';
+import { hashPassword, isWrappedHash, unwrapHash, verifyPassword } from '../src/auth.js';
 import { buildKeyring, openSecret } from '../src/two-factor/crypto.js';
 import { base32Decode, hotp, timeStep } from '../src/two-factor/totp.js';
 import { buildApp, call, login, PASSWORD, seedWorld, type World } from './api-helpers.js';
@@ -102,7 +102,9 @@ describe('operator CLIs for admin two-factor', () => {
       expect(await ctx.prisma.session.count({ where: { userId: admin.userId, invalidatedAt: null } })).toBe(0);
       expect((await call(ctx.app, admin, 'GET', '/admin/account')).statusCode).toBe(401);
       const after = await ctx.prisma.user.findUniqueOrThrow({ where: { id: admin.userId } });
-      expect(after.passwordHash).toBe(user.passwordHash); // the password is never touched
+      expect(isWrappedHash(user.passwordHash)).toBe(true); // while enrolled
+      expect(isWrappedHash(after.passwordHash)).toBe(false); // restored on reset
+      expect(after.passwordHash).toBe(unwrapHash(user.passwordHash)); // the password itself is never changed
       expect(await verifyPassword(after.passwordHash, PASSWORD)).toBe(true);
 
       const rows = await ctx.prisma.auditLog.findMany({ where: { action: 'admin.2fa.cli_reset' } });
@@ -176,6 +178,7 @@ describe('operator CLIs for admin two-factor', () => {
       expect(result.status, output(result)).toBe(0);
       expect(await ctx.prisma.adminLoginChallenge.count()).toBe(0);
       expect(await ctx.prisma.adminTwoFactor.count()).toBe(1); // 2FA survives a password change
+      expect(isWrappedHash((await ctx.prisma.user.findUniqueOrThrow({ where: { email: world.adminEmail } })).passwordHash)).toBe(true);
       expect(await hashPassword('x')).toMatch(/^\$argon2id\$/);
     });
   });

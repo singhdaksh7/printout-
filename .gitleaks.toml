@@ -1,18 +1,57 @@
-# Secret-scan configuration (gitleaks). Extends the default rules; only the paths below are allowlisted, and only because
-# they contain deliberately fake values (test fixtures, placeholders, a common-password denylist). Real secrets belong in
-# the environment, never in these paths. Review any new entry with the same care as a secret.
+# Secret-scan configuration (gitleaks). Extends the default rules.
+#
+# There are NO path-wide exemptions: a whole directory is never excluded, so a genuine secret committed next to a test
+# fixture is still reported. Each entry below exempts ONE known fake value, and only in the one file that holds it
+# (path AND exact line must both match). Adding a fixture means adding an entry here, which a reviewer must read; treat a new
+# entry with the same care as a secret. Real secrets belong in the environment, never in the repository.
 [extend]
 useDefault = true
 
-[allowlist]
-description = "Fake fixtures and placeholders"
-paths = [
-  '''^\.env\.example$''',
-  '''^apps/api/test/.*''',
-  '''^apps/api/vitest\.config\.ts$''',
-  '''^apps/api/prisma/bootstrap-admin\.ts$''',
-  '''^apps/api/src/password-policy\.ts$''',
-  '''^e2e/env\.ts$''',
-  '''^e2e/12-admin-2fa\.spec\.ts$''',
-  '''^apps/android/app/src/test/.*''',
-]
+[[allowlists]]
+description = "Placeholder QUOTE_SECRET comment in the example env file"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)\.env\.example$''']
+regexes = ['''^\s*#\s*QUOTE_SECRET=\s*$''']
+
+[[allowlists]]
+description = "Common-password denylist entry"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)apps/api/src/password-policy\.ts$''']
+regexes = ['''^\s*'passwordpassword',\s*$''']
+
+[[allowlists]]
+description = "Fake passphrase used by the operator-CLI tests"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)apps/api/test/admin-account\.test\.ts$''']
+regexes = ['''NEW_PASSWORD: 'long-enough-passphrase-1''']
+
+[[allowlists]]
+description = "Fake CSRF secret for the API test environment"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)apps/api/vitest\.config\.ts$''', '''(^|/)apps/api/test/two-factor-unit\.test\.ts$''']
+regexes = ['''CSRF_SECRET: 'test-csrf-secret-0123456789abcdefghijk''']
+
+[[allowlists]]
+description = "Fake S3 secret key in the production-config test"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)apps/api/test/hardening-ops\.test\.ts$''']
+regexes = ['''S3_SECRET_ACCESS_KEY: 'zZ9yX8wV7uT6sR5qP4oN3mL2kJ1iH0gF''']
+
+[[allowlists]]
+description = "Fake CSRF secret for the e2e environment"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)e2e/env\.ts$''']
+regexes = ['''CSRF_SECRET: 'e2e-csrf-secret-0123456789abcdefghijklmn''']
+
+[[allowlists]]
+description = "Fake admin passphrase for the disposable-database 2FA e2e test"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)e2e/12-admin-2fa\.spec\.ts$''']
+regexes = ['''^const PASSWORD = 'e2e-twofactor-passphrase-1';$''']

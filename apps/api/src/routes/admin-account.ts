@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { hashPassword } from '../auth.js';
+import { hashPassword, rewrapLike } from '../auth.js';
 import { AppError } from '../errors.js';
 import { reauthenticateAdmin } from './admin-reauth.js';
 import { passwordPolicyProblem } from '../password-policy.js';
@@ -99,7 +99,7 @@ export async function adminAccountRoutes(app: FastifyInstance, ctx: AppContext):
     if (body.newPassword === body.currentPassword) {
       throw new AppError(400, 'VALIDATION_ERROR', 'The new password must be different from the current password.', { field: 'newPassword' });
     }
-    await commit(reply, user, { passwordHash: await hashPassword(body.newPassword) }, 'admin.account.password_changed');
+    await commit(reply, user, { passwordHash: rewrapLike(user.passwordHash, await hashPassword(body.newPassword)) }, 'admin.account.password_changed');
     return json({ signedOut: true });
   });
 }

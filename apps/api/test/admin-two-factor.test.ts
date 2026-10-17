@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { Writable } from 'node:stream';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
-import { hashPassword } from '../src/auth.js';
+import argon2 from 'argon2';
+import { hashPassword, isWrappedHash, unwrapHash, verifyPassword } from '../src/auth.js';
 import { buildKeyring, openSecret } from '../src/two-factor/crypto.js';
 import { base32Decode, hotp, timeStep, totpAt } from '../src/two-factor/totp.js';
 import { buildApp, call, login, PASSWORD, seedWorld, testConfig, type Session, type World } from './api-helpers.js';
@@ -601,6 +602,50 @@ describe('admin two-factor authentication', () => {
     });
   });
 
+  describe('rollback guard: an older API must fail closed for enrolled admins', () => {
+    /** What every API version before two-factor does with the stored hash. */
+    const oldApiAccepts = async (hash: string, password: string) => {
+      try {
+        return await argon2.verify(hash, password);
+      } catch {
+        return false;
+      }
+    };
+
+    it('wraps the stored hash while 2FA is on, so password-only verification by old code fails; the new code still verifies', async () => {
+      const before = (await adminUser()).passwordHash;
+      expect(await oldApiAccepts(before, PASSWORD)).toBe(true); // before enrolling an old API accepts it
+      const admin = await login(ctx.app, world.adminEmail);
+      await enroll(ctx.app, admin);
+      const enrolled = (await adminUser()).passwordHash;
+      expect(isWrappedHash(enrolled)).toBe(true);
+      expect(unwrapHash(enrolled)).toBe(before);
+      expect(await oldApiAccepts(enrolled, PASSWORD)).toBe(false); // downgraded API: locked out, NOT password-only access
+      expect(await verifyPassword(enrolled, PASSWORD)).toBe(true);
+      // Other accounts are never wrapped.
+      expect(isWrappedHash((await ctx.prisma.user.findUniqueOrThrow({ where: { email: world.a.ownerEmail } })).passwordHash)).toBe(false);
+    });
+
+    it('stays wrapped across a password change and is restored on disable', async () => {
+      const admin = await login(ctx.app, world.adminEmail);
+      const { secret, recoveryCodes } = await enroll(ctx.app, admin);
+      const fresh = await fullLogin(ctx.app, secret);
+      expect((await call(ctx.app, fresh, 'POST', '/admin/account/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD })).statusCode).toBe(200);
+      const changed = (await adminUser()).passwordHash;
+      expect(isWrappedHash(changed)).toBe(true);
+      expect(await oldApiAccepts(changed, NEW_PASSWORD)).toBe(false);
+      expect(await verifyPassword(changed, NEW_PASSWORD)).toBe(true);
+
+      const pw = await passwordStep(ctx.app, world.adminEmail, NEW_PASSWORD);
+      const session = sessionFrom((await secondStep(ctx.app, challengeCookie(pw), { method: 'recovery', code: recoveryCodes[0]! })) as never);
+      const off = await call(ctx.app, session, 'POST', '/admin/account/2fa/disable', { currentPassword: NEW_PASSWORD, method: 'recovery', code: recoveryCodes[1]! });
+      expect(off.statusCode, off.body).toBe(200);
+      const restored = (await adminUser()).passwordHash;
+      expect(isWrappedHash(restored)).toBe(false);
+      expect(await oldApiAccepts(restored, NEW_PASSWORD)).toBe(true);
+    });
+  });
+
   describe('sensitive data never leaks', () => {
     it('keeps secrets, codes and tokens out of logs, audit metadata and error bodies', async () => {
       const lines: string[] = [];
@@ -626,7 +671,7 @@ describe('admin two-factor authentication', () => {
         const session = sessionFrom(good as never);
         await call(app, session, 'POST', '/admin/account/2fa/recovery-codes', { currentPassword: PASSWORD, code: wrongCode });
 
-        const needles = [manualKey.replace(/ /g, ''), secret.toString('hex'), ...recoveryCodes, ...recoveryCodes.map((c) => c.replace('-', '')), challengeToken, session.cookie.split('=')[1]!, session.csrf, PASSWORD, wrongCode];
+        const needles = [TEST_KEY, manualKey.replace(/ /g, ''), secret.toString('hex'), ...recoveryCodes, ...recoveryCodes.map((c) => c.replace('-', '')), challengeToken, session.cookie.split('=')[1]!, session.csrf, PASSWORD, wrongCode];
         const logs = lines.join('\n');
         const audits = JSON.stringify(await ctx.prisma.auditLog.findMany());
         expect(lines.length).toBeGreaterThan(0);

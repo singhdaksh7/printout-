@@ -60,7 +60,47 @@ Never print, log, commit or email the key, TOTP secrets, recovery codes or sessi
 2. Deploy the migration first (`prisma migrate deploy`). It only adds tables; the old API keeps working against the new schema.
 3. Deploy the new API with `TWO_FACTOR_ENCRYPTION_KEY` set. Until it is set the Account page shows "not available on this server yet" and sign-in is unchanged.
 4. Verify with a disposable test admin, then roll out.
-5. **Rollback:** redeploy the previous API. Enrolled admins then sign in with the password only (the old API does not know the challenge); to keep protection, do not roll back past this release once admins have enrolled. The three tables can stay.
+5. **Rollback:** see "Downgrade risk and rollback guard" below. A rolled-back API cannot sign in 2FA-enrolled admins (fail closed); it never accepts their password alone. The three tables can stay.
+
+## Downgrade risk and rollback guard (CRITICAL)
+
+**Risk.** An API build from before this feature knows nothing about `AdminTwoFactor`. If such a build were pointed at the migrated database (a rollback, a stale container, a second instance that was not updated, a restored image), it would verify the admin's password and issue a full session: the second factor would be silently bypassed.
+
+**Guard (implemented, tested, rehearsed).** While an admin has 2FA enabled their stored `User.passwordHash` carries the prefix `tfa1$` (`apps/api/src/auth.ts`). The current API strips it before verifying; any older API passes the prefix to Argon2, which rejects it, so **the older API fails closed**: the enrolled admin gets "Invalid email or password" and no session. Shop owners and non-enrolled admins are untouched.
+
+* Invariant: hash wrapped if and only if 2FA is enabled. Enabling wraps it, disabling and `admin:2fa-reset` unwrap it, and password change, `admin:update` and `ADMIN_RESET_PASSWORD` bootstrap keep the current state.
+* Consequence of a rollback: enrolled admins are locked out until the new API is redeployed (preferred) or an operator runs `admin:2fa-reset` for them (their password then works again under the old API; no second factor, which is the operator's explicit, audited decision).
+* The guard protects against a downgrade of the **API code**. It does not protect against someone who can write the database directly; that attacker can also edit `AdminTwoFactor`.
+* **Never** hand-edit `passwordHash` to remove the prefix.
+* If compatibility cannot be guaranteed (for example an unknown API version may be running against the database), do not run the new migration's consumers: keep every admin un-enrolled until all instances are confirmed to be the new build. Enrollment is the only action that creates risk.
+
+**Rehearsal result (disposable PostgreSQL 16, 2026-10-17).** (1) Old build (`development` at bc72201): migrate + seed. (2) New build: `migrate deploy` applied only `20261017120000_admin_two_factor` (about 2 s, no drift). (3) Old API against the migrated database, admin not enrolled: login 200. (4) New API enrolled the admin; password-only login now returns `twoFactorRequired`. (5) **Old API, enrolled admin: 401, no session; shop owner: 200.** (6) `admin:2fa-reset` for the admin: old API login 200 again. This is also exercised in `apps/api/test/admin-two-factor.test.ts` ("rollback guard").
+
+Repeat this drill against the real release candidate images before production (see the rehearsal plan).
+
+## Deployment rehearsal plan (before production)
+
+The migration is purely additive (three `CREATE TABLE`, indexes, three foreign keys to `User`; no existing column or row is touched). The release also contains the Shop Hours migration (`20261017100000`, runs first by timestamp), so rehearse the combined set.
+
+1. Restore the most recent production backup into a scratch database (never the live one). Record the row counts of `User`, `Session`, `AuditLog`.
+2. Point a build of the release candidate at the scratch database: `prisma migrate status`, then `prisma migrate deploy`; note the duration and that both migrations apply.
+3. `prisma migrate diff --from-url <scratch> --to-schema-datamodel prisma/schema.prisma --exit-code` must report no difference.
+4. Re-count the tables from step 1 (unchanged) and check the new tables are empty.
+5. Start the candidate API against the scratch database with a throwaway `TWO_FACTOR_ENCRYPTION_KEY`; sign in with an existing admin (no challenge, unchanged); enroll a **scratch copy** of an account; sign in with a code; verify the previous release image returns 401 for that account (downgrade drill above) and `admin:2fa-reset` restores it.
+6. Lock note: the foreign keys take a brief `SHARE ROW EXCLUSIVE` lock on `User`; run the migration in a quiet window and confirm the duration measured in step 2.
+7. Order on the real system: backup, migrate, deploy API (key set), smoke test with one admin, announce enrollment. Backups taken before step 2 restore the old schema and the old API.
+
+## Encryption key: handling, backup, rotation
+
+* The key is a deployment secret. It is never committed (CI secret scan, tests that assert it is absent from logs, audit rows and error bodies, and config errors that never echo it), never printed by any script, and never returned by an endpoint.
+* **Backup:** store it in the secret manager and keep an offline sealed copy under separate access control from the database backups. A database backup without the key cannot reveal TOTP secrets; the key without the database reveals nothing. Do not store them in the same place.
+* **Loss:** enrolled admins cannot sign in (fail closed). Recovery is `admin:2fa-reset` per admin, then re-enrollment. Recovery codes cannot substitute because the sign-in path needs the key before anything else.
+* **Rotation:** see the next section; rotate on a schedule (for example yearly), on suspected exposure, and when anyone with access leaves. Rotation does not change the TOTP secrets or invalidate recovery codes.
+
+## Operational constraints
+
+* **Run exactly one API instance.** The login throttle, the per-admin second-factor counter and the route rate limiters are in memory per process, so with N instances the effective budgets multiply by N. Per-challenge attempt limits, code replay protection, single-use challenges and recovery-code consumption are enforced in the database and hold with any number of instances; moving the throttles to a shared store is a prerequisite for horizontal scaling.
+* Keep NTP enabled on the API host (it defines the TOTP window).
 
 ## Initial rollout for existing admins
 

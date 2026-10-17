@@ -15,7 +15,7 @@
  */
 import { PrismaClient, Role } from '@prisma/client';
 import { pathToFileURL } from 'node:url';
-import { hashPassword } from '../src/auth.js';
+import { hashPassword, rewrapLike } from '../src/auth.js';
 import { passwordPolicyProblem } from '../src/password-policy.js';
 
 export class BootstrapError extends Error {
@@ -71,7 +71,7 @@ export async function bootstrapAdmin(prisma: Db, env: BootstrapEnv): Promise<Boo
     if (env.ADMIN_RESET_PASSWORD !== '1') {
       return { outcome: 'exists', message: `Platform admin ${email} already exists; nothing to do (set ADMIN_RESET_PASSWORD=1 to reset its password).` };
     }
-    const passwordHash = await hashPassword(password);
+    const passwordHash = rewrapLike(existing.passwordHash, await hashPassword(password));
     await prisma.$transaction([
       prisma.user.update({ where: { id: existing.id }, data: { passwordHash } }),
       prisma.session.updateMany({ where: { userId: existing.id, invalidatedAt: null }, data: { invalidatedAt: new Date() } }),

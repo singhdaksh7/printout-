@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { unwrapHash, wrapHash } from '../auth.js';
 import { AppError } from '../errors.js';
 import { getLimiters } from '../rate-limits.js';
 import { sealSecret } from '../two-factor/crypto.js';
@@ -121,6 +122,10 @@ export async function adminTwoFactorRoutes(app: FastifyInstance, ctx: AppContext
       });
       if (enabled.count !== 1) throw new AppError(409, 'NO_PENDING_ENROLLMENT', 'Start two-factor setup first.');
       await storeRecoveryCodes(tx, auth.userId, hashes);
+      // Rollback guard: from now on an older API cannot verify this admin's password (see auth.ts).
+      const current = await tx.user.findUniqueOrThrow({ where: { id: auth.userId }, select: { passwordHash: true } });
+      const wrapped = await tx.user.updateMany({ where: { id: auth.userId, passwordHash: current.passwordHash }, data: { passwordHash: wrapHash(current.passwordHash) } });
+      if (wrapped.count !== 1) throw new AppError(409, 'CONFLICT', 'Your account changed while this request was running. Reload and try again.');
       const ended = await endOtherSessions(tx, auth.userId, auth.sessionId);
       await audit(tx, { ...actor(auth.userId), action: 'admin.2fa.enabled', metadata: { otherSessionsEnded: ended.count } });
     });
@@ -168,6 +173,8 @@ export async function adminTwoFactorRoutes(app: FastifyInstance, ctx: AppContext
       const removed = await tx.adminTwoFactor.deleteMany({ where: { userId: user.id, enabledAt: { not: null } } });
       if (removed.count !== 1) throw new AppError(409, 'TWO_FACTOR_NOT_ENABLED', 'Two-factor authentication is not enabled.');
       await tx.adminRecoveryCode.deleteMany({ where: { userId: user.id } });
+      const stored = await tx.user.findUniqueOrThrow({ where: { id: user.id }, select: { passwordHash: true } });
+      await tx.user.updateMany({ where: { id: user.id, passwordHash: stored.passwordHash }, data: { passwordHash: unwrapHash(stored.passwordHash) } });
       await tx.adminLoginChallenge.deleteMany({ where: { userId: user.id } });
       const ended = await endOtherSessions(tx, user.id, auth.sessionId);
       await audit(tx, { ...actor(user.id), action: 'admin.2fa.disabled', metadata: { method: body.method, otherSessionsEnded: ended.count } });

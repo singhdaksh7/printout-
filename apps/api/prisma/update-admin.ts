@@ -12,7 +12,7 @@
  */
 import { PrismaClient, Role } from '@prisma/client';
 import { createInterface } from 'node:readline/promises';
-import { hashPassword } from '../src/auth.js';
+import { hashPassword, rewrapLike } from '../src/auth.js';
 import { passwordProblem } from './bootstrap-admin.js';
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -77,7 +77,7 @@ async function main(): Promise<number> {
     if (next && next !== current && (await prisma.user.findUnique({ where: { email: next } }))) return fail(`${next} already belongs to another user`);
     const data: { email?: string; passwordHash?: string } = {};
     if (next) data.email = next;
-    if (password) data.passwordHash = await hashPassword(password);
+    if (password) data.passwordHash = rewrapLike(user.passwordHash, await hashPassword(password));
     await prisma.$transaction([
       prisma.user.update({ where: { id: user.id }, data }),
       prisma.session.updateMany({ where: { userId: user.id, invalidatedAt: null }, data: { invalidatedAt: new Date() } }),

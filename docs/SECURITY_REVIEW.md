@@ -112,3 +112,11 @@ Operator guide: `docs/ADMIN_2FA.md`. Tests: `apps/api/test/two-factor-unit.test.
 | Redaction | Log redaction for `code`, `secret`, `manualKey`, `otpauthUri`, `recoveryCodes`; audit metadata limited to method/reason/counts; tested by scanning logs, audit rows and error bodies. |
 
 Accepted / remaining: the per-admin 2FA counter and login throttles are in memory, per API process (single instance, as before); TOTP uses HMAC-SHA1 because authenticator apps universally support it; an attacker holding the database AND the encryption key could mint codes (keep them apart); 2FA is opt-in, not enforced; the setup key and QR are sent once over HTTPS in the enroll response; the enrollment code is consumed, so the first sign-in after enabling needs the next code; the API host clock defines the TOTP window (keep NTP on).
+
+### Admin 2FA: release-readiness addendum
+
+* **Downgrade:** an API from before this feature would ignore the second factor. Mitigated by the `tfa1$` password-hash wrapper while 2FA is enabled (old code fails closed). Rehearsed against the real previous build and covered by tests; procedure and limits in `docs/ADMIN_2FA.md` ("Downgrade risk and rollback guard").
+* **Secret scanning:** `.gitleaks.toml` no longer exempts any directory or file as a whole; each entry exempts one known fake value on one exact line in one file (path AND line must match). A genuine secret placed in a former exempt file is now reported (verified with a negative test).
+* **Encryption key:** never committed or logged (asserted in tests); backup, loss and rotation in `docs/ADMIN_2FA.md`.
+* **Single instance:** login, second-factor and route throttles are in memory per process and assume one API instance; database-enforced controls (attempts per challenge, replay, single-use) do not.
+* **Merge gate:** PR #27 stays open and unmerged until Release A (UI Branding + Shop Hours + QR Poster) is confirmed live; then synchronize with `development`, rerun CI and the security checks, and squash-merge through branch protection.
