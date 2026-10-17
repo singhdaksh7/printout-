@@ -13,5 +13,9 @@ paths = [
   '''^apps/api/prisma/bootstrap-admin\.ts$''',
   '''^apps/api/src/password-policy\.ts$''',
   '''^e2e/env\.ts$''',
+  '''^e2e/12-admin-2fa\.spec\.ts
+  '''^apps/android/app/src/test/.*''',
+]
+'',
   '''^apps/android/app/src/test/.*''',
 ]
