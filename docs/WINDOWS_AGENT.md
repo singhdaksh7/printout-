@@ -84,8 +84,14 @@ agent may need you to reconcile; the Sumatra command-line behaviour and real pri
 → `apps/windows-agent/release/*.zip` + `SHA256SUMS.txt`. `dist/BUILD-INFO.json` records commit and Node version. The exe embeds Node, so
 checksums match only for the same Node version and platform.
 
-## Manual hardware checklist (not yet done)
+## Release readiness (read before distributing)
+* **Hardware acceptance:** [WINDOWS_AGENT_HARDWARE_ACCEPTANCE.md](WINDOWS_AGENT_HARDWARE_ACCEPTANCE.md) must be completed and signed off. Until then: **REAL HARDWARE PRINTING UNVERIFIED**.
+* **Unsigned:** `printout-agent.exe` and the zip are **not code-signed** (no signing certificate exists or was used; the embedded Node binary's original signature is invalidated by the build). Windows SmartScreen will warn. It is **not ready for broad distribution**; use only on named test machines, verifying `SHA256SUMS.txt`.
+* **Not deployed:** nothing here has been installed on production shop machines, deployed to the VPS or merged to `main`. The PR into `development` stays open until Release A (Branding + Shop Hours + QR Poster) is confirmed deployed.
+* **Migration rehearsal:** this feature adds one additive migration, `20261017031501_windows_print_agent` (new enums, tables `DevicePrinter` and `DevicePrintJob`, nullable columns `previousCredentialHash`, `previousCredentialValidUntil`, `credentialRotatedAt` on `ShopDevice`; nothing dropped or rewritten, verified no schema drift). Before its first production release it must be rehearsed with `prisma migrate deploy` on a restored copy of production data (never `db push` / `migrate reset`), timed, checked with `prisma migrate diff`, and its rollback considered (the old app version ignores the new tables/columns, so the schema can stay while the app is rolled back). Follow `docs/DEPLOYMENT.md`.
+
+## Manual hardware checklist (summary)
 With a test shop and a printer (a PDF/virtual one first: `tools/virtual-printer.ps1 -Create` as administrator; never real customer documents):
 pair; authorize; print a PDF and a PNG; B&W, colour, duplex, copies=3, page ranges `1-2,4`; unplug/pause the printer (job must fail
 with `PRINTER_OFFLINE`, nothing printed later); kill the agent mid-print (job must become *Needs your check*, no second copy); disconnect the
-computer mid-job; rotate the credential; reboot and confirm autostart. Record the results here before calling it production-ready.
+computer mid-job; rotate the credential; reboot and confirm autostart. The full checklist, with sign-off, is in [WINDOWS_AGENT_HARDWARE_ACCEPTANCE.md](WINDOWS_AGENT_HARDWARE_ACCEPTANCE.md).
