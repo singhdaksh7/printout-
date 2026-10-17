@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { describeError, getQr, getSettings, putSettings, type ShopSettings } from '../lib/shop-api';
 import { Banner, Button, Card, Checkbox, Chip, Icon, Skeleton, TextArea, TextField, useToast } from '../ui';
 import { useUnsavedGuard } from './components';
+import HoursSection from './HoursSection';
+import './hours.css';
 
 interface Form { displayName: string; address: string; publicContact: string; brandColor: string; acceptsOrders: boolean }
 const toForm = (s: ShopSettings | null): Form => ({
@@ -112,6 +114,7 @@ export default function SettingsPage() {
         </div>
       </form>
       </Card>
+      <HoursSection />
       {toast}
     </section>
   );

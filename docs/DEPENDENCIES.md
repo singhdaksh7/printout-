@@ -21,6 +21,13 @@ The API image installs production dependencies only (`pnpm deploy --prod`); type
 | `vitest` 2.1.9 / 3.2.7, `@vitest/mocker` | path traversal via redirect mocks (<4.1.11) | moderate (dev) | Only when running attacker-supplied test files. |
 | `vite` 5.4.21 (via apps/api vitest), `esbuild` 0.21.5 | dev-server `fs.deny` bypass (Windows), `.map` path traversal, esbuild dev-server request exposure | high/moderate (dev) | Affect the dev **server** only; the API tests use vitest in node mode, no vite dev server is exposed. |
 
+## Added with the QR poster generator
+
+| Package | Where | Why | Notes |
+| --- | --- | --- | --- |
+| `pdf-lib` 1.17.1 | `apps/web` (runtime, lazy chunk) | write the vector poster PDF in the browser; already a root dev dependency | MIT, no network access, no known advisories. Only loaded on `/shop/qr/poster`. |
+| `jsqr` 1.4.0 | `apps/web` (dev) | decode QR codes from rasterised posters in tests | Apache-2.0, tests and e2e only; not shipped. |
+
 ## Process
 
 1. `corepack pnpm audit --prod` must show nothing new before a release; anything new and high/critical is a release blocker unless it is demonstrably unreachable and recorded here.

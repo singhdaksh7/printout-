@@ -27,6 +27,7 @@ export type ErrorCode =
   | 'QUOTE_EXPIRED'
   | 'NO_PRICING_RULE'
   | 'SHOP_UNAVAILABLE'
+  | 'SHOP_CLOSED'
   // Additive codes (documented in docs/API_CONTRACT.md)
   | 'INVALID_CREDENTIALS'
   | 'SHOP_SUSPENDED'
