@@ -4,9 +4,22 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 export const hashPassword = (password: string): Promise<string> =>
   argon2.hash(password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
 
+/**
+ * ROLLBACK GUARD. While an admin has two-factor enabled, their stored password hash is prefixed with this marker. This API
+ * strips it before verifying; an OLDER API (without two-factor support) feeds the marker to argon2, which rejects it, so
+ * a downgraded deployment cannot authenticate an enrolled admin with the password alone: it fails closed (the admin is
+ * locked out until the new API is back or an operator runs `admin:2fa-reset`). Invariant: wrapped <=> 2FA enabled.
+ */
+export const TWO_FACTOR_HASH_PREFIX = 'tfa1$';
+export const isWrappedHash = (hash: string): boolean => hash.startsWith(TWO_FACTOR_HASH_PREFIX);
+export const wrapHash = (hash: string): string => (isWrappedHash(hash) ? hash : TWO_FACTOR_HASH_PREFIX + hash);
+export const unwrapHash = (hash: string): string => (isWrappedHash(hash) ? hash.slice(TWO_FACTOR_HASH_PREFIX.length) : hash);
+/** A freshly hashed password keeps the account's current wrapping state. */
+export const rewrapLike = (current: string, fresh: string): string => (isWrappedHash(current) ? wrapHash(fresh) : fresh);
+
 export const verifyPassword = async (hash: string, password: string): Promise<boolean> => {
   try {
-    return await argon2.verify(hash, password);
+    return await argon2.verify(unwrapHash(hash), password);
   } catch {
     return false;
   }

@@ -19,6 +19,8 @@ export default defineConfig({
       CSRF_SECRET: 'test-csrf-secret-0123456789abcdefghijk',
       WEB_ORIGIN: 'http://localhost:5173',
       STORAGE_DRIVER: 'local',
+      // Fixed, test-only key (32 bytes of 0x07). Never reuse outside tests.
+      TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
       LOCAL_UPLOAD_DIR: '.data/test-uploads'
     }
   }

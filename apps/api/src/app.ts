@@ -30,6 +30,8 @@ import { shopRevenueRoutes } from './routes/shop-revenue.js';
 import { internalStorageRoutes } from './internal-storage.js';
 import { createStorage, type Storage } from './storage/index.js';
 import { uploadRoutes } from './uploads.js';
+import { buildKeyring } from './two-factor/crypto.js';
+import { adminTwoFactorRoutes } from './routes/admin-two-factor.js';
 
 export interface AppDeps {
   config?: Config;
@@ -65,7 +67,8 @@ export function createApp(deps: AppDeps = {}) {
     // Never log payloads or ids: only the error class.
     if (config.NODE_ENV !== 'test') console.error(JSON.stringify({ level: 'warn', msg: 'notification hub error', err: err instanceof Error ? err.name : 'unknown' }));
   });
-  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, notifier };
+  const twoFactorKeys = config.TWO_FACTOR_ENCRYPTION_KEY ? buildKeyring(config.TWO_FACTOR_ENCRYPTION_KEY, config.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS) : null;
+  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, twoFactorKeys, notifier };
 
   const app = Fastify({
     logger: {
@@ -81,7 +84,12 @@ export function createApp(deps: AppDeps = {}) {
         'password',
         '*.password',
         '*.currentPassword',
-        '*.newPassword'
+        '*.newPassword',
+        '*.code',
+        '*.recoveryCodes',
+        '*.secret',
+        '*.manualKey',
+        '*.otpauthUri'
       ],
       serializers: {
         // Default serializer logs the full URL: query strings carry signed-URL signatures and upload tokens, and
@@ -164,6 +172,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopNotificationRoutes(i, ctx));
       await api.register((i) => adminRoutes(i, ctx));
       await api.register((i) => adminAccountRoutes(i, ctx));
+      await api.register((i) => adminTwoFactorRoutes(i, ctx));
       // Device foundation (Phase 2): pairing (public), owner device management, device-authenticated APIs.
       await api.register((i) => devicePairingRoutes(i, ctx));
       await api.register((i) => shopDeviceRoutes(i, ctx));
