@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -46,14 +47,18 @@ describe.skipIf(!win)('Windows host', () => {
     await expect(dpapiUnprotect(bad.toString('base64'))).rejects.toThrow();
   });
 
-  it('directory permissions can be restricted to the current user', async () => {
+  it('directory permissions can be restricted to the current user (no inherited broad groups)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pb-acl-'));
     try {
       await restrictToCurrentUser(dir);
-      const r = await runPowerShell('$cfg = [Console]::In.ReadToEnd() | ConvertFrom-Json; $acl = Get-Acl -LiteralPath $cfg.dir; [Console]::Out.Write(($acl.Access | ForEach-Object { $_.IdentityReference.Value }) -join ";")', JSON.stringify({ dir }));
-      const ids = r.stdout.split(';').filter(Boolean);
-      expect(ids.length).toBeGreaterThan(0);
-      expect(ids.every((i) => i.toLowerCase().endsWith(`\\${(process.env.USERNAME ?? '').toLowerCase()}`))).toBe(true);
+      const icacls = String.raw`${process.env.SystemRoot ?? 'C:\\Windows'}\System32\icacls.exe`;
+      const out = execFileSync(icacls, [dir], { encoding: 'utf8', windowsHide: true });
+      const user = (process.env.USERNAME ?? '').toLowerCase();
+      const lower = out.toLowerCase();
+      expect(lower, out).toContain(`\\${user}:`);
+      for (const broad of ['everyone', String.raw`builtin\users`, 'authenticated users']) {
+        expect(lower, `${broad} must not have access:\n${out}`).not.toContain(`${broad}:`);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -10,6 +10,7 @@ paths = [
   '''^\.env\.example$''',
   '''^apps/api/test/.*''',
   '''^apps/windows-agent/test/.*''',
+  '''^apps/windows-agent/vitest\.integration\.config\.ts$''',
   '''^apps/api/vitest\.config\.ts$''',
   '''^apps/api/prisma/bootstrap-admin\.ts$''',
   '''^apps/api/src/password-policy\.ts$''',
