@@ -3,6 +3,9 @@
 * { box-sizing: border-box; }
 html, body { margin:0; background:var(--bg); color:var(--text); overflow-x:hidden; }
 body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-.page-loading { padding:2rem; text-align:center; color:var(--muted); }
+.page-loading { display:flex; flex-direction:column; align-items:center; gap:12px; padding:4rem 1rem; text-align:center; color:var(--pb-n700,#3B4558); font:500 15px/1.4 var(--pb-font-body, system-ui, sans-serif); }
+.page-loading svg { animation: pb-pulse 1.4s ease-in-out infinite; }
+@keyframes pb-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .page-loading svg { animation: none; } }
 button, input, select, textarea { font: inherit; }
 img, svg { max-width:100%; }

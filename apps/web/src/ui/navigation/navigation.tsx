@@ -161,8 +161,9 @@ export interface BrandMarkProps {
   className?: string;
 }
 
+// Geometry measured from the approved artwork (docs/design/1.pdf p1) on a 100-unit tile; pixels fade out downwards.
 const MARK_PIXELS: ReadonlyArray<readonly [number, number, number]> = [
-  [32.1, 72, 1], [41.6, 72, 1], [51.1, 72, 0.55], [60.6, 72, 0.4], [36.9, 82.4, 0.5], [55.9, 82.4, 0.4]
+  [31.9, 72.2, 1], [41.4, 72.2, 1], [50.95, 72.2, 0.68], [60.5, 72.2, 0.4], [36.6, 82.7, 0.5], [55.9, 82.7, 0.4]
 ];
 
 /** The approved Buddy printer mark (docs/design/1.pdf): paper on top, a face on the printer body, pixels fading out below. */
@@ -181,17 +182,17 @@ export function BrandMark({ variant = 'full', tile = 'orange', size = 36, title,
       {variant === 'simple' ? (
         <>
           <rect x="30" y="12" width="40" height="15" rx="4.5" fill={light} />
-          <rect x="12" y="31" width="76" height="40" rx="16" fill={body} />
+          <rect x="12" y="31" width="76" height="40" rx="12.5" fill={body} />
           <circle cx="36" cy="51" r="6.5" fill={face} /><circle cx="64" cy="51" r="6.5" fill={face} />
           {[24, 42.5, 61].map((x) => <rect key={x} x={x} y="77" width="14.5" height="12" rx="3" fill={light} />)}
         </>
       ) : (
         <>
           <rect x="32.1" y="11.9" width="36" height="14" rx="4" fill={light} />
-          <rect x="16" y="29" width="68" height="38" rx="15" fill={body} />
-          <circle cx="39" cy="44" r="4.6" fill={face} /><circle cx="61" cy="44" r="4.6" fill={face} />
-          <path d="M42.3 53.6Q50 61.5 57.7 53.6" fill="none" stroke={face} strokeWidth="4" strokeLinecap="round" />
-          {MARK_PIXELS.map(([x, y, o]) => <rect key={`${x}-${y}`} x={x} y={y} width="7.3" height="7.3" rx="1.7" fill={light} fillOpacity={o} />)}
+          <rect x="15.95" y="29.3" width="68" height="37.8" rx="11.4" fill={body} />
+          <circle cx="38.95" cy="44.2" r="4.55" fill={face} /><circle cx="60.95" cy="44.2" r="4.55" fill={face} />
+          <path d="M40.2 53.5Q49.9 62 59.6 53.5" fill="none" stroke={face} strokeWidth="4" strokeLinecap="round" />
+          {MARK_PIXELS.map(([x, y, o]) => <rect key={`${x}-${y}`} x={x} y={y} width="7.5" height="7.5" rx="1.7" fill={light} fillOpacity={o} />)}
         </>
       )}
     </svg>

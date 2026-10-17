@@ -28,5 +28,8 @@ export default defineConfig({
     })
   ],
   server: { port: 5173, proxy: { '/api': { target: process.env.VITE_API_TARGET ?? 'http://localhost:3000', changeOrigin: false } } },
-  test: { environment: 'jsdom', globals: true, setupFiles: ['./src/test-setup.ts'], css: false }
+  // Page-level tests render whole screens in jsdom. With one jsdom worker per core (11+) and other processes running (browser tests,
+  // a second suite, CI runners) they miss the 5 s default test timeout and Testing Library's 1 s async wait; reproduced by running three
+  // suites at once. Cap the workers and give async waits and tests realistic headroom. Assertions are unchanged.
+  test: { environment: 'jsdom', globals: true, setupFiles: ['./src/test-setup.ts'], css: false, maxWorkers: 4, testTimeout: 30_000, hookTimeout: 30_000 }
 });

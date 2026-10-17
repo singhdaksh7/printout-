@@ -19,7 +19,8 @@
 .pb-nav--soon { opacity: 0.6; cursor: not-allowed; }
 .pb-nav__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pb-nav__tag { flex: none; }
-.pb-sidebar :where(a, button):focus-visible { outline-color: var(--pb-white); }
+/* Navy surface: the info-blue ring is only 2.5:1 on navy (needs 3:1), so rings inside the sidebar are white (16:1). Higher specificity than the base rule. */
+.pb-theme .pb-sidebar :where(a, button):focus-visible { outline-color: var(--pb-white); }
 .pb-sidebar__footer { padding: var(--pb-space-3); border-radius: var(--pb-radius-md); background: rgba(255, 255, 255, 0.08); color: var(--pb-white); font: 400 13px/1.4 var(--pb-font-body); }
 
 /* Top bar */
