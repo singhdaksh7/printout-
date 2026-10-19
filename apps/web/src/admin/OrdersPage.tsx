@@ -36,7 +36,7 @@ export function AdminOrderRows({ items, showShop = true }: { items: AdminOrder[]
           </div>
           <div className="pb-muted pb-wrap">
             {o.mimeType ?? 'file'} · {o.selectedPageCount ?? o.pageCount ?? '?'}{o.pageCount != null ? `/${o.pageCount}` : ''} pages · {pagesText(o.pageSelection)} ·{' '}
-            {o.colourMode === 'colour' ? 'Colour' : 'B&W'} · {o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · {o.copies ?? 1} copies · {o.paperSize ?? 'A4'}
+            {o.colourMode === 'colour' ? 'Colour' : 'B&W'} · {o.sides === 'duplex' ? 'Double-sided' : 'Single-sided'} · {o.copies ?? 1} {(o.copies ?? 1) === 1 ? 'copy' : 'copies'} · {o.paperSize ?? 'A4'}
           </div>
           <div className="pb-muted pb-wrap">
             Print started: {fmtDate(o.printInitiatedAt ?? o.printedAt)} · {documentState(o)}

@@ -1,0 +1,9 @@
+/* Windows printers (Devices) and Windows print jobs (order detail). Layout only; colours come from the shared --pb-* tokens. */
+.dev-printers { display: flex; flex-direction: column; gap: var(--pb-space-3); margin-top: var(--pb-space-4); padding-top: var(--pb-space-4); border-top: 1px solid var(--pb-border, rgba(0, 0, 0, 0.12)); }
+.dev-printer-list, .pb-pj__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.dev-printer, .pb-pj__item { display: flex; flex-direction: column; gap: var(--pb-space-2); min-width: 0; }
+.dev-printer__head, .pb-pj__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-2); }
+.pb-pj { display: flex; flex-direction: column; gap: var(--pb-space-3); margin-top: var(--pb-space-5); }
+.pb-pj__actions { display: flex; flex-wrap: wrap; gap: var(--pb-space-2); }
+.pb-pj__reconcile { display: flex; flex-wrap: wrap; gap: var(--pb-space-2); border: 0; padding: 0; margin: 0; min-width: 0; }
+.pb-pj__reconcile legend { padding: 0; margin-bottom: var(--pb-space-2); }

@@ -16,3 +16,12 @@ uploads/
 
 # Approved design PDFs stay outside Git (large binaries); keep local copies in docs/design/
 docs/design/
+release/
+
+# Visual QA full-size captures (regenerate with VQA_LABEL=before|after pnpm e2e -g "visual QA"); the committed evidence is docs/visual-qa/compare/*.jpg and the JSON reports
+docs/visual-qa/before/*.png
+docs/visual-qa/after/*.png
+
+# Local worktrees
+Print-*/
+

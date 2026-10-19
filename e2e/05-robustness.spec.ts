@@ -87,7 +87,9 @@ test('PWA: manifest, icons, meta tags and service worker (built app via vite pre
   const res = await page.request.get(new URL(href!, PREVIEW).toString());
   expect(res.status()).toBe(200);
   const manifest = await res.json();
-  expect(manifest.name).toBe('Printout');
+  expect(manifest.name).toBe('PrintoutBuddy');
+  expect(manifest.theme_color).toBe('#14213D'); // navy
+  expect(manifest.icons.some((i: { purpose?: string }) => i.purpose === 'maskable')).toBe(true);
   expect(manifest.display).toBe('standalone');
   expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
   for (const icon of manifest.icons) {
@@ -95,7 +97,7 @@ test('PWA: manifest, icons, meta tags and service worker (built app via vite pre
     expect(r.status(), `icon ${icon.src}`).toBe(200);
     expect(r.headers()['content-type']).toMatch(/image\//);
   }
-  expect(await page.locator('meta[name="theme-color"]').getAttribute('content')).toMatch(/^#/);
+  expect(await page.locator('meta[name="theme-color"]').getAttribute('content')).toBe('#14213D');
   expect(await page.locator('meta[name="viewport"]').getAttribute('content')).toContain('viewport-fit=cover');
   const sw = await page.evaluate(async () => {
     if (!('serviceWorker' in navigator)) return 'unsupported';

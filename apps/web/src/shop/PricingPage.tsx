@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createPricingRule, deletePricingRule, describeError, errorCode, listPricingRules, updatePricingRule, type PricingRule
 } from '../lib/shop-api';
@@ -41,17 +41,23 @@ export default function PricingPage() {
 
   const base = useMemo(() => baselineOf(rules), [rules]);
 
+  // Only the most recent load may touch the form. StrictMode (dev), Retry and the reload after Save can have two requests in flight;
+  // an older or slower response must not reset prices the shopkeeper has started typing.
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     setLoading(true); setLoadError(null);
     try {
       const r = await listPricingRules();
+      if (mine !== latest.current) return null;
       setRules(r);
       setRows(baselineOf(r));
       return r;
     } catch (e) {
+      if (mine !== latest.current) return null;
       setLoadError(describeError(e));
       return null;
-    } finally { setLoading(false); }
+    } finally { if (mine === latest.current) setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 

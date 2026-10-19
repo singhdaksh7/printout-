@@ -2,7 +2,9 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import { retentionPhrase } from '../lib/retention';
-import { getAnalytics, listOrders, describeError, type OrderSummary } from '../lib/shop-api';
+import { getAnalytics, listOrders, listPrintJobs, describeError, type OrderSummary, type PrintJobView } from '../lib/shop-api';
+import { createContext, useContext } from 'react';
+import { latestByOrder, PrintJobChip } from './PrintJobPanel';
 import { Banner, Button, Card, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Switch, Tabs, buttonClass, cx, type Column } from '../ui';
 import { pageSelectionText } from './components';
 import { useAuth } from './auth';
@@ -198,12 +200,17 @@ function QueueStatusChip({ status }: { status: OrderSummary['status'] }) {
   return status === 'NEW' ? null : <OrderStatusChip status={status} />;
 }
 
+/** Latest Windows print job per order (best effort; the queue works without it). */
+const PrintJobsCtx = createContext<Map<string, PrintJobView>>(new Map());
+
 function StatusCell({ o, showChip = true }: { o: OrderSummary; showChip?: boolean }) {
   const f = useOrderFlags(o);
+  const job = useContext(PrintJobsCtx).get(o.id);
   const mins = Math.max(1, Math.ceil(f.secsLeft / 60));
   return (
     <div className="pb-statuscell">
       {showChip && <QueueStatusChip status={o.status} />}
+      {job && <PrintJobChip job={job} />}
       {f.initiated && (
         <div className="pb-statuscell__line" data-testid="print-initiated">
           Print initiated <time dateTime={o.printInitiatedAt!} title={new Date(o.printInitiatedAt!).toLocaleString()}>{new Date(o.printInitiatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
@@ -284,7 +291,12 @@ export default function QueuePage() {
       .catch(() => setStats(null));
   }, []);
   useEffect(loadStats, [loadStats]);
-  const refreshAll = useCallback(() => { q.refresh(); loadStats(); }, [q.refresh, loadStats]);
+  const [jobs, setJobs] = useState<Map<string, PrintJobView>>(new Map());
+  const loadJobs = useCallback(() => {
+    void listPrintJobs().then((r) => setJobs(latestByOrder(r.jobs))).catch(() => undefined);
+  }, []);
+  useEffect(loadJobs, [loadJobs]);
+  const refreshAll = useCallback(() => { q.refresh(); loadStats(); loadJobs(); }, [q.refresh, loadStats, loadJobs]);
 
   const debounced = useDebounced(refreshAll, 300);
   useRealtimeRefresh(debounced);
@@ -309,6 +321,7 @@ export default function QueuePage() {
   ], [refresh, showStatus]);
 
   return (
+    <PrintJobsCtx.Provider value={jobs}>
     <section aria-labelledby="queue-title" className="pb-theme pb-page pb-page--wide">
       <div className="pb-pagehead">
         <div>
@@ -357,5 +370,6 @@ export default function QueuePage() {
         {q.hasMore && <LoadMore hasMore loading={q.loadingMore} onClick={q.loadMore} />}
       </div>
     </section>
+    </PrintJobsCtx.Provider>
   );
 }

@@ -29,14 +29,21 @@ const EXPECTED_DEVICE_ROUTES = [
   'GET /api/v1/device/me',
   'GET /api/v1/device/orders',
   'GET /api/v1/device/orders/:id',
+  'GET /api/v1/device/print-jobs/active',
   'POST /api/v1/device/heartbeat',
   'POST /api/v1/device/orders/:id/download',
   'POST /api/v1/device/orders/:id/print',
   'POST /api/v1/device/orders/:id/reprint',
+  'POST /api/v1/device/print-jobs/:id/download',
+  'POST /api/v1/device/print-jobs/:id/progress',
+  'POST /api/v1/device/print-jobs/claim',
+  'POST /api/v1/device/credential/rotate',
+  'PUT /api/v1/device/printers',
   'PUT /api/v1/device/push-token'
 ];
 const EXPECTED_OWNER_DEVICE_ROUTES = [
   'GET /api/v1/shop/devices',
+  'PATCH /api/v1/shop/devices/:id/printers/:printerId',
   'PATCH /api/v1/shop/devices/:id',
   'POST /api/v1/shop/devices/:id/revoke',
   'POST /api/v1/shop/devices/pairing-codes'

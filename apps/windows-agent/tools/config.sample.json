@@ -1,0 +1,11 @@
+{
+  "pdfRenderer": {
+    "path": "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe",
+    "sha256": "REPLACE-WITH-THE-SHA256-OF-YOUR-SumatraPDF.exe-(64-hex-characters)"
+  },
+  "maxDocumentMB": 50,
+  "monitorSeconds": 120,
+  "tempRetentionMinutes": 15,
+  "rotateCredentialAfterDays": 30,
+  "logLevel": "info"
+}

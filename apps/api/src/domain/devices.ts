@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { DevicePlatform, PrismaClient, ShopDevice } from '@prisma/client';
+import type { DevicePlatform, DevicePrinter, PrismaClient, ShopDevice } from '@prisma/client';
 import type { Config } from '../config.js';
 import { generateDeviceCredential } from '../device-auth.js';
 import { AppError } from '../errors.js';
@@ -8,6 +8,7 @@ import { audit } from '../routes/context.js';
 import { deriveSecret, hmacHex } from '../storage/keys.js';
 import { subscriptionAllowsIntake } from './eligibility.js';
 import { devicePresence, HEARTBEAT_INTERVAL_SECONDS } from './device-presence.js';
+import { printerView } from './print-jobs.js';
 
 /**
  * Pairing codes: `PB-XXXX-XXXX`. 8 characters from a 32-symbol alphabet without look-alikes (no 0/O/1/I) = 40 bits from a CSPRNG
@@ -110,11 +111,13 @@ export type DeviceView = {
   createdAt: Date;
   revokedAt: Date | null;
   appVersion: string | null;
+  /** Windows agents only: printers reported by the computer (empty for other platforms). */
+  printers: ReturnType<typeof printerView>[];
 };
 
 /** Explicit allow-list: never credentialHash, pushToken, osVersion, shopId. */
 export function deviceView(
-  d: Pick<ShopDevice, 'id' | 'name' | 'platform' | 'status' | 'lastSeenAt' | 'createdAt' | 'revokedAt' | 'appVersion'>,
+  d: Pick<ShopDevice, 'id' | 'name' | 'platform' | 'status' | 'lastSeenAt' | 'createdAt' | 'revokedAt' | 'appVersion'> & { printers?: DevicePrinter[] },
   nowMs = Date.now()
 ): DeviceView {
   return {
@@ -126,7 +129,8 @@ export function deviceView(
     lastSeenAt: d.lastSeenAt,
     createdAt: d.createdAt,
     revokedAt: d.revokedAt,
-    appVersion: d.appVersion
+    appVersion: d.appVersion,
+    printers: (d.printers ?? []).map(printerView)
   };
 }
 
@@ -221,7 +225,11 @@ export async function redeemPairingCode(prisma: PrismaClient, config: Config, in
 }
 
 export async function listDevices(prisma: PrismaClient, shopId: string) {
-  const rows = await prisma.shopDevice.findMany({ where: { shopId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+  const rows = await prisma.shopDevice.findMany({
+    where: { shopId },
+    include: { printers: { orderBy: [{ name: 'asc' }, { id: 'asc' }] } },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+  });
   const now = Date.now();
   return rows.map((d) => deviceView(d, now));
 }
@@ -263,5 +271,36 @@ export async function revokeDevice(prisma: PrismaClient, actor: { shopId: string
       });
     }
     return deviceView(device);
+  });
+}
+
+export const CREDENTIAL_ROTATION_GRACE_SECONDS = 600;
+
+/**
+ * Credential rotation (device-initiated, authenticated by the CURRENT credential). Returns the new secret ONCE. The presented
+ * credential stays valid for a short grace window so a lost response cannot lock the device out; the first request that uses
+ * the new credential kills it immediately (see deviceGuard).
+ */
+export async function rotateDeviceCredential(prisma: PrismaClient, me: { deviceId: string; shopId: string; credentialHash: string }) {
+  const next = generateDeviceCredential();
+  const now = new Date();
+  return prisma.$transaction(async (tx) => {
+    const res = await tx.shopDevice.updateMany({
+      where: { id: me.deviceId, shopId: me.shopId, status: 'ACTIVE' },
+      data: {
+        credentialHash: next.hash,
+        credentialVersion: { increment: 1 },
+        previousCredentialHash: me.credentialHash,
+        previousCredentialValidUntil: new Date(now.getTime() + CREDENTIAL_ROTATION_GRACE_SECONDS * 1000),
+        credentialRotatedAt: now
+      }
+    });
+    if (res.count !== 1) throw new AppError(401, 'UNAUTHORIZED', 'Device authentication required');
+    await audit(tx, {
+      shopId: me.shopId, actorUserId: null, actorType: 'SHOP_DEVICE', actorDeviceId: me.deviceId,
+      action: 'device.credentialRotated', targetType: 'ShopDevice', targetId: me.deviceId
+    });
+    const row = await tx.shopDevice.findUniqueOrThrow({ where: { id: me.deviceId }, select: { credentialVersion: true } });
+    return { deviceCredential: next.secret, credentialVersion: row.credentialVersion, previousValidForSeconds: CREDENTIAL_ROTATION_GRACE_SECONDS };
   });
 }

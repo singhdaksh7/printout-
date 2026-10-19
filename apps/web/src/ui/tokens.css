@@ -33,7 +33,6 @@
   --pb-err-soft: #FDE8E6;
   --pb-info-soft: #E5ECFB;
   --pb-link-visited: #7A3A12;   /* DERIVED: orange-ink darkened for visited links (8.4:1 on white) */
-  --pb-link-visited: #7A3A12;   /* DERIVED: orange-ink darkened for visited links (8.4:1 on white) */
   --pb-scrim: rgba(20, 33, 61, 0.55);   /* DERIVED: navy at 55% behind modals and drawers */
 
   /* Typography */

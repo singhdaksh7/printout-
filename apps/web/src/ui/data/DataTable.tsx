@@ -53,15 +53,18 @@ export function DataTable<R>({ columns, rows, getRowKey, caption, selectedKey, h
 
   if (narrow && renderCard && !loading) {
     return (
-      <div className={cx('pb-cardlist', className)} role="list" aria-label={caption}>
-        {rows.map((r) => {
-          const key = getRowKey(r);
-          return (
-            <div key={key} role="listitem" {...rowAttributes?.(r)} className={cx('pb-cardlist__item', key === selectedKey && 'is-selected', highlighted.has(key) && 'is-new')}>
-              {renderCard(r)}
-            </div>
-          );
-        })}
+      <div className={cx('pb-cardlist', className)}>
+        {/* the list holds only list items; the footer (Load more) sits beside it, not inside it (aria-required-children) */}
+        <div className="pb-cardlist__rows" role="list" aria-label={caption}>
+          {rows.map((r) => {
+            const key = getRowKey(r);
+            return (
+              <div key={key} role="listitem" {...rowAttributes?.(r)} className={cx('pb-cardlist__item', key === selectedKey && 'is-selected', highlighted.has(key) && 'is-new')}>
+                {renderCard(r)}
+              </div>
+            );
+          })}
+        </div>
         {footer}
       </div>
     );

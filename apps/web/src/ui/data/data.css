@@ -21,7 +21,7 @@
 @keyframes pb-row-flash { 0%, 80% { background: var(--pb-orange-soft); } 100% { background: transparent; } }
 .pb-table-footer { padding: var(--pb-space-3) var(--pb-space-4); border-top: 1px solid var(--pb-n100); }
 
-.pb-cardlist { display: flex; flex-direction: column; gap: var(--pb-space-3); }
+.pb-cardlist, .pb-cardlist__rows { display: flex; flex-direction: column; gap: var(--pb-space-3); }
 .pb-cardlist__item { background: var(--pb-white); border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-lg); padding: var(--pb-space-4); }
 
 .pb-loadmore { display: flex; flex-direction: column; align-items: center; gap: var(--pb-space-2); padding: var(--pb-space-3); }
