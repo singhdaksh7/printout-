@@ -53,6 +53,12 @@ Computed with the WCAG 2.1 formula; the tests in `ui/__tests__/foundations.test.
 
 The design's n500 secondary text only passes on white. Components therefore use `var(--pb-text-secondary)`: n500 on white surfaces (cards, tables, modals, inputs) and n700 on the n50 canvas, on tinted rows and inside the segmented track; inside banners it inherits the banner colour. Use `.pb-caption` / `.pb-muted` for secondary text and the variable resolves itself.
 
+### Focus rings, orange usage and the explicit AA audit
+
+- **Orange is the single primary action colour** (`--pb-orange` #E8772E fill, navy label, 5.4:1). Orange never carries text on light surfaces: text and links use `--pb-orange-ink` #B04E17 (5.1:1 on paper). On navy, orange text and the "Buddy" half of the wordmark use `--pb-orange` (5.4:1 on navy). Navy (`--pb-navy`) stays the sidebar and navigation background.
+- **Focus ring.** Default: 3px `--pb-info` ring, offset 2px (6.4:1 on white/paper). Inside the navy sidebar the info-blue ring is only 2.47:1 (below the 3:1 non-text minimum), so rings there are white (`.pb-theme .pb-sidebar :where(a, button):focus-visible`, 16:1). Found by the contrast audit below.
+- **`e2e/12-wcag-contrast.spec.ts`** is an audit independent of axe. On 26 screens and states (customer idle, options, validation error, tracking, not found; shop login with error, queue, notifications panel, order detail, history, revenue, devices, rate card with validation, QR, settings; admin login, dashboard, shops, create shop, orders, subscriptions, plans, audit, account) it computes, for every visible text element (1,023 in the last run), the contrast against the alpha-blended effective background and requires 4.5:1 (3:1 for large text), exempting disabled controls (WCAG 1.4.3). It also checks the focus ring on the customer page and both navy sidebars (3:1, at least 2px) and the invalid-field border colour. The report is written to `docs/visual-qa/contrast-report.json`.
+
 ### Known deviations from the PDFs (for design review)
 
 - **Chip radius.** The token card says chips use `sm 6`, but every printed chip is a fully rounded pill. The code follows the printed chips (pill).
@@ -117,7 +123,7 @@ Every component is TypeScript-typed, uses native elements, and has tests in `ui/
 | `Drawer` | `title`, `header`, `footer`, `initialFocusRef`, `busy` | right panel (full screen on phones), same focus handling |
 | `DataTable` | `columns`, `rows`, `getRowKey`, `caption`, `selectedKey`, `highlightKeys`, `onRowClick`, `loading`, `loadingLabel`, `empty`, `renderCard`, `cardsBelow`, `rowAttributes` | captioned table in a keyboard-scrollable region; cards below 768px when `renderCard` is given (never both in the DOM); skeleton rows; row click ignores clicks on inner buttons |
 | `LoadMore` | `hasMore`, `loading`, `onClick`, `error`, `endLabel`, `summary` | cursor pagination control |
-| `Sidebar`, `BottomNav`, `TopBar`, `AppShell`, `BrandLogo` | `NavItem {to,label,shortLabel,icon,end,count,showZero,tag,alert,comingSoon}`; `BottomNav` takes `items` (visible tabs) and `moreItems` (a "More" button opening a focus-trapped sheet; closes on Escape, scrim or navigation and returns focus); `BrandLogo {sub,onDark}` is the orange tile + wordmark used on sign-in pages, sidebars and the customer header; `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
+| `Sidebar`, `BottomNav`, `TopBar`, `AppShell`, `BrandLogo` | `NavItem {to,label,shortLabel,icon,end,count,showZero,tag,alert,comingSoon}`; `BottomNav` takes `items` (visible tabs) and `moreItems` (a "More" button opening a focus-trapped sheet; closes on Escape, scrim or navigation and returns focus); `BrandLogo {sub,onDark,compact}` is the approved Buddy printer mark + wordmark ("Buddy" in orange-ink, or orange on navy) used on sign-in pages, sidebars and the customer header, and `compact` is the simple mark alone for narrow spaces; `BrandMark {variant:'full'|'simple',tile:'orange'|'navy',size,title}` is the mark itself (full from 64 px, simple at 48 px and below, as in `1.pdf` p1); `onNavigate` can cancel (unsaved-changes guard) | `comingSoon` items are not links and are announced as such; sidebar becomes an icon rail at 768-1023px, `BottomNav` replaces it under 768px; skip link and `main` landmark |
 | Charts | `BarChart`, `HBarList`, `HeartbeatStrip`, `SegmentedBar` | SVG/CSS, no dependency; each has a text alternative (hidden data table, list text, or summary). `BarDatum.tooltip` adds SVG `<title>` hover text. The Analytics order value report (`shop/RevenuePanel.tsx`) pairs the chart with an exact data table in a keyboard-scrollable region (`role=region`, `tabIndex=0`) |
 
 ### Domain presentation (`ui/domain`)
@@ -135,7 +141,7 @@ Thin wrappers that only word and colour values the caller already has: no fetchi
 
 ### Not built (no verified use yet)
 
-`Stepper` (agent setup is out of scope), `CodeField` (OTP/2FA out of scope), `FilterChip`, `PlanCard`, numbered `Pagination`, `Logo` (approved source files not supplied). Add them when a screen needs them.
+`Stepper` (agent setup is out of scope), `CodeField` (OTP/2FA out of scope), `FilterChip`, `PlanCard`, numbered `Pagination`, (the logo is `BrandMark`/`BrandLogo`, traced from the approved raster in `1.pdf` p1; static copies live in `apps/web/public/brand-mark*.svg`, `icon.svg` is the simple mark for the favicon and `icon-192/512.png` the full mark). Add them when a screen needs them.
 
 ## Migration
 
@@ -173,9 +179,10 @@ Rules: keep routes, API calls, auth and business logic as they are; features wit
 | Check | Command | Covers |
 |---|---|---|
 | Types | `pnpm --filter @printout/web check` | all of `apps/web` |
-| Unit and component tests | `pnpm --filter @printout/web test` | roles, keyboard, loading, ids and descriptions, token values and contrast, showcase smoke test |
+| Unit and component tests | `pnpm --filter @printout/web test` (capped at 4 workers with 30 s test and 5 s Testing Library async timeouts: page tests render whole screens in jsdom and timed out under CPU contention at the defaults) | roles, keyboard, loading, ids and descriptions, token values and contrast, showcase smoke test |
 | Production bundle | `pnpm --filter @printout/web build && pnpm --filter @printout/web verify:bundle` | fails if the showcase leaks into `dist` (negative-controlled against a development build) |
 | UI browser checks | `pnpm e2e:ui` | axe WCAG 2.1 A/AA at 1280, 855 and 375px, with the modal and drawer open; fonts load; focus ring; focus trap; reduced motion; no horizontal scroll; screenshots into `e2e-ui/artifacts/` |
+| Visual QA capture (opt-in) | `VQA_LABEL=after pnpm e2e -g "visual QA"` | every Customer, Shop and Admin route at 360, 390, 768 and 1440 px: screenshot, axe WCAG 2.1 A/AA, horizontal-overflow and console-error capture into `docs/visual-qa/<label>/` (full-size PNGs are git-ignored; `compare/*.jpg` and `report.json` are committed) |
 | App end-to-end | `pnpm e2e` | existing suites plus `09-shop-stage1-ui` (axe on the migrated region and screenshots of every queue/detail state at 1440 and 390px). Needs Docker Postgres: it truncates the private `printout_e2e` database only. If port 55433 is unavailable (Windows can reserve it) run `E2E_DB_PORT=<port> E2E_PG_CONTAINER=<disposable postgres container> pnpm e2e` against a throwaway database with the migrations applied. |
 
 Screenshots are reviewed by eye against the matching PDF page (same widths: 1280 desktop, 855 tablet as in `2.pdf` p20, 375 phone as in `3.pdf` p23-24); the designs use sample data, so layout, spacing, colour and type are compared, not pixels.

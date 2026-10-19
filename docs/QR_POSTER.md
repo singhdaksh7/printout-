@@ -63,4 +63,5 @@ Margins: 12 mm (A4) and 10 mm (A5) are kept clear on every side, so home printer
 
 ## Branding
 
-The mark is isolated in `poster/brand.ts`. The UI Branding work has not merged to `development` at the time of writing, so the poster uses the product's current mark. When an approved logo lands on `development`, update `brand.ts` (and re-run the poster tests); nothing else changes.
+The mark is isolated in `poster/brand.ts`. It is reconciled with the approved Buddy printer logo (PR #19, docs/design/1.pdf p1), matching the product identity across PDF, PNG and live preview.
+

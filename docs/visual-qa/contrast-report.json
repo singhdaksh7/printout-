@@ -1,0 +1,31 @@
+{
+ "textElementsChecked": {
+  "customer landing": 11,
+  "customer options and quote": 42,
+  "customer validation error": 33,
+  "customer tracking": 26,
+  "customer not found": 4,
+  "shop login": 6,
+  "shop login error": 8,
+  "shop queue": 832,
+  "shop notifications panel": 914,
+  "shop order detail": 65,
+  "shop history": 361,
+  "shop revenue": 187,
+  "shop devices": 31,
+  "shop rate card": 42,
+  "shop QR": 33,
+  "shop settings": 28,
+  "shop rate card validation": 44,
+  "admin login": 6,
+  "admin dashboard": 101,
+  "admin shops": 31,
+  "admin create shop": 27,
+  "admin orders": 169,
+  "admin subscriptions": 31,
+  "admin plans": 22,
+  "admin audit log": 71,
+  "admin account": 50
+ },
+ "violations": []
+}
