@@ -18,6 +18,8 @@ export const DEVICE_CREDENTIAL_PREFIX = 'pbd_';
 const MAX_CREDENTIAL_LENGTH = 100;
 
 export interface DeviceContext {
+  /** sha256 of the credential presented on THIS request (used by rotation to keep it valid for a short grace period). */
+  credentialHash: string;
   deviceId: string;
   shopId: string;
   platform: DevicePlatform;
@@ -47,12 +49,21 @@ export function deviceGuard(ctx: AppContext) {
     const raw = header.slice('Bearer '.length).trim();
     if (!raw.startsWith(DEVICE_CREDENTIAL_PREFIX) || raw.length > MAX_CREDENTIAL_LENGTH) throw unauthorized();
     const hash = hashDeviceCredential(raw);
-    const device = await ctx.prisma.shopDevice.findUnique({
-      where: { credentialHash: hash },
-      include: { shop: { select: { status: true, subscription: { select: { status: true } } } } }
-    });
-    if (!device) throw unauthorized();
-    const a = Buffer.from(device.credentialHash, 'hex');
+    const include = { shop: { select: { status: true, subscription: { select: { status: true } } } } } as const;
+    let device = await ctx.prisma.shopDevice.findUnique({ where: { credentialHash: hash }, include });
+    let viaPrevious = false;
+    if (!device) {
+      // Rotation grace: the superseded credential works until previousCredentialValidUntil (the new one may not have arrived).
+      const prev = await ctx.prisma.shopDevice.findFirst({
+        where: { previousCredentialHash: hash, previousCredentialValidUntil: { gt: new Date() } },
+        include
+      });
+      if (!prev) throw unauthorized();
+      device = prev;
+      viaPrevious = true;
+    }
+    const stored = viaPrevious ? device.previousCredentialHash! : device.credentialHash;
+    const a = Buffer.from(stored, 'hex');
     const b = Buffer.from(hash, 'hex');
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw unauthorized();
     if (device.status !== 'ACTIVE' || device.revokedAt) throw new AppError(401, 'DEVICE_REVOKED', 'This device has been disconnected');
@@ -61,7 +72,14 @@ export function deviceGuard(ctx: AppContext) {
     if (!subscriptionAllowsIntake(device.shop.subscription)) {
       throw new AppError(403, 'SUBSCRIPTION_INACTIVE', "This shop's subscription is not active");
     }
-    request.device = { deviceId: device.id, shopId: device.shopId, platform: device.platform, name: device.name };
+    // First use of the current credential proves the new one arrived: the old one dies immediately.
+    if (!viaPrevious && device.previousCredentialHash) {
+      await ctx.prisma.shopDevice.updateMany({
+        where: { id: device.id, credentialHash: hash },
+        data: { previousCredentialHash: null, previousCredentialValidUntil: null }
+      });
+    }
+    request.device = { credentialHash: hash, deviceId: device.id, shopId: device.shopId, platform: device.platform, name: device.name };
   };
 }
 

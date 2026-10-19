@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import './windows-printing.css';
 import {
-  createPairingCode, describeError, listDevices, renameDevice, revokeDevice,
-  type DeviceView, type PairingCode
+  createPairingCode, describeError, listDevices, renameDevice, revokeDevice, updatePrinter,
+  type DeviceView, type PairingCode, type PrinterView
 } from '../lib/shop-api';
 import { formatCountdown } from '../lib/format';
 import { Banner, Button, Card, Chip, EmptyState, Modal, PresenceChip, Skeleton, TextField, buttonClass, useToast, type PresenceKind } from '../ui';
@@ -49,7 +50,7 @@ export default function DevicesPage() {
   } else {
     body = (
       <ul className="dev-list" aria-label="Printing devices">
-        {devices.map((d) => <DeviceCard key={d.id} d={d} onRename={() => setRenaming(d)} onRevoke={() => setRevoking(d)} />)}
+        {devices.map((d) => <DeviceCard key={d.id} d={d} onRename={() => setRenaming(d)} onRevoke={() => setRevoking(d)} onChanged={() => load(true)} />)}
       </ul>
     );
   }
@@ -74,7 +75,7 @@ export default function DevicesPage() {
   );
 }
 
-function DeviceCard({ d, onRename, onRevoke }: { d: DeviceView; onRename: () => void; onRevoke: () => void }) {
+function DeviceCard({ d, onRename, onRevoke, onChanged }: { d: DeviceView; onRename: () => void; onRevoke: () => void; onChanged: () => void }) {
   const revoked = d.status === 'REVOKED' || d.presence === 'REVOKED';
   const presence = revoked ? 'REVOKED' : d.presence;
   return (
@@ -95,6 +96,7 @@ function DeviceCard({ d, onRename, onRevoke }: { d: DeviceView; onRename: () => 
         {d.appVersion && <div><dt>App version</dt><dd>{d.appVersion}</dd></div>}
         {revoked && d.revokedAt && <div><dt>Disconnected</dt><dd title={dateTime(d.revokedAt)}>{dateOnly(d.revokedAt)}</dd></div>}
       </dl>
+      {!revoked && d.platform === 'WINDOWS' && <PrinterList device={d} onChanged={onChanged} />}
       {!revoked && (
         <div className="dev-actions">
           <Button variant="outline" size="sm" onClick={onRename} aria-label={`Rename ${d.name}`}>Rename</Button>
@@ -227,5 +229,59 @@ function AddDeviceModal({ onClose }: { onClose: () => void }) {
       </ol>
       <p className="pb-muted">The code works once and expires soon. Anyone with the code can connect a device to your shop, so enter it only on your own device.</p>
     </Modal>
+  );
+}
+
+const CONNECTIVITY: Record<PrinterView['connectivity'], { tone: 'ok' | 'warn' | 'err' | 'neutral'; label: string }> = {
+  ONLINE: { tone: 'ok', label: 'Ready' }, OFFLINE: { tone: 'warn', label: 'Offline' }, ERROR: { tone: 'err', label: 'Needs attention' }, UNKNOWN: { tone: 'neutral', label: 'Unknown' }
+};
+
+/** Printers reported by a Windows computer. Only the shop owner can authorize one or make it the default. */
+function PrinterList({ device, onChanged }: { device: DeviceView; onChanged: () => void }) {
+  const printers = device.printers ?? [];
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function change(p: PrinterView, patch: { authorized?: boolean; isDefault?: boolean }) {
+    if (busy) return;
+    setBusy(p.id); setError(null);
+    try { await updatePrinter(device.id, p.id, patch); onChanged(); } catch (e) { setError(describeError(e)); } finally { setBusy(null); }
+  }
+  return (
+    <div className="dev-printers" data-testid="printer-list">
+      <h3 className="pb-h3">Printers on this computer</h3>
+      {error && <Banner tone="err" onDismiss={() => setError(null)}>{error}</Banner>}
+      {printers.length === 0 ? (
+        <p className="pb-muted">No printers reported yet. Start the Printout Buddy agent on this computer.</p>
+      ) : (
+        <ul className="dev-printer-list" aria-label={`Printers on ${device.name}`}>
+          {printers.map((p) => {
+            const c = p.present ? CONNECTIVITY[p.connectivity] : { tone: 'neutral' as const, label: 'Not found' };
+            const caps = [p.supportsColour ? 'Colour' : 'Black & white', p.supportsDuplex ? 'Two-sided' : 'One-sided', ...(p.paperSizes.includes('A4') ? ['A4'] : [])].join(' · ');
+            return (
+              <li key={p.id} className="dev-printer" data-testid="printer">
+                <div className="dev-printer__head">
+                  <strong className="pb-wrap">{p.name}</strong>
+                  <Chip size="sm" tone={c.tone}>{c.label}</Chip>
+                  {p.isDefault && <Chip size="sm" tone="orange" dot={false}>Default</Chip>}
+                  {p.authorized && !p.isDefault && <Chip size="sm" tone="info" dot={false}>Authorized</Chip>}
+                </div>
+                <p className="pb-muted">{caps}{p.statusDetail && p.connectivity !== 'ONLINE' ? ` · ${p.statusDetail}` : ''}</p>
+                <div className="dev-actions">
+                  {!p.authorized ? (
+                    <Button size="sm" variant="outline" disabled={!!busy || !p.present} onClick={() => void change(p, { authorized: true })} aria-label={`Authorize ${p.name}`}>Authorize</Button>
+                  ) : (
+                    <>
+                      {!p.isDefault && <Button size="sm" variant="outline" disabled={!!busy || !p.present} onClick={() => void change(p, { isDefault: true })} aria-label={`Make ${p.name} the default`}>Make default</Button>}
+                      <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void change(p, { authorized: false })} aria-label={`Stop using ${p.name}`}>Stop using</Button>
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="pb-muted">The agent only prints on printers you authorize. "Print initiated" means Windows accepted the job; it does not confirm paper came out.</p>
+    </div>
   );
 }

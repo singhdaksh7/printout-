@@ -89,6 +89,25 @@ The new address is **not** verified (no confirmation link or code). Reviewed 202
 
 Other limitations (accepted): failed-password counters are per API process like the login throttle; an authenticated, re-authenticated admin can still learn whether an address is taken from the generic 409 (throttled); other devices learn their session ended only on their next API call (no push); 2FA/OTP is out of scope.
 
+## Windows print agent (security review, 2026-10-17)
+
+Scope: `apps/api/src/domain/print-jobs.ts`, `routes/device-print.ts`, `routes/shop-print-jobs.ts`, `device-auth.ts` (rotation), `apps/windows-agent`. Design: [WINDOWS_AGENT_ARCHITECTURE.md](WINDOWS_AGENT_ARCHITECTURE.md), usage: [WINDOWS_AGENT.md](WINDOWS_AGENT.md).
+
+| Area | Control | Evidence |
+| --- | --- | --- |
+| Authentication | Same `pbd_` bearer as other devices, sha256 at rest, row read every request. Windows-only routes reject Android devices (409). | `windows-print-agent.test.ts` |
+| Isolation | Jobs are bound to `(shopId, deviceId, printerId)` at enqueue. Claim, download and progress match all three plus the lease; shop B gets 404 for shop A's printers, orders, jobs. The device never supplies shop/device ids. | "tenant isolation" tests (API and engine-vs-API) |
+| Authorization | Only the shop owner authorizes a printer or sets the default; a device credential cannot (no route). De-authorizing stops claims. | printer tests |
+| Revocation | Next request after Disconnect is 401 `DEVICE_REVOKED`; agent stops and deletes its credential. | API + integration tests |
+| Rotation | `POST /device/credential/rotate`; old hash valid 10 min only until the new one is first used. | rotation tests |
+| Documents | Job-scoped download, lease holder only, only while CLAIMED/DOWNLOADING, URL <= 120 s, never in claim/list responses. Agent: https only, no redirects, streamed size cap, sha256 check, magic bytes must match declared MIME, encrypted PDF rejected, unsupported types refused before the spooler. | download + validation tests |
+| Physical side effects | SUBMITTING intent is acknowledged by the server and journaled (fsync) before the spooler is touched; ambiguity -> NEEDS_RECONCILIATION; duplicates need explicit acknowledgement; one job in flight per device; offline printers refused up front. No state means "printed". | crash-recovery matrix |
+| Injection | `execFile` with argv arrays, no shell; PowerShell scripts are static and take data on stdin; renderer settings are built from enums/integers; temp names derive from a validated job id pattern. | unit tests |
+| Local secrets | DPAPI (CurrentUser + entropy), atomic file write, data dir ACL-restricted via `icacls`, logs redact credentials, signed-URL queries and pairing codes. | Windows smoke tests |
+| Rate limits | Device read/mutation limiters apply; polling uses ~12 requests/min of the 120/min budget. | - |
+
+Accepted risks / not covered: the unsigned executable (SmartScreen warning; verify the published SHA-256); the PDF renderer is a third-party binary pinned only if the operator sets `sha256`; a compromised Windows user account can use the DPAPI credential; no push channel (5 s polling); `DevicePrintJob` rows are kept (no purge job yet); real-printer behaviour is unverified.
+
 ## Dependency advisories
 
 See [DEPENDENCIES.md](DEPENDENCIES.md): 3 production advisories (deepmerge-ts via the Prisma CLI, react-router x2) are unreachable in this app and need major upgrades; dev-only tooling advisories are listed there too. Deployment hardening evidence (containers, Caddy, backups) is in [DEPLOYMENT.md](DEPLOYMENT.md) and [PROD_SMOKE.md](PROD_SMOKE.md).

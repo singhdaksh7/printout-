@@ -99,7 +99,7 @@ describe('Phase 2 device foundation: full flow', () => {
     list = (await call(app, owner, 'GET', '/shop/devices')).json().data.devices;
     expect(list[0]).toMatchObject({ id: state.deviceId, presence: 'ONLINE', status: 'ACTIVE', platform: 'ANDROID', appVersion: '1.0.1', revokedAt: null });
     expect(Object.keys(list[0]).sort()).toEqual([
-      'appVersion', 'createdAt', 'id', 'lastSeenAt', 'name', 'platform', 'presence', 'revokedAt', 'status'
+      'appVersion', 'createdAt', 'id', 'lastSeenAt', 'name', 'platform', 'presence', 'printers', 'revokedAt', 'status'
     ]);
     const renamed = await patch(`/shop/devices/${state.deviceId}`, { name: 'Front desk' });
     expect(renamed.statusCode).toBe(200);
