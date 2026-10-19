@@ -110,3 +110,27 @@ export const changeAdminEmail = (body: { currentPassword: string; newEmail: stri
   shopRequest<{ email: string; signedOut: true }>('/admin/account/email', { method: 'POST', body });
 export const changeAdminPassword = (body: { currentPassword: string; newPassword: string }) =>
   shopRequest<{ signedOut: true }>('/admin/account/password', { method: 'POST', body });
+
+// ---- two-factor authentication (Account settings > Security) ---------------------------------------------
+export interface TwoFactorStatus {
+  /** False when the server has no encryption key configured: enrollment is unavailable. */
+  available: boolean;
+  enabled: boolean;
+  enrolledAt: string | null;
+  recoveryCodesRemaining: number;
+  recoveryCodesAcknowledged: boolean;
+  enrollmentPending: boolean;
+}
+/** Contains the TOTP secret. Shown once while enrolling; never stored, logged or sent anywhere else. */
+export interface TwoFactorEnrollment { issuer: string; accountName: string; otpauthUri: string; manualKey: string; expiresInSeconds: number }
+export const getTwoFactorStatus = (signal?: AbortSignal) => shopRequest<TwoFactorStatus>('/admin/account/2fa', { signal: signal as AbortSignal });
+export const startTwoFactorEnrollment = (body: { currentPassword: string }) =>
+  shopRequest<TwoFactorEnrollment>('/admin/account/2fa/enroll', { method: 'POST', body });
+/** Returns the recovery codes ONCE. */
+export const confirmTwoFactorEnrollment = (body: { code: string }) =>
+  shopRequest<{ enabledAt: string; recoveryCodes: string[] }>('/admin/account/2fa/enroll/verify', { method: 'POST', body });
+export const acknowledgeRecoveryCodes = () => shopRequest<void>('/admin/account/2fa/recovery-codes/acknowledge', { method: 'POST', body: {} });
+export const regenerateRecoveryCodes = (body: { currentPassword: string; code: string }) =>
+  shopRequest<{ recoveryCodes: string[] }>('/admin/account/2fa/recovery-codes', { method: 'POST', body });
+export const disableTwoFactor = (body: { currentPassword: string; method: 'totp' | 'recovery'; code: string }) =>
+  shopRequest<{ enabled: false }>('/admin/account/2fa/disable', { method: 'POST', body });

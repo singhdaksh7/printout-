@@ -1,7 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { ApiError, setCsrfToken } from '../lib/api';
-import { fetchSession, login as apiLogin, logout as apiLogout, setUnauthorizedHandler, type SessionData } from '../lib/shop-api';
+import {
+  cancelSecondFactor as apiCancelSecondFactor, fetchSession, isTwoFactorRequired, login as apiLogin, logout as apiLogout, setUnauthorizedHandler,
+  verifySecondFactor as apiVerifySecondFactor, type LoginResult, type SecondFactorMethod, type SessionData
+} from '../lib/shop-api';
 import { Button } from '../ui';
 
 type AuthState =
@@ -12,7 +15,12 @@ type AuthState =
 
 interface AuthApi {
   state: AuthState;
-  login(email: string, password: string): Promise<SessionData>;
+  /** Resolves with a session, or with `twoFactorRequired` when an admin must still enter a code (no session exists yet). */
+  login(email: string, password: string): Promise<LoginResult>;
+  /** Completes a pending admin sign-in with an authenticator or recovery code. */
+  completeSecondFactor(method: SecondFactorMethod, code: string): Promise<SessionData & { recoveryCodesRemaining?: number }>;
+  /** Abandons the pending second-factor step. */
+  cancelSecondFactor(): Promise<void>;
   logout(): Promise<void>;
   /** Drops the local session WITHOUT calling the API (the server already ended it, e.g. after a credential change). */
   endSession(): void;
@@ -52,9 +60,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const s = await apiLogin(email, password);
+    if (isTwoFactorRequired(s)) return s; // not signed in yet
     setCsrfToken(s.csrfToken);
     setState({ status: 'authed', session: s });
     return s;
+  }, []);
+  const completeSecondFactor = useCallback(async (method: SecondFactorMethod, code: string) => {
+    const s = await apiVerifySecondFactor(method, code);
+    setCsrfToken(s.csrfToken);
+    setState({ status: 'authed', session: s });
+    return s;
+  }, []);
+  const cancelSecondFactor = useCallback(async () => {
+    try { await apiCancelSecondFactor(); } catch { /* the challenge expires by itself */ }
   }, []);
   const logout = useCallback(async () => {
     try { await apiLogout(); } catch { /* cookie may already be invalid; clear locally regardless */ }
@@ -64,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const endSession = useCallback(() => { setCsrfToken(null); setState({ status: 'anon' }); }, []);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  const value = useMemo(() => ({ state, login, logout, endSession, retry }), [state, login, logout, endSession, retry]);
+  const value = useMemo(() => ({ state, login, completeSecondFactor, cancelSecondFactor, logout, endSession, retry }), [state, login, completeSecondFactor, cancelSecondFactor, logout, endSession, retry]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

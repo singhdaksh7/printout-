@@ -89,17 +89,66 @@ model Shop {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  shopId       String?
-  shop         Shop?        @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  email        String       @unique
-  displayName  String
-  passwordHash String
-  role         Role
-  sessions     Session[]
-  memberships  Membership[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id              String                @id @default(cuid())
+  shopId          String?
+  shop            Shop?                 @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  email           String                @unique
+  displayName     String
+  passwordHash    String
+  role            Role
+  sessions        Session[]
+  memberships     Membership[]
+  twoFactor       AdminTwoFactor?
+  recoveryCodes   AdminRecoveryCode[]
+  loginChallenges AdminLoginChallenge[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+}
+
+/// Platform-admin TOTP second factor. One row per admin. `enabledAt` is NULL while an enrollment is pending (secret
+/// generated, no valid code yet): a pending row never challenges a login. `secretEnc` is AES-256-GCM (see src/two-factor/crypto.ts).
+model AdminTwoFactor {
+  userId        String    @id
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretEnc     String
+  /// Fingerprint (not the value) of the key that sealed secretEnc; lets operators see which rows still use an old key.
+  keyId         String
+  enabledAt     DateTime?
+  /// Highest TOTP time-step already accepted: a code for a step <= this is a replay and is refused.
+  lastUsedStep  BigInt    @default(0)
+  recoveryAckAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+/// Single-use recovery codes. Only an Argon2id hash is stored; the plaintext is shown once at generation.
+model AdminRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, usedAt])
+}
+
+/// Short-lived pending sign-in: the password was verified, the second factor was not. It is NOT a session: no route
+/// accepts it as authentication. Only the SHA-256 of the cookie token is stored.
+model AdminLoginChallenge {
+  id           String    @id @default(cuid())
+  tokenHash    String    @unique
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Fingerprint of the password hash at issue time; a password change makes the challenge unusable.
+  credentialFp String
+  attempts     Int       @default(0)
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Session {

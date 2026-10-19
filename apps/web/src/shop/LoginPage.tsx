@@ -37,6 +37,8 @@ export default function LoginPage() {
     setError(null);
     try {
       const s = await login(email.trim(), password);
+      // An admin who signed in on the shop page with two-factor on: the code step lives on the admin sign-in screen.
+      if ('twoFactorRequired' in s) { navigate('/admin/login', { replace: true, state: { resumeTwoFactor: true } }); return; }
       if (s.user.role === 'PLATFORM_ADMIN') navigate('/admin', { replace: true });
       else navigate(from && from.startsWith('/shop') && !from.startsWith('/shop/login') ? from : '/shop', { replace: true });
     } catch (err) {

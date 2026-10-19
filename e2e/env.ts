@@ -34,5 +34,7 @@ export const serverEnv: Record<string, string> = {
   LOGIN_RATE_LIMIT_MAX: '1000',
   LOGIN_FAIL_MAX: '1000',
   PUBLIC_RATE_LIMIT_MAX: '5000',
-  SSE_HEARTBEAT_MS: '5000'
+  SSE_HEARTBEAT_MS: '5000',
+  // Disposable test-only key for the admin two-factor e2e.
+  TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString('base64')
 };

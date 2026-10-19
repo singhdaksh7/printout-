@@ -1,9 +1,11 @@
-import { forwardRef, useEffect, useRef, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRef, useState, type FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import TwoFactorSection from './TwoFactorSection';
 import { ApiError } from '../lib/api';
 import { changeAdminEmail, changeAdminPassword, fmtDate, getAccount, type AdminAccount } from '../lib/admin-api';
 import { useAuth } from '../shop/auth';
-import { Banner, Button, Card, CardHeader, KeyValueList, TextField, type TextFieldProps } from '../ui';
+import { Button, Card, CardHeader, KeyValueList, TextField } from '../ui';
+import { FormError, PasswordField, useFocusAfterBusy } from './account-parts';
 import { LoadError, Loading, useLoad } from './ui';
 
 const MIN_PASSWORD = 12;
@@ -24,46 +26,6 @@ function mapError(e: unknown, fields: { current: string; email?: string; passwor
     if (e.status >= 500) return { message: 'The server had a problem. Nothing was changed. Please try again shortly.' };
   }
   return { message: 'Could not save your changes. Please try again.' };
-}
-
-/** TextField with a Show/Hide control. The toggle is a real button (keyboard + screen reader friendly), not an icon-only target. */
-const PasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'endAdornment'>>(function PasswordField({ label, disabled, ...rest }, ref) {
-  const [shown, setShown] = useState(false);
-  return (
-    <TextField
-      ref={ref}
-      label={label}
-      type={shown ? 'text' : 'password'}
-      disabled={disabled}
-      autoCapitalize="none"
-      spellCheck={false}
-      endAdornment={
-        <Button variant="ghost" size="sm" aria-pressed={shown} aria-label={`${shown ? 'Hide' : 'Show'} ${label.toLowerCase()}`} onClick={() => setShown((v) => !v)} disabled={disabled}>
-          {shown ? 'Hide' : 'Show'}
-        </Button>
-      }
-      {...rest}
-    />
-  );
-});
-
-/**
- * Focus that waits for the form to be re-enabled: a field is `disabled` while saving, and a disabled input cannot take
- * focus, so server-side field errors request focus here and it is applied once `busy` has dropped.
- */
-function useFocusAfterBusy(busy: boolean) {
-  const target = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    if (!busy && target.current) { target.current.focus(); target.current = null; }
-  }, [busy]);
-  return (el: HTMLInputElement | null) => { target.current = el; };
-}
-
-/** Form-level error region: focused when a non-field error appears so keyboard and screen-reader users land on it. */
-function FormError({ message }: { message: string | null }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (message) ref.current?.focus(); }, [message]);
-  return <div ref={ref} tabIndex={-1} className="ad-formerr">{message && <Banner tone="err">{message}</Banner>}</div>;
 }
 
 function EmailForm({ account, onChanged }: { account: AdminAccount; onChanged: () => void }) {
@@ -179,6 +141,7 @@ function PasswordForm({ account, onChanged }: { account: AdminAccount; onChanged
 export default function AccountPage() {
   const { logout, endSession } = useAuth();
   const navigate = useNavigate();
+  const recoveryUsed = (useLocation().state as { recoveryUsed?: number } | null)?.recoveryUsed;
   const { data, error, loading, reload } = useLoad((s) => getAccount(s), []);
   const [leaving, setLeaving] = useState(false);
 
@@ -223,6 +186,7 @@ export default function AccountPage() {
               <Button variant="outline" iconStart="log-out" onClick={signOut} loading={leaving}>Sign out</Button>
             </div>
           </Card>
+          <TwoFactorSection recoveryUsed={recoveryUsed} />
           <EmailForm account={data} onChanged={() => credentialsChanged('email')} />
           <PasswordForm account={data} onChanged={() => credentialsChanged('password')} />
         </>

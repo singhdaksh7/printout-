@@ -111,3 +111,31 @@ Accepted risks / not covered: the unsigned executable (SmartScreen warning; veri
 ## Dependency advisories
 
 See [DEPENDENCIES.md](DEPENDENCIES.md): 3 production advisories (deepmerge-ts via the Prisma CLI, react-router x2) are unreachable in this app and need major upgrades; dev-only tooling advisories are listed there too. Deployment hardening evidence (containers, Caddy, backups) is in [DEPLOYMENT.md](DEPLOYMENT.md) and [PROD_SMOKE.md](PROD_SMOKE.md).
+
+
+## Admin two-factor authentication (`feature/daksh-admin-2fa`)
+
+Operator guide: `docs/ADMIN_2FA.md`. Tests: `apps/api/test/two-factor-unit.test.ts`, `admin-two-factor.test.ts`, `admin-two-factor-cli.test.ts`, `apps/web/src/admin/__tests__/two-factor.test.tsx`, `e2e/12-admin-2fa.spec.ts`.
+
+| Control | Implementation |
+| --- | --- |
+| No parallel auth system | Extends `/auth/login` and the existing `Session`, CSRF, `LoginThrottle`, rate-limit and `AuditLog` machinery. |
+| Pending state is not a session | Separate table and cookie (`printout_2fa`, path-scoped). `authenticate()` never reads it; tested against every admin route. No CSRF token or user payload before the second factor. |
+| Secrets at rest | AES-256-GCM, per-seal IV, user id as AAD, key id in the blob, key in its own env var; rotation via `..._PREVIOUS` + `admin:2fa-rekey`. Missing/wrong key fails closed (503), never skips the check. |
+| Recovery codes | CSPRNG, ~49.5 bits, Argon2id at rest, plaintext shown once, atomic single use, regeneration replaces all. Never emailed or logged. |
+| Replay | `lastUsedStep` advanced by conditional UPDATE; concurrent identical codes: exactly one wins (tested with parallel challenges and parallel requests on one challenge). |
+| Brute force | 5 attempts per challenge (atomically reserved), per-admin budget (429), route limiter, password step throttled as before. Challenge TTL 5 min, single use. |
+| Reauthentication | Enroll/regenerate/disable require the current password; regenerate needs an authenticator code, disable a code or recovery code. |
+| Sessions | Enable/disable end other sessions; password/email change ends all sessions and destroys pending challenges (a credential fingerprint also voids races). |
+| Lost device | Operator-only CLI with typed confirmation, mandatory reason, audit row, no secret output, no key required; no email flow (email is unverified). |
+| Redaction | Log redaction for `code`, `secret`, `manualKey`, `otpauthUri`, `recoveryCodes`; audit metadata limited to method/reason/counts; tested by scanning logs, audit rows and error bodies. |
+
+Accepted / remaining: the per-admin 2FA counter and login throttles are in memory, per API process (single instance, as before); TOTP uses HMAC-SHA1 because authenticator apps universally support it; an attacker holding the database AND the encryption key could mint codes (keep them apart); 2FA is opt-in, not enforced; the setup key and QR are sent once over HTTPS in the enroll response; the enrollment code is consumed, so the first sign-in after enabling needs the next code; the API host clock defines the TOTP window (keep NTP on).
+
+### Admin 2FA: release-readiness addendum
+
+* **Downgrade:** an API from before this feature would ignore the second factor. Mitigated by the `tfa1$` password-hash wrapper while 2FA is enabled (old code fails closed). Rehearsed against the real previous build and covered by tests; procedure and limits in `docs/ADMIN_2FA.md` ("Downgrade risk and rollback guard").
+* **Secret scanning:** `.gitleaks.toml` no longer exempts any directory or file as a whole; each entry exempts one known fake value on one exact line in one file (path AND line must match). A genuine secret placed in a former exempt file is now reported (verified with a negative test).
+* **Encryption key:** never committed or logged (asserted in tests); backup, loss and rotation in `docs/ADMIN_2FA.md`.
+* **Single instance:** login, second-factor and route throttles are in memory per process and assume one API instance; database-enforced controls (attempts per challenge, replay, single-use) do not.
+* **Merge gate:** PR #27 stays open and unmerged until Release A (UI Branding + Shop Hours + QR Poster) is confirmed live; then synchronize with `development`, rerun CI and the security checks, and squash-merge through branch protection.
