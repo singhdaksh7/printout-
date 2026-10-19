@@ -1,0 +1,241 @@
+# One-time release coordinator for release "printout-ui-hours-qr-release-1" (docs/RELEASE_COORDINATOR.md).
+#   WAIT (3 feature PRs merged into development?) -> verify -> release PR development->main -> merge -> deploy -> mark complete.
+# Event driven: runs on GitHub, not on anyone's laptop. Safe to run any number of times: phase 1 is read-only, every later phase
+# is idempotent, and the persistent release identifier (git tags release-<id> / deployed-<id>) makes the release happen once.
+# DISARMED BY DEFAULT: nothing past the read-only gate runs until the repository variable RELEASE_COORDINATOR_ARMED is "true".
+name: Release coordinator
+
+on:
+  push:
+    branches: [development]
+  workflow_dispatch:
+    inputs:
+      stop_after:
+        description: 'Last phase to run (dry-run control). Real deployment additionally needs RELEASE_COORDINATOR_ARMED=true.'
+        type: choice
+        default: deploy
+        options: [gate, verify, release, deploy]
+
+permissions: {}
+
+# One coordinator run at a time; a newer trigger queues behind the running one and re-evaluates from scratch (never cancels a release mid-flight).
+concurrency:
+  group: release-coordinator
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  STOP_AFTER: ${{ github.event_name == 'workflow_dispatch' && inputs.stop_after || 'deploy' }}
+  ARMED: ${{ vars.RELEASE_COORDINATOR_ARMED == 'true' }}
+
+jobs:
+  gate:
+    name: Phase 1 - gate (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      state: ${{ steps.gate.outputs.state }}
+      dev_sha: ${{ steps.gate.outputs.dev_sha }}
+      release_sha: ${{ steps.gate.outputs.release_sha }}
+      feature_prs: ${{ steps.gate.outputs.feature_prs }}
+    steps:
+      - name: Only the development branch may run the coordinator
+        run: |
+          [ "$GITHUB_REF" = "refs/heads/development" ] || { echo "::error::the coordinator runs only from refs/heads/development (got $GITHUB_REF)"; exit 1; }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - id: gate
+        name: Evaluate merged pull request records
+        run: node .github/release/gate.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Record whether the coordinator is armed
+        run: |
+          echo "- Armed (RELEASE_COORDINATOR_ARMED): \`$ARMED\`; stop_after: \`$STOP_AFTER\`" >> "$GITHUB_STEP_SUMMARY"
+          case "${{ steps.gate.outputs.state }}" in
+            BLOCKED) echo "- BLOCKED: a new brand/logo asset has no explicit owner approval (label). Nothing was opened, merged or deployed." >> "$GITHUB_STEP_SUMMARY" ;;
+            WAITING) echo "- Waiting for the remaining features. Nothing was opened, merged or deployed." >> "$GITHUB_STEP_SUMMARY" ;;
+            COMPLETE) echo "- Release already completed; this coordinator is inert." >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
+
+  verify:
+    name: Phase 2 - combined verification
+    needs: gate
+    if: needs.gate.outputs.state == 'READY' && vars.RELEASE_COORDINATOR_ARMED == 'true' && (github.event_name != 'workflow_dispatch' || inputs.stop_after != 'gate')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      checks: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: printout, POSTGRES_PASSWORD: ci-disposable-password, POSTGRES_DB: postgres }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U printout" --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEV_SHA: ${{ needs.gate.outputs.dev_sha }}
+      PGUSER: printout
+      PGPASSWORD: ci-disposable-password
+      DB_ADMIN_URL: postgresql://printout:ci-disposable-password@localhost:5432/postgres
+      E2E_DB_PORT: '54871'
+      E2E_PG_CONTAINER: printout-e2e-pg
+      E2E_API_PORT: '3187'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { ref: '${{ needs.gate.outputs.dev_sha }}', fetch-depth: 0, persist-credentials: false }
+      - name: Development must still be the evaluated commit and must include all three features
+        run: |
+          tip="$(gh api "repos/$GITHUB_REPOSITORY/branches/development" --jq .commit.sha)"
+          [ "$tip" = "$DEV_SHA" ] || { echo "::error::development moved to $tip; a newer run will re-evaluate"; exit 1; }
+          echo "features (merged PRs verified in development history): ${{ needs.gate.outputs.feature_prs }}"
+      - name: Full development CI is green on this exact commit (all five required checks)
+        run: bash .github/release/wait-checks.sh "$DEV_SHA" 60
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - id: features
+        name: Feature test files exist (Order History, Admin Security, notifications, tenant isolation, revenue)
+        run: node .github/release/verify-features.mjs
+      - run: pnpm --filter @printout/api db:generate
+      - name: Migration history and upgrade path from main's schema
+        run: bash .github/release/verify-migrations.sh
+      - name: Feature unit and API tests (targeted, on a fresh migrated database)
+        env:
+          DATABASE_URL: postgresql://printout:ci-disposable-password@localhost:5432/printout_test?schema=public
+          TEST_DATABASE_URL: postgresql://printout:ci-disposable-password@localhost:5432/printout_test?schema=public
+          API_TESTS: ${{ steps.features.outputs.api_tests }}
+          WEB_TESTS: ${{ steps.features.outputs.web_tests }}
+        run: |
+          psql -h localhost -d postgres -c 'CREATE DATABASE printout_test'
+          pnpm --filter @printout/api exec prisma migrate deploy
+          pnpm --filter @printout/api exec vitest run $API_TESTS
+          pnpm --filter @printout/web exec vitest run $WEB_TESTS
+      - name: Start a disposable PostgreSQL for the end-to-end suite
+        run: |
+          docker run -d --name "$E2E_PG_CONTAINER" -e POSTGRES_USER=printout -e POSTGRES_PASSWORD=change-me \
+            -e POSTGRES_DB=printout_e2e -p "127.0.0.1:${E2E_DB_PORT}:5432" postgres:16-alpine
+          for _ in $(seq 1 30); do docker exec "$E2E_PG_CONTAINER" pg_isready -U printout -d printout_e2e && break; sleep 2; done
+      - name: Apply migrations to the e2e database
+        run: pnpm --filter @printout/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://printout:change-me@localhost:54871/printout_e2e?schema=public
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Combined end-to-end integration suite (all features together)
+        run: pnpm e2e
+      - name: Accessibility suite (axe, focus, overflow)
+        run: pnpm e2e:ui
+      - name: Security - production dependencies must have no critical advisory
+        run: pnpm audit --prod --audit-level=critical
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-verify-failure
+          path: |
+            e2e/test-results
+            e2e/artifacts
+            e2e-ui/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  release:
+    name: Phase 3 - release PR, merge, tag
+    needs: [gate, verify]
+    if: needs.verify.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.stop_after == 'release' || inputs.stop_after == 'deploy')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    environment: release-main
+    permissions:
+      contents: write        # create the release tag
+      pull-requests: write   # open and merge the release PR
+      checks: read
+      actions: write         # dispatch CI on main (merges made with GITHUB_TOKEN do not trigger push workflows)
+    outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { ref: '${{ needs.gate.outputs.dev_sha }}', persist-credentials: false }
+      - id: release
+        run: bash .github/release/release-pr.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_SHA: ${{ needs.gate.outputs.dev_sha }}
+          FEATURE_PRS: ${{ needs.gate.outputs.feature_prs }}
+
+  deploy:
+    name: Phase 4 - production deployment
+    needs: [gate, release]
+    # Runs after a fresh release, or resumes a previously tagged-but-undeployed release. Never from development.
+    if: >-
+      always() && vars.RELEASE_COORDINATOR_ARMED == 'true' && (github.event_name != 'workflow_dispatch' || inputs.stop_after == 'deploy') &&
+      (needs.release.result == 'success' || (needs.gate.outputs.state == 'RESUME_DEPLOY' && needs.release.result == 'skipped'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: production   # required reviewers + secrets live here; restrict deployment branches to development
+    permissions:
+      contents: read
+    outputs:
+      deployed_sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - id: sha
+        run: |
+          sha="${{ needs.release.outputs.release_sha || needs.gate.outputs.release_sha }}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no valid approved release SHA"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # Trusted code only: the deployment scripts come from the verified, tagged main release commit, never from development or a PR.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { ref: '${{ steps.sha.outputs.sha }}', persist-credentials: false }
+      - name: Scripts must come from a commit that is on main
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          st="$(gh api "repos/$GITHUB_REPOSITORY/compare/${{ steps.sha.outputs.sha }}...main" --jq .status)"
+          [ "$st" = ahead ] || [ "$st" = identical ] || { echo "::error::release SHA is not on main (compare: $st)"; exit 1; }
+      - name: Deploy the exact approved main release SHA to the VPS (existing Traefik compose project)
+        run: bash .github/release/deploy.sh
+        env:
+          RELEASE_SHA: ${{ steps.sha.outputs.sha }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_APP_DIR: ${{ vars.VPS_APP_DIR }}
+          VPS_COMPOSE_FILE: ${{ vars.VPS_COMPOSE_FILE }}
+          VPS_COMPOSE_PROJECT: ${{ vars.VPS_COMPOSE_PROJECT }}
+          VPS_ENV_FILE: ${{ vars.VPS_ENV_FILE }}
+          VPS_DEPLOY_SERVICES: ${{ vars.VPS_DEPLOY_SERVICES }}
+          VPS_MIGRATE_SERVICE: ${{ vars.VPS_MIGRATE_SERVICE }}
+          VPS_AGE_IDENTITY: ${{ vars.VPS_AGE_IDENTITY }}
+          PUBLIC_URLS: ${{ vars.PUBLIC_URLS }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+
+  complete:
+    name: Mark release complete
+    needs: [gate, deploy]
+    if: needs.deploy.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write   # the only job that writes the completion tag; it holds no production secrets
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { ref: '${{ needs.gate.outputs.dev_sha }}', persist-credentials: false }
+      - name: Tag deployed-<release id> (persistent, makes every later run a no-op)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.deploy.outputs.deployed_sha }}
+        run: |
+          id="$(jq -r .releaseId .github/release/config.json)"
+          obj="$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="deployed-$id" -f message="Release $id deployed to production at $SHA" -f object="$SHA" -f type=commit --jq .sha)"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/deployed-$id" -f sha="$obj" >/dev/null
+          {
+            echo "## Release \`$id\` COMPLETE"
+            echo "Deployed SHA: \`$SHA\`. The coordinator will now exit as COMPLETE on every trigger."
+          } >> "$GITHUB_STEP_SUMMARY"
