@@ -17,7 +17,7 @@ const authBody = z
     email: z.string().trim().max(254).email().transform((v) => v.toLowerCase()).optional(),
     password: z.string().min(1).max(256).optional(),
     /** Registered ONLY after authentication succeeds; a push failure never fails the sign-in. */
-    fcmToken: z.string().min(20).max(4096).regex(/^\S+$/).optional(),
+    fcmToken: z.string().min(20).max(4096).regex(/^\S+$/).optional().catch(undefined),
     installationId: deviceIdSchema,
     platform: z.enum(['android', 'ios', 'web'])
   })

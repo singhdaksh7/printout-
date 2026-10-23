@@ -1,4 +1,5 @@
 import { Role, ShopStatus, type PrismaClient } from '@prisma/client';
+import { afterAll } from 'vitest';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { createApp } from '../../src/app.js';
 import { hashPassword } from '../../src/auth.js';
@@ -88,8 +89,7 @@ export async function startHarness(
   phoneVerifier?: PhoneTokenVerifier | null,
   extra: { pushSender?: PushSender | null } = {}
 ): Promise<Harness> {
-  const emulator = await startFakeAuthEmulator();
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = emulator.host;
+  const emulator = await sharedEmulator();
   const prisma = testPrisma();
   // A value of '__unset__' leaves the variable out entirely (to test the compiled-in default).
   const env = Object.fromEntries(Object.entries({ ...BASE_ENV, SHOP_SELF_ONBOARDING_ENABLED: 'true', ...over }).filter(([, v]) => v !== '__unset__'));
@@ -111,12 +111,30 @@ export async function startHarness(
       return h.world;
     },
     async close() {
+      // The emulator is shared by every harness of this test file (see sharedEmulator) and closed once, after the last test.
       await app.close();
-      await emulator.close();
     }
   };
   return h;
 }
+
+/**
+ * ONE fake Firebase emulator per test file. firebase-admin caches its app (and therefore FIREBASE_AUTH_EMULATOR_HOST) on first use, so a
+ * second harness pointing at a fresh emulator would silently keep talking to the first, already-closed one and every verification would
+ * come back "unavailable" (503) - which looks like a refusal and hides real assertions.
+ */
+let emulatorOnce: Promise<FakeAuthEmulator> | null = null;
+function sharedEmulator(): Promise<FakeAuthEmulator> {
+  emulatorOnce ??= startFakeAuthEmulator().then((e) => {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = e.host;
+    return e;
+  });
+  return emulatorOnce;
+}
+afterAll(async () => {
+  if (emulatorOnce) await (await emulatorOnce).close();
+  emulatorOnce = null;
+});
 
 // ---- auth modes -------------------------------------------------------------------------------------------------------------
 

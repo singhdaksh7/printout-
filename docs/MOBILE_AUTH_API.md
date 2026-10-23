@@ -256,7 +256,7 @@ flowchart TD
 | `firebaseIdToken` | for `otp`, `google` | string, 20 to 4096 chars. Fresh and single-use |
 | `phoneNumber` | no (`otp` only) | E.164; if present it **must equal** the verified number (it never authorises anything) or the request fails like a bad token |
 | `email`, `password` | for `email` | valid email, password 1 to 256 chars. Same throttles and argon2 check as web login; admins get `403 FORBIDDEN` |
-| `fcmToken` | no | 20 to 4096 chars, no whitespace. Registered **only after** successful sign-in; a push failure never fails sign-in |
+| `fcmToken` | no | 20 to 4096 chars, no whitespace. Invalid optional values are ignored. Registered **only after** successful sign-in; a push failure never fails sign-in |
 | `installationId` | yes | 16 to 64 chars `[A-Za-z0-9_-]` |
 | `platform` | yes | `"android"`, `"ios"` or `"web"` |
 

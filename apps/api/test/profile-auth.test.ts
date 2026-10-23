@@ -58,6 +58,7 @@ describe('POST /auth (mobile sign-in: otp and email)', () => {
   describe('response contract', () => {
     it('OTP sign-in of a ready shop: flat tokens, exact top-level, user and shop fields, server-computed flags', async () => {
       await linkA();
+      await h.prisma.shopSettings.update({ where: { shopId: h.world.a.shopId }, data: { publicContact: '+919111122222' } });
       const res = await otp();
       expect(res.statusCode, res.body).toBe(200);
       const d = data(res);
@@ -76,6 +77,7 @@ describe('POST /auth (mobile sign-in: otp and email)', () => {
       expect(cookieOf(res, 'printout_session')).toBeUndefined(); // mobile transport: Bearer only
 
       for (const k of USER_KEYS) expect(Object.keys(d.user), `user missing ${k}`).toContain(k);
+      expect(Object.keys(d.user).sort()).toEqual([...USER_KEYS].sort());
       expect(d.user).toMatchObject({ role: 'shop', email: h.world.a.ownerEmail, phoneNumber: PHONES.A, phoneVerified: true, emailVerified: false });
       expect([...d.user.loginMethods].sort()).toEqual(['email', 'otp']);
       expect(Date.parse(d.user.createdAt)).not.toBeNaN();
@@ -88,6 +90,11 @@ describe('POST /auth (mobile sign-in: otp and email)', () => {
         ownerId: d.user.id, shopName: 'Sharma Print', slug: 'sharma-print', shopStatus: 'ACTIVE', acceptsOrders: true, isDefault: true, showQr: true,
         address: '12 MG Road, Bengaluru'
       });
+      const owner = await h.prisma.user.findUniqueOrThrow({ where: { id: s.ownerId } });
+      expect(owner.shopId).toBe(s.id);
+      expect(s.id).not.toBe(d.user.id);
+      expect(s.phoneNumber).toBe('+919111122222');
+      expect(s.phoneNumber).not.toBe(d.user.phoneNumber);
       expect(s.qrCodeUrl).toBe('http://localhost:5173/p/sharma-print');
       expect(['standard', 'premium']).toContain(s.status);
       expect(s.status).toBe('standard');
