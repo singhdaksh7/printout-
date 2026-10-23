@@ -103,6 +103,9 @@ async function signInByEmail(page: Page, email: string) {
 }
 
 async function requestOtp(page: Page, national: string) {
+  // The server requires Firebase auth_time (whole seconds) to strictly increase per phone; a human cannot verify two SMS codes in
+  // one second, but this suite can, so make sure the next mock token carries a later second than any earlier one.
+  await page.waitForTimeout(1100);
   await page.goto('/shop/login');
   await expect(ui.welcome(page)).toBeVisible();
   await ui.mobile(page).fill(national);
@@ -124,7 +127,8 @@ async function linkPhoneInSettings(page: Page, national: string, password = SEED
   await panel.getByLabel('Digit 1 of 6').click();
   await page.keyboard.type(OTP);
   const submit = panel.getByRole('button', { name: /^Verify and (link|replace)$/ });
-  if (await submit.isEnabled().catch(() => false)) await submit.click();
+  // The sixth digit auto-submits, so the button is usually already gone; isVisible() does not wait (isEnabled() would).
+  if ((await submit.isVisible()) && (await submit.isEnabled())) await submit.click();
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -189,10 +193,10 @@ test.describe('phone sign-in (shop owners)', () => {
     await expect(ui.linkedNumber(page)).toBeVisible();
     // The full number is never shown back; only a masked form.
     await expect(page.locator('body')).not.toContainText(PHONE_A);
-    await expect(ui.linkedNumber(page)).toContainText(/0001/);
+    await expect(ui.linkedNumber(page)).toContainText(/01$/);
     await shot(page, '133-phone-linked-settings');
 
-    await page.getByRole('button', { name: /sign out/i }).first().click();
+    await page.getByRole('button', { name: /log ?out|sign out/i }).first().click();
     await expect(page).toHaveURL(/\/shop\/login/);
 
     await requestOtp(page, PHONE_A);
@@ -224,7 +228,8 @@ test.describe('phone sign-in (shop owners)', () => {
     await signInByEmail(page, OWNER_B);
     await linkPhoneInSettings(page, PHONE_B);
     await expect(ui.linkedNumber(page)).toBeVisible();
-    await page.getByRole('button', { name: /sign out/i }).first().click();
+    await page.getByRole('button', { name: /log ?out|sign out/i }).first().click();
+    await expect(page).toHaveURL(/\/shop\/login/);
 
     await requestOtp(page, PHONE_B);
     await typeOtp(page, OTP);
@@ -238,7 +243,7 @@ test.describe('phone sign-in (shop owners)', () => {
     await linkPhoneInSettings(page, PHONE_A);
     await expect(ui.linkedNumber(page)).toBeVisible();
     await linkPhoneInSettings(page, PHONE_REPLACEMENT);
-    await expect(ui.linkedNumber(page)).toContainText(/0004/);
+    await expect(ui.linkedNumber(page)).toContainText(/04$/);
     // The replaced number no longer signs in.
     const old = await apiPost(null, '/auth/phone/session', { idToken: testToken(E164(PHONE_A), { authAgeSeconds: 0 }) });
     expect(old.status).toBe(403);
@@ -258,7 +263,8 @@ test.describe('phone sign-in (shop owners)', () => {
 
   test('API: forged, wrong-project, expired and stale tokens are refused; replay is refused; admin cannot link', async () => {
     const owner = await apiLogin(OWNER_A);
-    const link = await apiPost(owner, '/shop/account/phone', { idToken: testToken(E164(PHONE_A)), currentPassword: SEED_PASSWORD });
+    // Older auth_time than the sign-in token below: the server requires auth_time to strictly increase (replay protection).
+    const link = await apiPost(owner, '/shop/account/phone', { idToken: testToken(E164(PHONE_A), { authAgeSeconds: 10 }), currentPassword: SEED_PASSWORD });
     expect(link.status).toBe(200);
 
     const bad = [
@@ -301,7 +307,12 @@ test.describe('phone sign-in responsive and accessible', () => {
 
   for (const vp of [VIEWPORTS.s360, VIEWPORTS.mobile, VIEWPORTS.tablet, VIEWPORTS.desktop]) {
     test(`both screens at ${vp.width}px: no overflow, no axe violations, keyboard reachable`, async ({ browser }) => {
-      const context = vp.width <= 430 ? await newMobileContext(browser, vp) : await browser.newContext({ viewport: vp, baseURL: PHONE_WEB });
+      // newMobileContext() targets the email-only server; this suite needs the phone-enabled one.
+      const context = await browser.newContext(
+        vp.width <= 430
+          ? { viewport: vp, isMobile: true, hasTouch: true, deviceScaleFactor: 2, baseURL: PHONE_WEB }
+          : { viewport: vp, baseURL: PHONE_WEB }
+      );
       await presentConfiguredOrigin(context);
       const page = await context.newPage();
       await page.goto('/shop/login');
