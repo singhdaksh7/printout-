@@ -87,10 +87,29 @@ paths:
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /auth/login:
     post:
-      summary: "Password login (owner or admin)"
+      summary: "Password login (owner or admin). An admin with 2FA enabled receives { twoFactorRequired: true } and a pending-challenge cookie instead of a session"
       security: []
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/login/2fa:
+    post:
+      summary: "Second step of an admin sign-in (needs the printout_2fa pending-challenge cookie from /auth/login); issues the session only after a valid, unused TOTP or recovery code"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [method, code], properties: { method: { type: string, enum: [totp, recovery] }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 401 INVALID_TWO_FACTOR_CODE, 401 TWO_FACTOR_CHALLENGE_INVALID, 429 RATE_LIMITED, 503 TWO_FACTOR_UNAVAILABLE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/login/2fa/cancel:
+    post:
+      summary: "Abandon the pending second-factor sign-in (204)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /auth/logout:
     post:
@@ -598,6 +617,74 @@ paths:
       responses:
         '200': { description: 'Success: { data: { signedOut: true } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope: 400 VALIDATION_ERROR, 403 INVALID_CURRENT_PASSWORD, 409 CONFLICT, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa:
+    get:
+      summary: "Two-step verification status"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/enroll:
+    post:
+      summary: "Start enrollment: password re-auth, returns PENDING secret as otpauth URI + manual key (shown once)"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 409 TWO_FACTOR_ALREADY_ENABLED, 503 TWO_FACTOR_UNAVAILABLE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/enroll/verify:
+    post:
+      summary: "Confirm enrollment with a TOTP code; enables 2FA, returns recovery codes once, ends other sessions"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [code], properties: { code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_TWO_FACTOR_CODE, 409 NO_PENDING_ENROLLMENT', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/recovery-codes/acknowledge:
+    post:
+      summary: "Record that the recovery codes were saved (204)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/recovery-codes:
+    post:
+      summary: "Regenerate recovery codes (password + authenticator code); old codes stop working"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, code], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 403 INVALID_TWO_FACTOR_CODE, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/disable:
+    post:
+      summary: "Disable 2FA (password + authenticator or recovery code); ends other sessions"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, code], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, method: { type: string, enum: [totp, recovery], default: totp }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 403 INVALID_TWO_FACTOR_CODE, 409 TWO_FACTOR_NOT_ENABLED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /admin/audit-logs:
     get:
       summary: "Audit entries (cursor)"
@@ -606,11 +693,179 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/phone/config:
+    get:
+      summary: "Phone sign-in availability and allowed calling codes (public, no secrets)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/phone/session:
+    post:
+      summary: "Web phone sign-in: Firebase ID token for the session cookie (shop owners; strict Origin check)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth:
+    post:
+      summary: "Mobile sign-in. loginMethod otp|google|email. Flat response: accessToken, refreshToken, tokenType, expiresIn, refreshTokenExpiresIn, isShopRegisteredAtLeastOne, showQr, nextStep, user, shops, shop, onboardingAvailable. Unlinked verified identity gets a restricted pair (user.id null, nextStep create_shop). Suspended: 403 ACCOUNT_BLOCKED, no tokens. Admins refused."
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/refresh:
+    post:
+      summary: "Rotate the token pair (single-use refresh token; reuse after the grace window revokes the family; 409 REFRESH_CONFLICT within the grace window; 401 REFRESH_TOKEN_INVALID/EXPIRED; malformed or over-length tokens also answer 401 REFRESH_TOKEN_INVALID; bad deviceId answers 400 VALIDATION_ERROR)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/logout-all:
+    post:
+      summary: "End every session and refresh family of the caller (all devices); push registrations removed unless keepPush"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '204': { description: 'No content' }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/firebase/exchange:
+    post:
+      summary: "OTP exchange. client=web: session cookie + csrfToken (web shape). client=mobile (needs deviceId): same flat shape as POST /auth. Restricted principal for an unlinked verified phone"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me:
+    get:
+      summary: "Own profile: user, shops (0 or 1), shop, nextStep, isShopRegisteredAtLeastOne, showQr. Accepts a restricted token. Never another user"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+        - restrictedBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    patch:
+      summary: "Change own name; email only for owners with a password and currentPassword"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities:
+    get:
+      summary: "Linked sign-in methods (masked): password.set, phone, google, googleAvailable"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities/google:
+    post:
+      summary: "Link or replace Google (fresh Google Firebase token plus reauth: exactly one of currentPassword or firebaseIdToken); ends other sessions"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities/google/unlink:
+    post:
+      summary: "Unlink Google (reauth required); 409 LAST_SIGNIN_METHOD if it is the only method"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/me:
+    get:
+      summary: "Own shop(s): shops (0 or 1 element), shop, nextStep, isShopRegisteredAtLeastOne, showQr. Unmodelled fields (location, payment, rating, images, referral, isVerified) are null"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    patch:
+      summary: "Change shopName, address, pincode (strict body; status, plan, slug, prices rejected)"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/me/qr:
+    get:
+      summary: "QR readiness {ready, publicUrl, qrCodeUrl, reason}. Virtual QR (origin + /p/slug), never stored. Optional ?shopId must be the caller's own shop"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/onboarding:
+    post:
+      summary: "Register a new PILOT shop for a verified identity with no account (restricted token). 201 created / 200 idempotent repeat. 403 SELF_ONBOARDING_DISABLED unless SHOP_SELF_ONBOARDING_ENABLED. No plan, acceptsOrders=false, admin activation required"
+      security:
+        - restrictedBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/fcm-token:
+    put:
+      summary: "Register, refresh or rotate this installation's FCM token (idempotent; token ownership moves to the caller)"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "Revoke by installationId or token; always 204"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '204': { description: 'No content' }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/account/phone:
+    get:
+      summary: "Linked phone status (masked)"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      summary: "Link or replace the phone: idToken plus currentPassword or reauthIdToken; ends other sessions"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/account/phone/unlink:
+    post:
+      summary: "Unlink the phone (currentPassword or reauthIdToken); 409 LAST_SIGNIN_METHOD"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
 components:
   securitySchemes:
     ownerSession: { type: apiKey, in: cookie, name: printout_session, description: "Shop owner session plus CSRF token header on mutations" }
     adminSession: { type: apiKey, in: cookie, name: printout_session, description: "Platform admin session plus CSRF token header on mutations" }
     deviceBearer: { type: http, scheme: bearer }
+    mobileBearer: { type: http, scheme: bearer, description: "Opaque access token from POST /auth (mobile, 15 min by default). No CSRF header is needed for bearer calls. Renew with POST /auth/refresh." }
+    restrictedBearer: { type: http, scheme: bearer, description: "Restricted access token of a verified identity with no account yet; accepted only by GET /users/me, POST /shops/onboarding and POST /auth/logout." }
   schemas:
     DataEnvelope: { type: object, required: [data], properties: { data: {} } }
     ErrorEnvelope:

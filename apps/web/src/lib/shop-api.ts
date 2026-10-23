@@ -105,8 +105,17 @@ export const errorCode = (e: unknown) => (e instanceof ApiError ? e.code : '');
 
 // ---- endpoints ---------------------------------------------------------------------------------------
 export const fetchSession = () => api<SessionData>('/auth/session');
+/** An admin with two-factor enabled gets this instead of a session: a code is still required (see verifySecondFactor). */
+export interface TwoFactorRequired { twoFactorRequired: true; expiresInSeconds: number }
+export type LoginResult = SessionData | TwoFactorRequired;
+export const isTwoFactorRequired = (r: LoginResult): r is TwoFactorRequired => 'twoFactorRequired' in r && r.twoFactorRequired === true;
+export type SecondFactorMethod = 'totp' | 'recovery';
 export const login = (email: string, password: string) =>
-  api<SessionData>('/auth/login', { method: 'POST', body: { email, password } });
+  api<LoginResult>('/auth/login', { method: 'POST', body: { email, password } });
+/** Second step of an admin sign-in; the pending-challenge cookie set by login() identifies the attempt. */
+export const verifySecondFactor = (method: SecondFactorMethod, code: string) =>
+  api<SessionData & { recoveryCodesRemaining?: number }>('/auth/login/2fa', { method: 'POST', body: { method, code } });
+export const cancelSecondFactor = () => api<void>('/auth/login/2fa/cancel', { method: 'POST', body: {} });
 export const logout = () => api<void>('/auth/logout', { method: 'POST', body: {} });
 
 export interface OrderQuery { status?: string; active?: boolean; print?: 'pending' | 'initiated'; cursor?: string | undefined }
@@ -279,6 +288,17 @@ export type DevicePresence = 'ONLINE' | 'OFFLINE' | 'REVOKED';
 export interface DeviceView {
   id: string; name: string; platform: DevicePlatform; status: DeviceStatus; presence: DevicePresence;
   lastSeenAt: string | null; createdAt: string; revokedAt: string | null; appVersion: string | null;
+  /** Windows agents only: printers the computer reports. */
+  printers?: PrinterView[];
+}
+export interface PrinterView {
+  id: string; deviceId: string; name: string; driverName: string | null;
+  connectivity: 'ONLINE' | 'OFFLINE' | 'ERROR' | 'UNKNOWN'; statusDetail: string | null;
+  supportsColour: boolean; supportsDuplex: boolean; paperSizes: string[];
+  /** false when the computer no longer reports it (uninstalled). */
+  present: boolean;
+  /** Owner decisions: the agent may only print on an authorized printer. */
+  authorized: boolean; isDefault: boolean; lastReportedAt: string;
 }
 /** The raw pairing code is returned exactly once; keep it in component state only. */
 export interface PairingCode { code: string; expiresAt: string }
@@ -291,3 +311,46 @@ export const renameDevice = (id: string, name: string) =>
   shopRequest<{ device: DeviceView }>(`/shop/devices/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } });
 export const revokeDevice = (id: string) =>
   shopRequest<{ device: DeviceView }>(`/shop/devices/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: {} });
+
+// ---- Windows print queue (print jobs) ------------------------------------------------------------------
+/** There is deliberately no "printed" status: PRINT_INITIATED means the Windows print queue accepted the job. */
+export type PrintJobStatus =
+  | 'QUEUED' | 'CLAIMED' | 'DOWNLOADING' | 'SUBMITTING' | 'SUBMITTED_TO_SPOOLER' | 'PRINT_INITIATED'
+  | 'FAILED' | 'CANCEL_REQUESTED' | 'CANCELED' | 'NEEDS_RECONCILIATION';
+export interface PrintJobView {
+  id: string; orderId: string; deviceId: string; printerId: string; printerName: string | null; status: PrintJobStatus; attempt: number;
+  spoolerJobId: number | null; spoolerState: string | null; errorCode: string | null; errorMessage: string | null;
+  /** A retry could print pages twice (the job may have reached the printer). */
+  duplicateRisk: boolean; needsReconciliation: boolean; resolution: string | null;
+  printInitiatedAt: string | null; createdAt: string; updatedAt: string;
+}
+export type Reconciliation = 'PRINTED' | 'NOT_PRINTED_REQUEUE' | 'NOT_PRINTED_GIVE_UP';
+
+export const updatePrinter = (deviceId: string, printerId: string, patch: { authorized?: boolean; isDefault?: boolean }) =>
+  shopRequest<{ printer: PrinterView }>(`/shop/devices/${encodeURIComponent(deviceId)}/printers/${encodeURIComponent(printerId)}`, { method: 'PATCH', body: patch });
+export const listPrintJobs = (orderId?: string, signal?: AbortSignal) =>
+  shopRequest<{ jobs: PrintJobView[] }>(`/shop/print-jobs${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`, signal ? { signal } : {});
+export const enqueuePrintJob = (orderId: string, opts: { printerId?: string; reprint?: boolean; acknowledgeDuplicateRisk?: boolean } = {}) =>
+  shopRequest<{ job: PrintJobView; created: boolean }>(`/shop/orders/${encodeURIComponent(orderId)}/print-jobs`, { method: 'POST', body: { clientRequestId: newRequestId(), ...opts } });
+export const cancelPrintJob = (id: string) =>
+  shopRequest<{ job: PrintJobView }>(`/shop/print-jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {} });
+export const retryPrintJob = (id: string, acknowledgeDuplicateRisk = false) =>
+  shopRequest<{ job: PrintJobView }>(`/shop/print-jobs/${encodeURIComponent(id)}/retry`, { method: 'POST', body: { clientRequestId: newRequestId(), ...(acknowledgeDuplicateRisk ? { acknowledgeDuplicateRisk: true } : {}) } });
+export const reconcilePrintJob = (id: string, resolution: Reconciliation) =>
+  shopRequest<{ job: PrintJobView; next: PrintJobView | null }>(`/shop/print-jobs/${encodeURIComponent(id)}/reconcile`, {
+    method: 'POST', body: { resolution, ...(resolution === 'NOT_PRINTED_REQUEUE' ? { clientRequestId: newRequestId() } : {}) }
+  });
+
+// ---- phone (SMS OTP) sign-in ---------------------------------------------------------------------------
+export interface PhoneLoginConfig { enabled: boolean; allowedCallingCodes: string[]; defaultCallingCode: string; resendCooldownSeconds: number }
+export const getPhoneLoginConfig = () => api<PhoneLoginConfig>('/auth/phone/config');
+/** Exchanges a Firebase ID token for a normal shop session. The token is the only proof sent; no phone, role or shop id. */
+export const phoneSession = (idToken: string) => api<SessionData>('/auth/phone/session', { method: 'POST', body: { idToken } });
+
+export interface PhoneStatus { linked: boolean; phoneMasked?: string; linkedAt?: string; lastSignInAt?: string | null; available: boolean }
+export interface PhoneLinkResult { linked: boolean; phoneMasked: string; replaced: boolean; otherSessionsEnded: number }
+export const getPhoneStatus = () => shopRequest<PhoneStatus>('/shop/account/phone');
+export const linkPhone = (idToken: string, currentPassword: string) =>
+  shopRequest<PhoneLinkResult>('/shop/account/phone', { method: 'POST', body: { idToken, currentPassword } });
+export const unlinkPhone = (currentPassword: string) =>
+  shopRequest<{ linked: false; otherSessionsEnded?: number }>('/shop/account/phone/unlink', { method: 'POST', body: { currentPassword } });

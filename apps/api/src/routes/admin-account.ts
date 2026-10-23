@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { hashPassword, verifyPassword } from '../auth.js';
+import { hashPassword, rewrapLike } from '../auth.js';
+import { revokeUserRefreshFamilies } from '../domain/credentials.js';
 import { AppError } from '../errors.js';
+import { reauthenticateAdmin } from './admin-reauth.js';
 import { passwordPolicyProblem } from '../password-policy.js';
 import { getLimiters } from '../rate-limits.js';
 import { adminGuard, audit, authOf, clearSessionCookie, isUniqueViolation, json, type AppContext } from './context.js';
@@ -34,30 +36,7 @@ export async function adminAccountRoutes(app: FastifyInstance, ctx: AppContext):
     reply.header('cache-control', 'no-store');
   });
 
-  /** Re-authenticates the signed-in admin with their current password. Failures are throttled per admin account. */
-  async function reauthenticate(request: FastifyRequest, password: string, operation: 'email' | 'password') {
-    const auth = authOf(request);
-    const key = `acctchg|${auth.userId}`;
-    if (ctx.loginThrottle.isBlocked(key)) {
-      throw new AppError(429, 'RATE_LIMITED', 'Too many incorrect password attempts. Try again later.');
-    }
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: auth.userId } });
-    if (!(await verifyPassword(user.passwordHash, password))) {
-      ctx.loginThrottle.recordFailure(key);
-      await audit(prisma, {
-        shopId: null,
-        actorUserId: user.id,
-        actorType: 'PLATFORM_ADMIN',
-        action: 'admin.account.reauth_failed',
-        targetType: 'user',
-        targetId: user.id,
-        metadata: { operation }
-      });
-      throw new AppError(403, 'INVALID_CURRENT_PASSWORD', 'Current password is incorrect.');
-    }
-    ctx.loginThrottle.reset(key);
-    return user;
-  }
+  const reauthenticate = (request: FastifyRequest, password: string, operation: 'email' | 'password') => reauthenticateAdmin(ctx, request, password, operation);
 
   /** Credential update + session invalidation + audit as one unit; a concurrent change to the same user loses cleanly. */
   async function commit(
@@ -74,6 +53,9 @@ export async function adminAccountRoutes(app: FastifyInstance, ctx: AppContext):
         });
         if (updated.count !== 1) throw new AppError(409, 'CONFLICT', 'Your account changed while this request was running. Reload and try again.');
         const ended = await tx.session.updateMany({ where: { userId: user.id, invalidatedAt: null }, data: { invalidatedAt: new Date() } });
+        await revokeUserRefreshFamilies(tx, user.id, action === 'admin.account.email_changed' ? 'email_changed' : 'password_changed');
+        // A pending second-factor sign-in was issued for the OLD credentials: destroy it. 2FA itself stays enabled.
+        await tx.adminLoginChallenge.deleteMany({ where: { userId: user.id } });
         await audit(tx, {
           shopId: null,
           actorUserId: user.id,
@@ -119,7 +101,7 @@ export async function adminAccountRoutes(app: FastifyInstance, ctx: AppContext):
     if (body.newPassword === body.currentPassword) {
       throw new AppError(400, 'VALIDATION_ERROR', 'The new password must be different from the current password.', { field: 'newPassword' });
     }
-    await commit(reply, user, { passwordHash: await hashPassword(body.newPassword) }, 'admin.account.password_changed');
+    await commit(reply, user, { passwordHash: rewrapLike(user.passwordHash, await hashPassword(body.newPassword)) }, 'admin.account.password_changed');
     return json({ signedOut: true });
   });
 }

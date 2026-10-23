@@ -14,6 +14,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "admin:update": "tsx prisma/update-admin.ts",
+    "admin:2fa-reset": "tsx prisma/reset-admin-2fa.ts",
+    "admin:2fa-rekey": "tsx prisma/rekey-2fa.ts",
     "worker": "tsx src/worker.ts"
   },
   "prisma": {
@@ -30,6 +32,7 @@
     "@prisma/client": "^6.2.1",
     "argon2": "^0.41.1",
     "fastify": "^5.2.1",
+    "firebase-admin": "^14.5.0",
     "pdf-lib": "^1.17.1",
     "zod": "^3.24.1"
   },

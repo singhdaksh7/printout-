@@ -1,17 +1,94 @@
-# Secret-scan configuration (gitleaks). Extends the default rules; only the paths below are allowlisted, and only because
-# they contain deliberately fake values (test fixtures, placeholders, a common-password denylist). Real secrets belong in
-# the environment, never in these paths. Review any new entry with the same care as a secret.
+# Secret-scan configuration (gitleaks). Extends the default rules.
+#
+# Compatibility: CI pins gitleaks 8.24.3 (gitleaks-action v2.3.9). That version supports ONE global [allowlist] and ignores
+# the plural [[allowlists]] table (added in 8.25.0) WITHOUT an error, which silently disables every entry. Do not use
+# [[allowlists]] here unless the pinned gitleaks version is raised, and verify any change with
+# `gitleaks git -c .gitleaks.toml --log-opts="origin/development..HEAD"` using that exact version.
+#
+# Scope: there are NO directory-wide exemptions. A finding is suppressed only when BOTH hold (condition = "AND"):
+#   1. the file is one of the exact files listed in `paths`, and
+#   2. the matched secret is exactly one of the known fake values listed in `regexes` (regexTarget = "secret").
+# A genuine secret committed next to a fixture therefore still fails the scan, even inside an allowlisted file.
+# Adding a fixture means adding its file and its exact value here; treat a new entry with the same care as a secret.
+# Real secrets belong in the environment, never in the repository.
 [extend]
 useDefault = true
 
-[allowlist]
-description = "Fake fixtures and placeholders"
+
+[[rules]]
+id = "generic-api-key"
+[rules.allowlist]
+description = "Known fake fixtures: exact file AND exact value"
+condition = "AND"
+regexTarget = "secret"
 paths = [
   '''^\.env\.example$''',
-  '''^apps/api/test/.*''',
-  '''^apps/api/vitest\.config\.ts$''',
-  '''^apps/api/prisma/bootstrap-admin\.ts$''',
   '''^apps/api/src/password-policy\.ts$''',
+  '''^apps/api/prisma/bootstrap-admin\.ts$''',
+  '''^apps/api/test/admin-account\.test\.ts$''',
+  '''^apps/api/test/hardening-ops\.test\.ts$''',
+  '''^apps/api/test/two-factor-unit\.test\.ts$''',
+  '''^apps/api/test/phone-login\.test\.ts$''',
+  '''^apps/api/test/profile-me\.test\.ts$''',
+  '''^apps/api/test/profile-google\.test\.ts$''',
+  '''^apps/api/vitest\.config\.ts$''',
+  '''^apps/windows-agent/vitest\.integration\.config\.ts$''',
   '''^e2e/env\.ts$''',
-  '''^apps/android/app/src/test/.*''',
+  '''^e2e/12-admin-2fa\.spec\.ts$''',
+  '''^apps/android/app/src/test/kotlin/tech/printoutbuddy/shop/testutil/TestSupport\.kt$''',
+]
+regexes = [
+  '''^QUOTE_TTL_SECONDS=600$''',                              # .env.example: placeholder QUOTE_SECRET / STORAGE_URL_SECRET lines
+  '''^qwertyuiop12$''',                                       # common-password denylist entry
+  '''^long-enough-passphrase-1$''',                           # operator-CLI test passphrase
+  '''^AKIAREALKEYID0123456$''',                               # production-config test: fake S3 access key id
+  '''^zZ9yX8wV7uT6sR5qP4oN3mL2kJ1iH0gF$''',                   # production-config test: fake S3 secret key
+  '''^test-csrf-secret-0123456789abcdefghijk$''',             # fake CSRF secret for API / agent test environments
+  '''^e2e-csrf-secret-0123456789abcdefghijklmn$''',           # fake CSRF secret for the e2e environment
+  '''^e2e-twofactor-passphrase-1$''',                         # fake admin passphrase, disposable-database 2FA e2e
+  '''^pbd_secret123$''',                                      # Android test fixture device credential
+  '''^definitely-wrong-1$''',                                # intentionally wrong reauthentication password
+  '''^a-long-enough-passphrase-9$''',                         # disposable profile test owner password
+  '''^prod-csrf-8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d$''',        # synthetic production-config validation fixture
+  '''^prod-quote-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d$''',       # synthetic production-config validation fixture
+]
+
+[[rules]]
+id = "curl-auth-header"
+[rules.allowlist]
+description = "Mobile API documentation placeholders: exact file AND exact value"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^docs/MOBILE_AUTH_API\.md$''']
+regexes = ['''^v3ry-l0ng-opaque-access-token$''', '''^restricted-access-token$''']
+
+[[rules]]
+id = "aws-access-token"
+[rules.allowlist]
+description = "Known fake fixtures: exact file AND exact value"
+condition = "AND"
+regexTarget = "secret"
+paths = [
+  '''^\.env\.example$''',
+  '''^apps/api/src/password-policy\.ts$''',
+  '''^apps/api/prisma/bootstrap-admin\.ts$''',
+  '''^apps/api/test/admin-account\.test\.ts$''',
+  '''^apps/api/test/hardening-ops\.test\.ts$''',
+  '''^apps/api/test/two-factor-unit\.test\.ts$''',
+  '''^apps/api/vitest\.config\.ts$''',
+  '''^apps/windows-agent/vitest\.integration\.config\.ts$''',
+  '''^e2e/env\.ts$''',
+  '''^e2e/12-admin-2fa\.spec\.ts$''',
+  '''^apps/android/app/src/test/kotlin/tech/printoutbuddy/shop/testutil/TestSupport\.kt$''',
+]
+regexes = [
+  '''^QUOTE_TTL_SECONDS=600$''',                              # .env.example: placeholder QUOTE_SECRET / STORAGE_URL_SECRET lines
+  '''^qwertyuiop12$''',                                       # common-password denylist entry
+  '''^long-enough-passphrase-1$''',                           # operator-CLI test passphrase
+  '''^AKIAREALKEYID0123456$''',                               # production-config test: fake S3 access key id
+  '''^zZ9yX8wV7uT6sR5qP4oN3mL2kJ1iH0gF$''',                   # production-config test: fake S3 secret key
+  '''^test-csrf-secret-0123456789abcdefghijk$''',             # fake CSRF secret for API / agent test environments
+  '''^e2e-csrf-secret-0123456789abcdefghijklmn$''',           # fake CSRF secret for the e2e environment
+  '''^e2e-twofactor-passphrase-1$''',                         # fake admin passphrase, disposable-database 2FA e2e
+  '''^pbd_secret123$''',                                      # Android test fixture device credential
 ]

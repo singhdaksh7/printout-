@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
+import { buildKeyring } from './two-factor/crypto.js';
 
 const bool = z
   .enum(['true', 'false', '1', '0'])
@@ -104,6 +105,64 @@ const schema = z
     /** Notifications older than this are hidden immediately and deleted by the retention worker. */
     NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
 
+    /**
+     * Admin two-factor secrets at rest: 32 random bytes, base64 (`openssl rand -base64 32`). Independent of every other
+     * secret. Unset = two-factor enrollment is unavailable (existing admin sign-in is unchanged); an admin who already
+     * has 2FA enabled cannot sign in while it is unset (fail closed, never a silent bypass).
+     */
+    TWO_FACTOR_ENCRYPTION_KEY: optionalString,
+    /** Comma-separated retired keys still needed to open existing secrets during rotation (see docs/ADMIN_2FA.md). */
+    TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS: optionalString,
+    /** Seconds a password-verified sign-in may wait for the second factor. */
+    TWO_FACTOR_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
+    /** Wrong second-factor attempts allowed per challenge before it is destroyed and the password must be re-entered. */
+    TWO_FACTOR_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+
+    /**
+     * Firebase project whose phone-OTP ID tokens are accepted (project id, not a secret). Unset = phone sign-in is OFF
+     * (email/password is unaffected). Server credentials, if needed (FIREBASE_CHECK_REVOKED), come from Application
+     * Default Credentials (GOOGLE_APPLICATION_CREDENTIALS / workload identity), never from a committed file.
+     */
+    FIREBASE_PROJECT_ID: optionalString.pipe(z.string().regex(/^[a-z0-9][a-z0-9-]{3,62}$/).optional()),
+    /** A Firebase ID token is only exchanged/linked when its OTP verification (auth_time) is at most this old. */
+    FIREBASE_AUTH_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
+    /** Also ask Firebase whether the token was revoked / the user disabled (needs ADC; fails closed with 503 when unavailable). */
+    FIREBASE_CHECK_REVOKED: bool.default('true'),
+    /** Comma-separated E.164 calling codes accepted for phone sign-in (SMS-pumping guard; Firebase SMS region policy is the first line). */
+    PHONE_ALLOWED_CALLING_CODES: z
+      .string()
+      .default('+91')
+      .transform((v) => v.split(',').map((c) => c.trim()).filter(Boolean))
+      .pipe(z.array(z.string().regex(/^\+[1-9][0-9]{0,3}$/)).min(1)),
+    /** A linked phone unused for longer than this must be re-linked with the password first (number recycling). */
+    PHONE_IDENTITY_MAX_IDLE_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+    /**
+     * Phone self-onboarding policy. OFF by default: a verified phone with no linked shop owner can then only be told to
+     * ask for an account. When ON, POST /shops/onboarding may create a restricted PILOT shop (no plan, not live, no
+     * premium) that a platform admin must activate; nothing else is granted automatically.
+     */
+    /** Continue with Google (Firebase Auth, provider google.com) on POST /auth. OFF by default; needs FIREBASE_PROJECT_ID and the Google provider enabled in the Firebase console. */
+    GOOGLE_LOGIN_ENABLED: bool.default('false'),
+    SHOP_SELF_ONBOARDING_ENABLED: bool.default('false'),
+    /** Lifetime of the restricted onboarding grant issued to a verified phone that has no linked account. */
+    ONBOARDING_GRANT_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(30),
+
+    /** Mobile only (client:'mobile'): lifetime of the opaque access token (an ordinary Session row sent as Authorization: Bearer). Web cookie sessions keep SESSION_DAYS. */
+    ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().min(1).max(120).default(15),
+    /** Mobile only: absolute lifetime of a refresh-token family member; each use rotates it. */
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    /** A just-rotated refresh token presented again within this window is a client race (409 REFRESH_CONFLICT, no revocation); later = reuse = family revoked. */
+    REFRESH_REUSE_GRACE_SECONDS: z.coerce.number().int().min(0).max(60).default(5),
+
+    /** Push (FCM) delivery to mobile owners. OFF by default: no Firebase messaging call is ever made while false. */
+    FCM_PUSH_ENABLED: bool.default('false'),
+    /** 32 random bytes, base64, for FCM tokens at rest. Unset = a purpose-bound key is derived from SESSION_SECRET (HKDF, label printout:fcm:v1). */
+    FCM_TOKEN_ENCRYPTION_KEY: optionalString,
+    /** Registrations not refreshed by the app for this long are skipped and swept. */
+    FCM_STALE_DAYS: z.coerce.number().int().min(1).max(365).default(60),
+    /** Consecutive transient send failures after which a registration is revoked. */
+    FCM_FAILURE_REVOKE_AFTER: z.coerce.number().int().min(1).max(50).default(5),
+
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     LOCAL_UPLOAD_DIR: z.string().default('.data/uploads'),
     S3_ENDPOINT: optionalString,
@@ -116,6 +175,18 @@ const schema = z
     ALLOW_LOCAL_STORAGE_IN_PRODUCTION: bool.default('false')
   })
   .superRefine((cfg, ctx) => {
+    if (cfg.FCM_TOKEN_ENCRYPTION_KEY && Buffer.from(cfg.FCM_TOKEN_ENCRYPTION_KEY, 'base64').length !== 32) {
+      ctx.addIssue({ code: 'custom', path: ['FCM_TOKEN_ENCRYPTION_KEY'], message: 'FCM_TOKEN_ENCRYPTION_KEY must be 32 random bytes, base64 (openssl rand -base64 32)' });
+    }
+    if (cfg.TWO_FACTOR_ENCRYPTION_KEY) {
+      try {
+        buildKeyring(cfg.TWO_FACTOR_ENCRYPTION_KEY, cfg.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS);
+      } catch (error) {
+        ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY'], message: error instanceof Error ? error.message : 'invalid key' });
+      }
+    } else if (cfg.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS) {
+      ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS'], message: 'TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS requires TWO_FACTOR_ENCRYPTION_KEY' });
+    }
     if (cfg.STORAGE_DRIVER === 's3') {
       for (const key of ['S3_ENDPOINT', 'S3_REGION', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
         if (!cfg[key]) ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required when STORAGE_DRIVER=s3` });
@@ -158,6 +229,16 @@ const schema = z
       }
       if (cfg.SSE_HEARTBEAT_MS > 25_000) {
         ctx.addIssue({ code: 'custom', path: ['SSE_HEARTBEAT_MS'], message: 'SSE_HEARTBEAT_MS must be <= 25000 in production (proxy idle timeouts)' });
+      }
+      if (cfg.TWO_FACTOR_ENCRYPTION_KEY) {
+        const twoFactorKeys = [cfg.TWO_FACTOR_ENCRYPTION_KEY, ...(cfg.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS ?? '').split(',').map((k) => k.trim()).filter(Boolean)];
+        const reuse = [cfg.SESSION_SECRET, cfg.CSRF_SECRET, cfg.QUOTE_SECRET, cfg.STORAGE_URL_SECRET];
+        if (reuse.includes(cfg.TWO_FACTOR_ENCRYPTION_KEY)) {
+          ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY'], message: 'TWO_FACTOR_ENCRYPTION_KEY must differ from every other secret' });
+        }
+        if (new Set(twoFactorKeys).size !== twoFactorKeys.length) {
+          ctx.addIssue({ code: 'custom', path: ['TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS'], message: 'TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS must not repeat a key' });
+        }
       }
       if (cfg.TRUST_PROXY === undefined && cfg.TRUST_PROXY_CIDRS === undefined) {
         ctx.addIssue({
@@ -215,6 +296,11 @@ export class ConfigError extends Error {
 /** Parses and validates the environment; throws ConfigError (no secret values in the message). */
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
   const result = schema.safeParse(env);
+  // The Firebase emulator makes the Admin SDK accept UNSIGNED tokens: never let it be reachable in production.
+  if (env.NODE_ENV === 'production' && env.FIREBASE_AUTH_EMULATOR_HOST) {
+    const problems = result.success ? [] : result.error.issues.map((i) => `${i.path.join('.') || '(config)'}: ${i.message}`);
+    throw new ConfigError([...problems, 'FIREBASE_AUTH_EMULATOR_HOST: must not be set in production (it disables token signature checks)']);
+  }
   if (!result.success) {
     throw new ConfigError(result.error.issues.map((i) => `${i.path.join('.') || '(config)'}: ${i.message}`));
   }
@@ -230,6 +316,9 @@ export function configWarnings(config: Config): string[] {
     }
     if (config.STORAGE_DRIVER === 'local') {
       warnings.push('STORAGE_DRIVER=local in production: documents live on a single-node volume that is not backed up');
+    }
+    if (!config.TWO_FACTOR_ENCRYPTION_KEY) {
+      warnings.push('TWO_FACTOR_ENCRYPTION_KEY is not set: admin two-factor enrollment is unavailable (set it before asking admins to enroll)');
     }
     if (config.UPLOAD_MAX_BYTES > 52_428_800) {
       warnings.push(`UPLOAD_MAX_BYTES=${config.UPLOAD_MAX_BYTES}: the reverse proxy body cap must be at least UPLOAD_MAX_BYTES + 1 MiB`);

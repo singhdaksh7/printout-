@@ -14,8 +14,8 @@
   "shop revenue": 187,
   "shop devices": 31,
   "shop rate card": 42,
-  "shop QR": 33,
-  "shop settings": 28,
+  "shop QR": 34,
+  "shop settings": 50,
   "shop rate card validation": 44,
   "admin login": 6,
   "admin dashboard": 101,
@@ -25,7 +25,7 @@
   "admin subscriptions": 31,
   "admin plans": 22,
   "admin audit log": 71,
-  "admin account": 50
+  "admin account": 55
  },
  "violations": []
 }

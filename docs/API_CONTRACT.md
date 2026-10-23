@@ -82,6 +82,18 @@ Cookie-authenticated (session re-validated on connect and every heartbeat; close
   - `GET /admin/account` -> `{ id, email, displayName, role, createdAt, session:{ startedAt, expiresAt, otherActiveSessions } }`. Never a hash, token or CSRF secret.
   - `POST /admin/account/email` body `{ currentPassword, newEmail }` -> `{ email, signedOut:true }`. The email is trimmed and lower-cased. The web UI asks for the address twice (client-side check only; the API takes a single `newEmail`). The new address is not verified (see SECURITY_REVIEW, "Unverified new email").
   - `POST /admin/account/password` body `{ currentPassword, newPassword }` -> `{ signedOut:true }`. Same policy as `bootstrap-admin` / `admin:update` (>= 12 chars, <= 256, no placeholder, not repetitive, not common, must not contain the email name); must differ from the current password.
+  - **Two-step verification** (see `docs/ADMIN_2FA.md`; all under `adminGuard`, `Cache-Control: no-store`, CSRF on POST):
+    - `GET /admin/account/2fa` -> `{ available, enabled, enrolledAt, recoveryCodesRemaining, recoveryCodesAcknowledged, enrollmentPending }`.
+    - `POST /admin/account/2fa/enroll` `{ currentPassword }` -> `{ issuer, accountName, otpauthUri, manualKey, expiresInSeconds }` (creates a PENDING secret; contains the secret, shown once). 403 `INVALID_CURRENT_PASSWORD`, 409 `TWO_FACTOR_ALREADY_ENABLED`, 503 `TWO_FACTOR_UNAVAILABLE`.
+    - `POST /admin/account/2fa/enroll/verify` `{ code }` -> `{ enabledAt, recoveryCodes[10] }` (enables 2FA, ends the admin's other sessions; codes shown once). 403 `INVALID_TWO_FACTOR_CODE`, 409 `NO_PENDING_ENROLLMENT`.
+    - `POST /admin/account/2fa/recovery-codes/acknowledge` `{}` -> 204.
+    - `POST /admin/account/2fa/recovery-codes` `{ currentPassword, code }` (authenticator code only) -> `{ recoveryCodes[10] }`; all old codes stop working.
+    - `POST /admin/account/2fa/disable` `{ currentPassword, method: "totp"|"recovery", code }` -> `{ enabled:false }`; ends other sessions.
+  - Errors added: `INVALID_TWO_FACTOR_CODE` (401/403), `TWO_FACTOR_CHALLENGE_INVALID` (401), `TWO_FACTOR_ALREADY_ENABLED`, `TWO_FACTOR_NOT_ENABLED`, `NO_PENDING_ENROLLMENT` (409), `TWO_FACTOR_UNAVAILABLE` (503).
+- **Admin sign-in with 2FA** (additive; accounts without 2FA see no change):
+  - `POST /auth/login` for an admin with 2FA enabled -> `{ twoFactorRequired:true, expiresInSeconds }`, sets the `printout_2fa` cookie; NO session cookie and no csrfToken.
+  - `POST /auth/login/2fa` `{ method: "totp"|"recovery", code }` (cookie `printout_2fa`) -> the normal session payload (plus `recoveryCodesRemaining` when a recovery code was used) and the session cookie. 401 `INVALID_TWO_FACTOR_CODE` / `TWO_FACTOR_CHALLENGE_INVALID`, 429 `RATE_LIMITED`, 503 `TWO_FACTOR_UNAVAILABLE`.
+  - `POST /auth/login/2fa/cancel` -> 204 (abandons the pending challenge).
   - Both POSTs verify the CURRENT password first, then in ONE transaction update the user (guarded against a concurrent change), end **all** of the admin's sessions (including the caller's; the cookie is cleared, so sign in again) and write an audit row (`admin.account.email_changed` / `admin.account.password_changed`, metadata `{ sessionsEnded }` only: no addresses, no passwords). A failed audit write rolls the whole change back.
   - Errors: `403 INVALID_CURRENT_PASSWORD` (deliberately not 401, so the web client does not treat it as an expired session; audited as `admin.account.reauth_failed` with `{ operation }`), `409 EMAIL_UNAVAILABLE` (generic for any taken address; only reachable after the password check), `409 CONFLICT` (account changed concurrently), `400 VALIDATION_ERROR` (policy, unknown fields, same email/password), `429 RATE_LIMITED` (per-admin failed-password budget = `LOGIN_FAIL_MAX` per `LOGIN_FAIL_WINDOW_MINUTES`, plus the admin mutation limiter), `403 FORBIDDEN` for shop owners, `401` anonymous, `403 CSRF_INVALID`.
   - There is no public admin registration; the `admin:update` / `bootstrap-admin` CLIs remain the maintenance path.
@@ -124,3 +136,56 @@ Device (header `Authorization: Bearer pbd_...`, no cookies/CSRF; the tenant is t
 Device error codes: `401 UNAUTHORIZED` (missing/unknown/malformed credential), `401 DEVICE_REVOKED` (checked on every request, effective immediately), `403 SHOP_SUSPENDED`, `403 SUBSCRIPTION_INACTIVE`, `400 PAIRING_CODE_INVALID`.
 
 Credential handling: 256-bit random, shown once at pairing, stored only as sha256; never logged (Authorization header is redacted) and never returned again. Lost credential = revoke and pair again.
+
+
+## Windows print agent (additive)
+
+All paths under `/api/v1`. Device routes need `Authorization: Bearer pbd_...` of a WINDOWS device; shop routes need the owner session (+ CSRF on mutations). New error codes: `PRINT_JOB_NOT_FOUND` (404), `LEASE_MISMATCH`, `JOB_CANCEL_REQUESTED`, `ACTIVE_PRINT_JOB_EXISTS`, `DUPLICATE_RISK_NOT_ACKNOWLEDGED`, `PRINTER_NOT_AUTHORIZED`, `PRINTER_UNAVAILABLE`, `PRINTER_UNSUPPORTED_OPTIONS` (all 409). SSE: `printJob.updated {id, orderId, status}`.
+
+Job status: `QUEUED, CLAIMED, DOWNLOADING, SUBMITTING, SUBMITTED_TO_SPOOLER, PRINT_INITIATED, FAILED, CANCEL_REQUESTED, CANCELED, NEEDS_RECONCILIATION`. There is no "printed" status.
+
+| Method + path | Who | Notes |
+| --- | --- | --- |
+| `PUT /device/printers` `{printers:[{name,driverName?,connectivity,statusDetail?,supportsColour,supportsDuplex,paperSizes?}]}` | device | upserts; keeps `authorized`/`isDefault`; unreported -> `present:false` |
+| `POST /device/print-jobs/claim` `{}` | device | `{job|null, resumed}`; one in-flight job per device; job has `leaseId`, `options`, `documentName` |
+| `GET /device/print-jobs/active` | device | non-terminal jobs of this device |
+| `POST /device/print-jobs/:id/download` `{leaseId}` | device | `{url, expiresAt, mimeType, byteSize, sha256}` |
+| `POST /device/print-jobs/:id/progress` `{leaseId,status,spoolerJobId?,spoolerState?,errorCode?,errorMessage?}` | device | explicit edges; same status = lease renewal |
+| `POST /device/credential/rotate` `{}` | device | `{deviceCredential, credentialVersion, previousValidForSeconds}` once |
+| `GET /shop/devices` | owner | each device now has `printers[]` |
+| `PATCH /shop/devices/:id/printers/:printerId` `{authorized?,isDefault?}` | owner | one default per shop |
+| `POST /shop/orders/:id/print-jobs` `{clientRequestId,printerId?,reprint?,acknowledgeDuplicateRisk?}` | owner | 201 created / 200 replay; starts retention via the normal print engine |
+| `GET /shop/print-jobs[?orderId=]` | owner | active + last 24 h |
+| `POST /shop/print-jobs/:id/cancel` / `retry` / `reconcile` | owner | `reconcile` `{resolution: PRINTED|NOT_PRINTED_REQUEUE|NOT_PRINTED_GIVE_UP, clientRequestId?}` |
+
+Compatibility: no existing field or route changed; `DeviceView.printers` is new. Migration `20261017031501_windows_print_agent` only adds enums, tables and nullable columns.
+
+## Shared user profile, mobile auth and shop onboarding (additive)
+
+Full request/response examples, error table, field nullability and Android guidance: [MOBILE_AUTH_API.md](MOBILE_AUTH_API.md). Setup and operations: [FIREBASE_PHONE_LOGIN.md](FIREBASE_PHONE_LOGIN.md). Envelope `{data}`, error format and rate-limit behaviour are unchanged. No existing route, field or status code changed.
+
+| Route | Auth | Notes |
+|---|---|---|
+| `GET /auth/phone/config` | none | `{enabled, allowedCallingCodes, defaultCallingCode, resendCooldownSeconds}` |
+| `POST /auth/phone/session` `{idToken}` | Firebase ID token | web phone sign-in (cookie); unchanged |
+| `POST /auth` `{loginMethod: otp\|google\|email, firebaseIdToken?, phoneNumber?, email?, password?, fcmToken?, installationId, platform}` | proof in body | mobile sign-in. Flat response: `accessToken, refreshToken, tokenType:"Bearer", expiresIn, refreshTokenExpiresIn, isShopRegisteredAtLeastOne, showQr, nextStep, user, shops, shop, onboardingAvailable`. Unlinked verified identity: restricted pair (`user.id` null, `shops` [], `nextStep: create_shop`). Suspended: 403 `ACCOUNT_BLOCKED` (`details.nextStep: account_blocked`), no tokens. Admins refused. |
+| `POST /auth/refresh` `{refreshToken, deviceId}` | none | rotation; reuse after the grace window revokes the family; 409 `REFRESH_CONFLICT` inside `REFRESH_REUSE_GRACE_SECONDS`; 401 `REFRESH_TOKEN_INVALID` / `REFRESH_TOKEN_EXPIRED`; 403 `ACCOUNT_BLOCKED`. Every malformed, forged, empty or over-length refresh token gets the same 401 `REFRESH_TOKEN_INVALID` (no length oracle); a missing or malformed `deviceId` is 400 `VALIDATION_ERROR`. A chunked body over 4096 bytes with no declared size can still receive the framework's 413. |
+| `POST /auth/logout` | cookie+CSRF or Bearer | optional `{refreshToken}`; ends the session, its refresh family and the device's push registration; 204 |
+| `POST /auth/logout-all` `{keepPush?}` | session | all sessions and refresh families; 204 |
+| `POST /auth/firebase/exchange` `{idToken, client?: web\|mobile, deviceId?}` | Firebase ID token | web: cookie + `csrfToken` (profile + `session`/`onboarding`); mobile: same flat shape as `POST /auth` (needs `deviceId`) |
+| `GET /users/me` | Bearer/cookie, or restricted token | `{user, shops, shop, nextStep, isShopRegisteredAtLeastOne, showQr}`; there is no `GET /users/:id` |
+| `PATCH /users/me` `{name?, email?, currentPassword?}` | session | email change: owners with a password only, needs `currentPassword`; 403 `EMAIL_CHANGE_NOT_ALLOWED` for accounts without a password |
+| `GET /users/me/identities`, `POST /users/me/identities/google`, `POST /users/me/identities/google/unlink` | owner | Google link/unlink with `reauth: {currentPassword \| firebaseIdToken}`; 409 `LAST_SIGNIN_METHOD`, `GOOGLE_IDENTITY_UNAVAILABLE`; 403 `REAUTH_FAILED` |
+| `GET /shops/me` | owner | `{shops (0 or 1), shop, nextStep, isShopRegisteredAtLeastOne, showQr}`; `location`, `payment`, `rating`, `images`, `referral`, `isVerified` are always `null` |
+| `PATCH /shops/me` `{shopName?, address?, pincode?}` | owner | strict body |
+| `GET /shops/me/qr[?shopId=]` | owner | `{ready, publicUrl, qrCodeUrl, reason}`; virtual QR (`<origin>/p/<slug>`), nothing stored |
+| `POST /shops/onboarding` | restricted token | 201 created / 200 idempotent repeat; disabled (403 `SELF_ONBOARDING_DISABLED`) unless `SHOP_SELF_ONBOARDING_ENABLED`; creates a `PILOT` shop, no plan, `acceptsOrders=false`; unknown body keys ignored; 409 `ALREADY_ONBOARDED`, `EMAIL_UNAVAILABLE` |
+| `PUT /users/me/fcm-token` `{installationId, token, platform}` | owner | idempotent upsert per installation; never returned by any endpoint |
+| `DELETE /users/me/fcm-token` `{installationId}` or `{token}` | owner | always 204 |
+| `GET /shop/account/phone`, `POST /shop/account/phone`, `POST /shop/account/phone/unlink` | owner | link/replace/unlink a phone with `currentPassword` or `reauthIdToken`; ends other sessions |
+
+`nextStep` (server-derived): admin `dashboard`; no shop `create_shop`; suspended `account_blocked`; missing name or address `complete_profile`; QR not ready `generate_qr`; else `dashboard`. QR readiness is a readiness check, never an authentication factor.
+
+Session transport: web keeps `printout_session` + `x-csrf-token`. Mobile sends `Authorization: Bearer <accessToken>` (opaque, default 15 min); CSRF is not required for bearer requests. The refresh token (default 30 days, single-use, rotating) is sent only in the body of `POST /auth/refresh` or `POST /auth/logout`.
+
+Compatibility: `POST /auth/login`, Admin 2FA, device bearer credentials, customer upload/tracking, `/shop/qr` and the existing cookie-session routes behave as before.

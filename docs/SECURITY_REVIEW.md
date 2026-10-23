@@ -89,6 +89,57 @@ The new address is **not** verified (no confirmation link or code). Reviewed 202
 
 Other limitations (accepted): failed-password counters are per API process like the login throttle; an authenticated, re-authenticated admin can still learn whether an address is taken from the generic 409 (throttled); other devices learn their session ended only on their next API call (no push); 2FA/OTP is out of scope.
 
+## Windows print agent (security review, 2026-10-17)
+
+Scope: `apps/api/src/domain/print-jobs.ts`, `routes/device-print.ts`, `routes/shop-print-jobs.ts`, `device-auth.ts` (rotation), `apps/windows-agent`. Design: [WINDOWS_AGENT_ARCHITECTURE.md](WINDOWS_AGENT_ARCHITECTURE.md), usage: [WINDOWS_AGENT.md](WINDOWS_AGENT.md).
+
+| Area | Control | Evidence |
+| --- | --- | --- |
+| Authentication | Same `pbd_` bearer as other devices, sha256 at rest, row read every request. Windows-only routes reject Android devices (409). | `windows-print-agent.test.ts` |
+| Isolation | Jobs are bound to `(shopId, deviceId, printerId)` at enqueue. Claim, download and progress match all three plus the lease; shop B gets 404 for shop A's printers, orders, jobs. The device never supplies shop/device ids. | "tenant isolation" tests (API and engine-vs-API) |
+| Authorization | Only the shop owner authorizes a printer or sets the default; a device credential cannot (no route). De-authorizing stops claims. | printer tests |
+| Revocation | Next request after Disconnect is 401 `DEVICE_REVOKED`; agent stops and deletes its credential. | API + integration tests |
+| Rotation | `POST /device/credential/rotate`; old hash valid 10 min only until the new one is first used. | rotation tests |
+| Documents | Job-scoped download, lease holder only, only while CLAIMED/DOWNLOADING, URL <= 120 s, never in claim/list responses. Agent: https only, no redirects, streamed size cap, sha256 check, magic bytes must match declared MIME, encrypted PDF rejected, unsupported types refused before the spooler. | download + validation tests |
+| Physical side effects | SUBMITTING intent is acknowledged by the server and journaled (fsync) before the spooler is touched; ambiguity -> NEEDS_RECONCILIATION; duplicates need explicit acknowledgement; one job in flight per device; offline printers refused up front. No state means "printed". | crash-recovery matrix |
+| Injection | `execFile` with argv arrays, no shell; PowerShell scripts are static and take data on stdin; renderer settings are built from enums/integers; temp names derive from a validated job id pattern. | unit tests |
+| Local secrets | DPAPI (CurrentUser + entropy), atomic file write, data dir ACL-restricted via `icacls`, logs redact credentials, signed-URL queries and pairing codes. | Windows smoke tests |
+| Rate limits | Device read/mutation limiters apply; polling uses ~12 requests/min of the 120/min budget. | - |
+
+Accepted risks / not covered: the unsigned executable (SmartScreen warning; verify the published SHA-256); the PDF renderer is a third-party binary pinned only if the operator sets `sha256`; a compromised Windows user account can use the DPAPI credential; no push channel (5 s polling); `DevicePrintJob` rows are kept (no purge job yet); real-printer behaviour is unverified.
+
 ## Dependency advisories
 
 See [DEPENDENCIES.md](DEPENDENCIES.md): 3 production advisories (deepmerge-ts via the Prisma CLI, react-router x2) are unreachable in this app and need major upgrades; dev-only tooling advisories are listed there too. Deployment hardening evidence (containers, Caddy, backups) is in [DEPLOYMENT.md](DEPLOYMENT.md) and [PROD_SMOKE.md](PROD_SMOKE.md).
+
+
+## Admin two-factor authentication (`feature/daksh-admin-2fa`)
+
+Operator guide: `docs/ADMIN_2FA.md`. Tests: `apps/api/test/two-factor-unit.test.ts`, `admin-two-factor.test.ts`, `admin-two-factor-cli.test.ts`, `apps/web/src/admin/__tests__/two-factor.test.tsx`, `e2e/12-admin-2fa.spec.ts`.
+
+| Control | Implementation |
+| --- | --- |
+| No parallel auth system | Extends `/auth/login` and the existing `Session`, CSRF, `LoginThrottle`, rate-limit and `AuditLog` machinery. |
+| Pending state is not a session | Separate table and cookie (`printout_2fa`, path-scoped). `authenticate()` never reads it; tested against every admin route. No CSRF token or user payload before the second factor. |
+| Secrets at rest | AES-256-GCM, per-seal IV, user id as AAD, key id in the blob, key in its own env var; rotation via `..._PREVIOUS` + `admin:2fa-rekey`. Missing/wrong key fails closed (503), never skips the check. |
+| Recovery codes | CSPRNG, ~49.5 bits, Argon2id at rest, plaintext shown once, atomic single use, regeneration replaces all. Never emailed or logged. |
+| Replay | `lastUsedStep` advanced by conditional UPDATE; concurrent identical codes: exactly one wins (tested with parallel challenges and parallel requests on one challenge). |
+| Brute force | 5 attempts per challenge (atomically reserved), per-admin budget (429), route limiter, password step throttled as before. Challenge TTL 5 min, single use. |
+| Reauthentication | Enroll/regenerate/disable require the current password; regenerate needs an authenticator code, disable a code or recovery code. |
+| Sessions | Enable/disable end other sessions; password/email change ends all sessions and destroys pending challenges (a credential fingerprint also voids races). |
+| Lost device | Operator-only CLI with typed confirmation, mandatory reason, audit row, no secret output, no key required; no email flow (email is unverified). |
+| Redaction | Log redaction for `code`, `secret`, `manualKey`, `otpauthUri`, `recoveryCodes`; audit metadata limited to method/reason/counts; tested by scanning logs, audit rows and error bodies. |
+
+Accepted / remaining: the per-admin 2FA counter and login throttles are in memory, per API process (single instance, as before); TOTP uses HMAC-SHA1 because authenticator apps universally support it; an attacker holding the database AND the encryption key could mint codes (keep them apart); 2FA is opt-in, not enforced; the setup key and QR are sent once over HTTPS in the enroll response; the enrollment code is consumed, so the first sign-in after enabling needs the next code; the API host clock defines the TOTP window (keep NTP on).
+
+### Admin 2FA: release-readiness addendum
+
+* **Downgrade:** an API from before this feature would ignore the second factor. Mitigated by the `tfa1$` password-hash wrapper while 2FA is enabled (old code fails closed). Rehearsed against the real previous build and covered by tests; procedure and limits in `docs/ADMIN_2FA.md` ("Downgrade risk and rollback guard").
+* **Secret scanning:** `.gitleaks.toml` no longer exempts any directory or file as a whole; each entry exempts one known fake value on one exact line in one file (path AND line must match). A genuine secret placed in a former exempt file is now reported (verified with a negative test).
+* **Encryption key:** never committed or logged (asserted in tests); backup, loss and rotation in `docs/ADMIN_2FA.md`.
+* **Single instance:** login, second-factor and route throttles are in memory per process and assume one API instance; database-enforced controls (attempts per challenge, replay, single-use) do not.
+* **Merge gate:** PR #27 stays open and unmerged until Release A (UI Branding + Shop Hours + QR Poster) is confirmed live; then synchronize with `development`, rerun CI and the security checks, and squash-merge through branch protection.
+
+## Firebase phone sign-in
+
+Shop-owner SMS OTP sign-in via Firebase, linked explicitly by the owner and exchanged for the normal session: see [FIREBASE_PHONE_LOGIN.md](FIREBASE_PHONE_LOGIN.md). Off unless `FIREBASE_PROJECT_ID` is set; never grants admin access.

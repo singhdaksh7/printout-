@@ -12,6 +12,8 @@ import { ShopEvents } from './events.js';
 import { NoopNotifier } from './notifications/noop.js';
 import type { Notifier } from './notifications/types.js';
 import { deviceOrderRoutes } from './routes/device-orders.js';
+import { devicePrintRoutes } from './routes/device-print.js';
+import { shopPrintJobRoutes } from './routes/shop-print-jobs.js';
 import { devicePairingRoutes } from './routes/device-pairing.js';
 import { deviceSelfRoutes } from './routes/device-self.js';
 import { shopDeviceRoutes } from './routes/shop-devices.js';
@@ -30,6 +32,18 @@ import { shopRevenueRoutes } from './routes/shop-revenue.js';
 import { internalStorageRoutes } from './internal-storage.js';
 import { createStorage, type Storage } from './storage/index.js';
 import { uploadRoutes } from './uploads.js';
+import { buildKeyring } from './two-factor/crypto.js';
+import { adminTwoFactorRoutes } from './routes/admin-two-factor.js';
+import { createPhoneVerifier, type PhoneTokenVerifier } from './firebase/verifier.js';
+import { authPhoneRoutes } from './routes/auth-phone.js';
+import { shopAccountPhoneRoutes } from './routes/shop-account-phone.js';
+import { authFirebaseRoutes } from './routes/auth-firebase.js';
+import { authRefreshRoutes } from './routes/auth-refresh.js';
+import { authMobileRoutes } from './routes/auth-mobile.js';
+import { userIdentityRoutes } from './routes/user-identities.js';
+import { createPushSender, type PushSender } from './notifications/fcm.js';
+import { profileRoutes } from './routes/profile.js';
+import { shopOnboardingRoutes } from './routes/shop-onboarding.js';
 
 export interface AppDeps {
   config?: Config;
@@ -38,6 +52,9 @@ export interface AppDeps {
   events?: ShopEvents;
   /** Device push signal sink. Defaults to a no-op (no Firebase needed). */
   notifier?: Notifier;
+  /** Phone-token verifier. Defaults to the Firebase Admin SDK verifier when FIREBASE_PROJECT_ID is set, else phone sign-in is off. Tests inject a fake. */
+  phoneVerifier?: PhoneTokenVerifier | null;
+  pushSender?: PushSender | null;
   /** Test hook: destination for the request logger. */
   logStream?: NodeJS.WritableStream;
   /** Test hook: Node http server timeouts (e.g. to prove SSE streams outlive requestTimeout). */
@@ -65,7 +82,10 @@ export function createApp(deps: AppDeps = {}) {
     // Never log payloads or ids: only the error class.
     if (config.NODE_ENV !== 'test') console.error(JSON.stringify({ level: 'warn', msg: 'notification hub error', err: err instanceof Error ? err.name : 'unknown' }));
   });
-  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, notifier };
+  const twoFactorKeys = config.TWO_FACTOR_ENCRYPTION_KEY ? buildKeyring(config.TWO_FACTOR_ENCRYPTION_KEY, config.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS) : null;
+  const phoneVerifier = deps.phoneVerifier !== undefined ? deps.phoneVerifier : createPhoneVerifier(config);
+  const pushSender = deps.pushSender !== undefined ? deps.pushSender : createPushSender(config);
+  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, twoFactorKeys, notifier, phoneVerifier, pushSender };
 
   const app = Fastify({
     logger: {
@@ -81,7 +101,13 @@ export function createApp(deps: AppDeps = {}) {
         'password',
         '*.password',
         '*.currentPassword',
-        '*.newPassword'
+        '*.newPassword',
+        '*.code',
+        '*.idToken',
+        '*.recoveryCodes',
+        '*.secret',
+        '*.manualKey',
+        '*.otpauthUri'
       ],
       serializers: {
         // Default serializer logs the full URL: query strings carry signed-URL signatures and upload tokens, and
@@ -155,6 +181,14 @@ export function createApp(deps: AppDeps = {}) {
   app.register(
     async (api) => {
       await api.register((i) => authRoutes(i, ctx));
+      await api.register((i) => authPhoneRoutes(i, ctx));
+      await api.register((i) => shopAccountPhoneRoutes(i, ctx));
+      await api.register((i) => authFirebaseRoutes(i, ctx));
+      await api.register((i) => authRefreshRoutes(i, ctx));
+      await api.register((i) => authMobileRoutes(i, ctx));
+      await api.register((i) => userIdentityRoutes(i, ctx));
+      await api.register((i) => profileRoutes(i, ctx));
+      await api.register((i) => shopOnboardingRoutes(i, ctx));
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));
@@ -164,11 +198,14 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopNotificationRoutes(i, ctx));
       await api.register((i) => adminRoutes(i, ctx));
       await api.register((i) => adminAccountRoutes(i, ctx));
+      await api.register((i) => adminTwoFactorRoutes(i, ctx));
       // Device foundation (Phase 2): pairing (public), owner device management, device-authenticated APIs.
       await api.register((i) => devicePairingRoutes(i, ctx));
       await api.register((i) => shopDeviceRoutes(i, ctx));
       await api.register((i) => deviceOrderRoutes(i, ctx));
       await api.register((i) => deviceSelfRoutes(i, ctx));
+      await api.register((i) => devicePrintRoutes(i, ctx));
+      await api.register((i) => shopPrintJobRoutes(i, ctx));
     },
     { prefix: '/api/v1' }
   );

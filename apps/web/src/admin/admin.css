@@ -35,3 +35,16 @@
 /* The card header and the (usually empty) error slot would each add a form gap; collapse them so the title sits close to its text. */
 .ad-form > .pb-card__header { margin-bottom: 0; }
 .ad-formerr:empty { display: none; }
+
+/* Two-step verification */
+.ad-qr { display: block; background: #fff; border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-md); padding: var(--pb-space-2); max-width: 100%; height: auto; }
+.ad-scan { display: flex; justify-content: center; }
+.ad-steps { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: var(--pb-space-2); }
+.ad-manual > summary { cursor: pointer; min-height: var(--pb-target); display: flex; align-items: center; font-weight: 600; color: var(--pb-navy); border-radius: var(--pb-radius-sm); }
+.ad-manual[open] > summary { margin-bottom: var(--pb-space-2); }
+.ad-codes { list-style: none; margin: 0; padding: var(--pb-space-3); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pb-space-2) var(--pb-space-4); background: var(--pb-n50); border: 1px solid var(--pb-n200); border-radius: var(--pb-radius-md); }
+.ad-codes code { font-family: var(--pb-font-mono); font-size: 1rem; letter-spacing: 0.04em; user-select: all; }
+.ad-copystatus { align-self: center; }
+.ad-actions--split { justify-content: space-between; }
+@media (max-width: 479px) { .ad-codes { grid-template-columns: 1fr; } .ad-actions--split { flex-direction: column; align-items: stretch; } }
+@media print { .ad-actions, .ad-form button { display: none; } }
