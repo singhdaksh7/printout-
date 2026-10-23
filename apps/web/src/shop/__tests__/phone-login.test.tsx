@@ -1,7 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { __setPhoneAuthFactory, PhoneAuthError, type PhoneAuthProvider } from '../../lib/phone-auth';
+import { __setGoogleAuthFactory, __setPhoneAuthFactory, PhoneAuthError, type PhoneAuthProvider } from '../../lib/phone-auth';
 import { setCsrfToken } from '../../lib/api';
 import { FakeES, emptyList, mockFetch, renderShop, session, type Handler } from './helpers';
 import { safeShopRedirect } from '../safe-redirect';
@@ -10,7 +10,7 @@ beforeEach(() => {
   FakeES.reset(); vi.stubGlobal('EventSource', FakeES); setCsrfToken(null);
   vi.stubEnv('VITE_PHONE_AUTH_MOCK', '1');
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); __setPhoneAuthFactory(null); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); __setPhoneAuthFactory(null); __setGoogleAuthFactory(null); vi.useRealTimers(); });
 
 const CONFIG = { enabled: true, allowedCallingCodes: ['+91', '+1'], defaultCallingCode: '+91', resendCooldownSeconds: 30 };
 
@@ -63,6 +63,7 @@ describe('phone sign-in screens', () => {
     expect(screen.queryByRole('option', { name: /United Kingdom/ })).toBeNull(); // not in allowedCallingCodes
     expect(screen.getByText(/one-time SMS code/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send OTP' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in with email and password instead' })).toBeInTheDocument();
   });
 
@@ -261,6 +262,54 @@ describe('phone sign-in screens', () => {
     api(undefined, { ...CONFIG, enabled: false });
     renderShop('/shop');
     expect(await screen.findByRole('heading', { name: /shop sign in/i })).toBeInTheDocument();
+  });
+
+  it('Google sign-in: clicks Continue with Google, exchanges token via /auth/google/session, lands in the shop', async () => {
+    const user = userEvent.setup();
+    let signedIn = false;
+    let googleTokenSent = '';
+    mockFetch(
+      ({ method, path }) => (method === 'GET' && path === '/auth/session' && !signedIn ? { status: 401, error: { code: 'UNAUTHENTICATED' } } : undefined),
+      ({ path }) => (path === '/auth/phone/config' ? { data: CONFIG } : undefined),
+      (req) => {
+        if (req.method === 'POST' && req.path === '/auth/google/session') {
+          signedIn = true;
+          googleTokenSent = (req.body as any)?.idToken;
+          return { data: session() };
+        }
+        return undefined;
+      },
+      ({ method, path }) => (method === 'GET' && path === '/auth/session' && signedIn ? { data: session() } : undefined),
+      emptyList
+    );
+    __setGoogleAuthFactory(async () => 'google-test-id-token');
+    provider();
+    renderShop('/shop');
+    const googleBtn = await screen.findByRole('button', { name: 'Continue with Google' });
+    expect(googleBtn).toBeInTheDocument();
+    await user.click(googleBtn);
+    expect(await screen.findByRole('heading', { name: 'Print queue' })).toBeInTheDocument();
+    expect(googleTokenSent).toBe('google-test-id-token');
+  });
+
+  it('Google sign-in: shows friendly error when unlinked', async () => {
+    const user = userEvent.setup();
+    mockFetch(
+      ({ method, path }) => (method === 'GET' && path === '/auth/session' ? { status: 401, error: { code: 'UNAUTHENTICATED' } } : undefined),
+      ({ path }) => (path === '/auth/phone/config' ? { data: CONFIG } : undefined),
+      (req) => {
+        if (req.method === 'POST' && req.path === '/auth/google/session') {
+          return { status: 403, error: { code: 'GOOGLE_NOT_LINKED' } };
+        }
+        return undefined;
+      },
+      emptyList
+    );
+    __setGoogleAuthFactory(async () => 'google-unlinked-token');
+    provider();
+    renderShop('/shop');
+    await user.click(await screen.findByRole('button', { name: 'Continue with Google' }));
+    expect(await screen.findByText(/This Google account isn't linked to a shop account/i)).toBeInTheDocument();
   });
 });
 

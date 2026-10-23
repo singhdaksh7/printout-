@@ -21,3 +21,8 @@
 .pb-phone-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pb-space-3); }
 .pb-phone-status__num { font-weight: 600; color: var(--pb-navy); overflow-wrap: anywhere; }
 .pb-phone-note { background: #FFF4EA; border-radius: var(--pb-radius-md); padding: var(--pb-space-3); color: var(--pb-navy); font-size: 0.875rem; }
+
+.pb-login__google-btn { display: flex; align-items: center; justify-content: center; gap: var(--pb-space-2); font-weight: 500; }
+.pb-login__divider { display: flex; align-items: center; text-align: center; color: var(--pb-n500); font-size: 0.8125rem; margin: var(--pb-space-1) 0; }
+.pb-login__divider::before, .pb-login__divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--pb-n300); }
+.pb-login__divider span { padding: 0 var(--pb-space-2); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
