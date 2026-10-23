@@ -196,6 +196,13 @@ External uptime monitor (UptimeRobot / BetterStack, free) on `https://<DOMAIN>/r
 8. Record the deployed SHA, time and result (deployment log).
 9. Rollback: redeploy the previous tag or SHA and, if a migration must be undone, restore the pre-deploy backup (migrations are forward-only); rehearse this on staging first.
 
+### Pending migrations for the next combined production release
+
+Production has **not** received these yet; each must be rehearsed and applied as part of the later combined release (steps 3 to 7 above), never on its own and never during development.
+
+- `20261017100000_shop_operating_hours` (Shop Operating Hours, PR #23). Additive only: enum `AfterHoursPolicy`, and on `ShopSettings` the columns `timezone` (default `Asia/Kolkata`), `operatingHours`, `specialClosures` (default `[]`), `temporaryClosure`, `reopenUntil`, `afterHoursPolicy` (default `ACCEPT`). No backfill, no drops. Existing shops keep today's behaviour (no schedule, orders unrestricted). Rehearsal: restore the latest production backup to a scratch database, run `prisma migrate deploy`, confirm `prisma migrate diff` shows no drift, check an existing shop still orders, then run the hours API and e2e tests (`docs/SHOP_HOURS.md`). The previous API release ignores the new columns, so a code-only rollback needs no database restore.
+- Before the release, compare `_prisma_migrations` on production with `apps/api/prisma/migrations` and list every other unapplied migration here too.
+
 - Migrations are **forward-only** (no down migrations). Prefer additive (expand/contract) changes so the previous release still runs against the new schema.
 - **Code-only rollback:** `git checkout <previous tag> && bash deploy/deploy.sh`.
 - **Rollback of a release that included a migration the old code cannot run against:** restore the pre-deploy backup.
