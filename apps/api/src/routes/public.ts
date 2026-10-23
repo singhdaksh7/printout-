@@ -8,6 +8,7 @@ import { signQuote, verifyQuote } from '../domain/quote-token.js';
 import { subscriptionAllowsIntake } from '../domain/eligibility.js';
 import { assertAcceptingByHours, publicAvailability } from '../domain/hours-view.js';
 import { AppError, notFound } from '../errors.js';
+import { notifyShopOwners } from '../notifications/fcm.js';
 import { recordOrderCreated, toNotificationDto } from '../notifications/shop-notifications.js';
 import { isUniqueViolation, json, type AppContext } from './context.js';
 
@@ -188,6 +189,8 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
       } catch {
         /* ignored */
       }
+      // Mobile push AFTER commit, to this shop's owners only; best effort, never awaited by the response, no customer data in the payload.
+      void notifyShopOwners(ctx, shop.id, { type: 'order.new', orderId: order.id, title: 'New print order' });
       events.emit(shop.id, 'order.created', {
         id: order.id,
         orderNumber: order.orderNumber,

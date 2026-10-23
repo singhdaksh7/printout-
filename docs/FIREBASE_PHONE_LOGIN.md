@@ -134,3 +134,9 @@ CI uses no real SMS and no paid Firebase traffic. **Not covered by automation:**
 4. Confirm a token from a *different* Firebase project is refused and that the API fails to start with `FIREBASE_AUTH_EMULATOR_HOST` set in production.
 5. Confirm email + password and admin 2FA still work in production before and after enabling.
 6. Only then enable in production and tell owners.
+
+## Profile API and onboarding
+
+Mobile sign-in (`POST /auth` with phone OTP, Google or email), rotating refresh tokens, the shared profile API (`/users/me`, `/shops/me`, `/shops/me/qr`), restricted shop onboarding, Google link/unlink and FCM registration are documented for client developers in [MOBILE_AUTH_API.md](MOBILE_AUTH_API.md). Web phone sign-in is unchanged.
+
+Flags and settings (all new features are **off by default**): `SHOP_SELF_ONBOARDING_ENABLED` (a self-registered shop is `PILOT` with no plan and needs admin activation), `GOOGLE_LOGIN_ENABLED`, `FCM_PUSH_ENABLED`, `ACCESS_TOKEN_TTL_MINUTES` (15), `REFRESH_TOKEN_TTL_DAYS` (30), `REFRESH_REUSE_GRACE_SECONDS` (5), `ONBOARDING_GRANT_TTL_MINUTES` (30), `FCM_TOKEN_ENCRYPTION_KEY` (derived from `SESSION_SECRET` if unset), `FCM_STALE_DAYS` (60), `FCM_FAILURE_REVOKE_AFTER` (5). Migration `20261023100000_user_profile_onboarding` is additive. A verified phone or Google account never grants access to an existing shop; the owner-initiated, re-authenticated link flow remains the only bridge. Rollback of a feature = unset its flag; the tables can stay.

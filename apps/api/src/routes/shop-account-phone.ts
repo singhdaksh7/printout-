@@ -1,15 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { revokeUserRefreshFamilies } from '../domain/credentials.js';
 import { AppError } from '../errors.js';
 import { PhoneTokenInvalidError, PhoneVerifierUnavailableError, maskPhone } from '../firebase/verifier.js';
 import { getLimiters } from '../rate-limits.js';
 import { PHONE_TOKEN_INVALID_ERROR, PHONE_UNAVAILABLE_ERROR } from './auth-phone.js';
 import { audit, authOf, isUniqueViolation, json, shopGuard, type AppContext } from './context.js';
-import { reauthenticateShopOwner } from './shop-reauth.js';
+import { reauthenticateOwner } from './shop-reauth.js';
 
 const currentPassword = z.string().min(1).max(256);
-const linkBody = z.object({ idToken: z.string().min(20).max(4096), currentPassword }).strict();
-const unlinkBody = z.object({ currentPassword }).strict();
+/** Proof of ownership: the current password (as always), or a fresh token of another identity already linked to this account (accounts without a password). */
+const proofFields = { currentPassword: currentPassword.optional(), reauthIdToken: z.string().min(20).max(4096).optional() };
+const linkBody = z.object({ idToken: z.string().min(20).max(4096), ...proofFields }).strict();
+const unlinkBody = z.object(proofFields).strict();
 
 const UNAVAILABLE = () => new AppError(409, 'PHONE_UNAVAILABLE', 'This phone number cannot be used. Try a different number.');
 
@@ -26,8 +29,13 @@ export async function shopAccountPhoneRoutes(app: FastifyInstance, ctx: AppConte
     reply.header('cache-control', 'no-store');
   });
 
-  const endOtherSessions = async (db: Pick<typeof prisma, 'session'>, userId: string, sessionId: string) =>
-    (await db.session.updateMany({ where: { userId, invalidatedAt: null, id: { not: sessionId } }, data: { invalidatedAt: new Date() } })).count;
+  /** Ends every other session and (mobile) refresh family of the owner; the current session and its family stay. */
+  const endOtherSessions = async (db: Pick<typeof prisma, 'session' | 'refreshToken'>, userId: string, sessionId: string) => {
+    const current = await db.session.findUnique({ where: { id: sessionId }, select: { familyId: true } });
+    const count = (await db.session.updateMany({ where: { userId, invalidatedAt: null, id: { not: sessionId } }, data: { invalidatedAt: new Date() } })).count;
+    await revokeUserRefreshFamilies(db as typeof prisma, userId, 'phone_changed', current?.familyId ?? null);
+    return count;
+  };
 
   app.get('/shop/account/phone', { preHandler: [guard, limits.shopRead] }, async (request) => {
     const auth = authOf(request);
@@ -42,7 +50,7 @@ export async function shopAccountPhoneRoutes(app: FastifyInstance, ctx: AppConte
     const verifier = ctx.phoneVerifier;
     if (!verifier) throw PHONE_UNAVAILABLE_ERROR();
     const auth = authOf(request);
-    const user = await reauthenticateShopOwner(ctx, request, body.currentPassword, 'phone_link');
+    const user = await reauthenticateOwner(ctx, request, { currentPassword: body.currentPassword, firebaseIdToken: body.reauthIdToken }, 'phone_link');
 
     const tokenKey = `phonelink|${user.id}`;
     if (ctx.loginThrottle.isBlocked(tokenKey)) throw new AppError(429, 'RATE_LIMITED', 'Too many failed attempts. Try again later.');
@@ -104,10 +112,14 @@ export async function shopAccountPhoneRoutes(app: FastifyInstance, ctx: AppConte
   app.post('/shop/account/phone/unlink', { preHandler: [guard, limits.shopMutation] }, async (request) => {
     const body = unlinkBody.parse(request.body);
     const auth = authOf(request);
-    const user = await reauthenticateShopOwner(ctx, request, body.currentPassword, 'phone_unlink');
+    const user = await reauthenticateOwner(ctx, request, { currentPassword: body.currentPassword, firebaseIdToken: body.reauthIdToken }, 'phone_unlink');
     const outcome = await prisma.$transaction(async (tx) => {
       const identity = await tx.userPhoneIdentity.findUnique({ where: { userId: user.id } });
       if (!identity) throw new AppError(404, 'NOT_FOUND', 'No phone number is linked to this account.');
+      // Never remove the last way to sign in: an account without a password needs its Google identity to remain.
+      if (!user.passwordSet && !(await tx.userGoogleIdentity.findUnique({ where: { userId: user.id }, select: { id: true } }))) {
+        throw new AppError(409, 'LAST_SIGNIN_METHOD', 'This is your only way to sign in, so it cannot be removed.');
+      }
       await tx.userPhoneIdentity.delete({ where: { id: identity.id } });
       const ended = await endOtherSessions(tx, user.id, auth.sessionId);
       await audit(tx, { shopId: user.shopId, actorUserId: user.id, actorType: 'SHOP_OWNER', action: 'shop.phone.unlinked', targetType: 'user', targetId: user.id, metadata: { phone: maskPhone(identity.phoneE164), otherSessionsEnded: ended } });
