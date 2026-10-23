@@ -1,8 +1,9 @@
 import type { Prisma, PrismaClient, Role } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { csrfToken, equalToken, tokenHash, type LoginThrottle } from '../auth.js';
+import { csrfToken, equalToken, newToken, tokenHash, type LoginThrottle } from '../auth.js';
 import type { Config } from '../config.js';
+import type { PhoneTokenVerifier } from '../firebase/verifier.js';
 import { AppError } from '../errors.js';
 import type { ShopEvents } from '../events.js';
 import type { ShopNotificationHub } from '../notifications/shop-notifications.js';
@@ -22,6 +23,8 @@ export interface AppContext {
   twoFactorKeys: TwoFactorKeyring | null;
   /** Device push signals (NEW_PRINT_REQUEST etc.). Never carries URLs, keys or credentials. */
   notifier: Notifier;
+  /** Firebase phone-token verifier; null when FIREBASE_PROJECT_ID is unset (phone sign-in off). */
+  phoneVerifier: PhoneTokenVerifier | null;
 }
 
 export interface AuthContext {
@@ -149,6 +152,19 @@ export function setSessionCookie(ctx: AppContext, reply: FastifyReply, raw: stri
     path: COOKIE_PATH,
     expires
   });
+}
+
+/** Rotation: any session presented with this request is ended; a fresh random token is always issued. Returns the CSRF token. */
+export async function openSession(ctx: AppContext, request: FastifyRequest, reply: FastifyReply, userId: string): Promise<string> {
+  const previous = request.cookies[SESSION_COOKIE];
+  if (previous) {
+    await ctx.prisma.session.updateMany({ where: { tokenHash: tokenHash(previous), invalidatedAt: null }, data: { invalidatedAt: new Date() } });
+  }
+  const raw = newToken();
+  const expiresAt = new Date(Date.now() + ctx.config.SESSION_DAYS * 86_400_000);
+  const session = await ctx.prisma.session.create({ data: { userId, tokenHash: tokenHash(raw), expiresAt } });
+  setSessionCookie(ctx, reply, raw, expiresAt);
+  return csrfToken(ctx.config.CSRF_SECRET, session.id);
 }
 
 export function clearSessionCookie(ctx: AppContext, reply: FastifyReply): void {

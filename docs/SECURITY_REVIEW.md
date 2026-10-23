@@ -139,3 +139,7 @@ Accepted / remaining: the per-admin 2FA counter and login throttles are in memor
 * **Encryption key:** never committed or logged (asserted in tests); backup, loss and rotation in `docs/ADMIN_2FA.md`.
 * **Single instance:** login, second-factor and route throttles are in memory per process and assume one API instance; database-enforced controls (attempts per challenge, replay, single-use) do not.
 * **Merge gate:** PR #27 stays open and unmerged until Release A (UI Branding + Shop Hours + QR Poster) is confirmed live; then synchronize with `development`, rerun CI and the security checks, and squash-merge through branch protection.
+
+## Firebase phone sign-in
+
+Shop-owner SMS OTP sign-in via Firebase, linked explicitly by the owner and exchanged for the normal session: see [FIREBASE_PHONE_LOGIN.md](FIREBASE_PHONE_LOGIN.md). Off unless `FIREBASE_PROJECT_ID` is set; never grants admin access.

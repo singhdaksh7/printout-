@@ -12,9 +12,8 @@ import {
   clearChallengeCookie,
   clearSessionCookie,
   json,
-  SESSION_COOKIE,
+  openSession as openSessionFor,
   setChallengeCookie,
-  setSessionCookie,
   type AppContext
 } from './context.js';
 import {
@@ -37,14 +36,14 @@ const loginBody = z
   })
   .strict();
 
-interface UserWithShop {
+export interface UserWithShop {
   id: string;
   displayName: string;
   role: string;
   shop: { id: string; slug: string; displayName: string } | null;
 }
 
-const sessionPayload = (user: UserWithShop, csrf: string, retentionMinutes: number) => ({
+export const sessionPayload = (user: UserWithShop, csrf: string, retentionMinutes: number) => ({
   user: { id: user.id, displayName: user.displayName, role: user.role },
   shop: user.shop ? { id: user.shop.id, slug: user.shop.slug, displayName: user.shop.displayName } : null,
   csrfToken: csrf,
@@ -63,21 +62,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
   const { prisma, config } = ctx;
   const limits = getLimiters(app, config);
 
-  /** Rotation: any session presented with this request is ended; a fresh random token is always issued. Returns the CSRF token. */
-  async function openSession(request: FastifyRequest, reply: FastifyReply, userId: string): Promise<string> {
-    const previous = request.cookies[SESSION_COOKIE];
-    if (previous) {
-      await prisma.session.updateMany({
-        where: { tokenHash: tokenHash(previous), invalidatedAt: null },
-        data: { invalidatedAt: new Date() }
-      });
-    }
-    const raw = newToken();
-    const expiresAt = new Date(Date.now() + config.SESSION_DAYS * 86_400_000);
-    const session = await prisma.session.create({ data: { userId, tokenHash: tokenHash(raw), expiresAt } });
-    setSessionCookie(ctx, reply, raw, expiresAt);
-    return csrfToken(config.CSRF_SECRET, session.id);
-  }
+  const openSession = (request: FastifyRequest, reply: FastifyReply, userId: string) => openSessionFor(ctx, request, reply, userId);
 
   app.post(
     '/auth/login',

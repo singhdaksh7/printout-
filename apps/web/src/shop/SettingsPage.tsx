@@ -4,6 +4,7 @@ import { describeError, getQr, getSettings, putSettings, type ShopSettings } fro
 import { Banner, Button, Card, Checkbox, Chip, Icon, Skeleton, TextArea, TextField, useToast } from '../ui';
 import { useUnsavedGuard } from './components';
 import HoursSection from './HoursSection';
+import PhoneSignInSection from './PhoneSignInSection';
 import './hours.css';
 
 interface Form { displayName: string; address: string; publicContact: string; brandColor: string; acceptsOrders: boolean }
@@ -114,6 +115,7 @@ export default function SettingsPage() {
         </div>
       </form>
       </Card>
+      <PhoneSignInSection />
       <HoursSection />
       {toast}
     </section>

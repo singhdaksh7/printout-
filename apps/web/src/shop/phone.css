@@ -1,0 +1,23 @@
+/* Phone (SMS OTP) sign-in + Settings link flow. Tokens only: navy #14213D text, orange #E8772E primary (via Button), soft orange for focus/notice. */
+.pb-phone-row { display: grid; grid-template-columns: 1fr; gap: var(--pb-space-3); min-width: 0; }
+.pb-phone-row__cc, .pb-phone-row__num { min-width: 0; }
+@media (min-width: 480px) { .pb-phone-row { grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); } }
+
+.pb-phone-consent { font-size: 0.8125rem; line-height: 1.45; margin: 0; overflow-wrap: anywhere; }
+.pb-phone-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--pb-space-2); }
+.pb-phone-actions > * { flex: 1 1 auto; }
+
+.pb-otp { display: flex; justify-content: center; gap: var(--pb-space-2); max-width: 100%; }
+.pb-otp__box {
+  flex: 1 1 0; min-width: 0; max-width: 3.25rem; height: 3.5rem; padding: 0; text-align: center;
+  font: 600 1.5rem/1 var(--pb-font-mono, ui-monospace, monospace); color: var(--pb-navy);
+  background: #fff; border: 1.5px solid var(--pb-n300); border-radius: var(--pb-radius-md);
+}
+.pb-otp__box:focus-visible { outline: 3px solid var(--pb-navy); outline-offset: 2px; border-color: var(--pb-navy); background: #FFF4EA; }
+.pb-otp__box:disabled { background: var(--pb-n100); color: var(--pb-n500); }
+.pb-otp__box--invalid { border-color: #B42318; }
+
+.pb-phone-section { display: flex; flex-direction: column; gap: var(--pb-space-4); }
+.pb-phone-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pb-space-3); }
+.pb-phone-status__num { font-weight: 600; color: var(--pb-navy); overflow-wrap: anywhere; }
+.pb-phone-note { background: #FFF4EA; border-radius: var(--pb-radius-md); padding: var(--pb-space-3); color: var(--pb-navy); font-size: 0.875rem; }

@@ -118,6 +118,25 @@ const schema = z
     /** Wrong second-factor attempts allowed per challenge before it is destroyed and the password must be re-entered. */
     TWO_FACTOR_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
 
+    /**
+     * Firebase project whose phone-OTP ID tokens are accepted (project id, not a secret). Unset = phone sign-in is OFF
+     * (email/password is unaffected). Server credentials, if needed (FIREBASE_CHECK_REVOKED), come from Application
+     * Default Credentials (GOOGLE_APPLICATION_CREDENTIALS / workload identity), never from a committed file.
+     */
+    FIREBASE_PROJECT_ID: optionalString.pipe(z.string().regex(/^[a-z0-9][a-z0-9-]{3,62}$/).optional()),
+    /** A Firebase ID token is only exchanged/linked when its OTP verification (auth_time) is at most this old. */
+    FIREBASE_AUTH_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
+    /** Also ask Firebase whether the token was revoked / the user disabled (needs ADC; fails closed with 503 when unavailable). */
+    FIREBASE_CHECK_REVOKED: bool.default('true'),
+    /** Comma-separated E.164 calling codes accepted for phone sign-in (SMS-pumping guard; Firebase SMS region policy is the first line). */
+    PHONE_ALLOWED_CALLING_CODES: z
+      .string()
+      .default('+91')
+      .transform((v) => v.split(',').map((c) => c.trim()).filter(Boolean))
+      .pipe(z.array(z.string().regex(/^\+[1-9][0-9]{0,3}$/)).min(1)),
+    /** A linked phone unused for longer than this must be re-linked with the password first (number recycling). */
+    PHONE_IDENTITY_MAX_IDLE_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     LOCAL_UPLOAD_DIR: z.string().default('.data/uploads'),
     S3_ENDPOINT: optionalString,
@@ -248,6 +267,11 @@ export class ConfigError extends Error {
 /** Parses and validates the environment; throws ConfigError (no secret values in the message). */
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
   const result = schema.safeParse(env);
+  // The Firebase emulator makes the Admin SDK accept UNSIGNED tokens: never let it be reachable in production.
+  if (env.NODE_ENV === 'production' && env.FIREBASE_AUTH_EMULATOR_HOST) {
+    const problems = result.success ? [] : result.error.issues.map((i) => `${i.path.join('.') || '(config)'}: ${i.message}`);
+    throw new ConfigError([...problems, 'FIREBASE_AUTH_EMULATOR_HOST: must not be set in production (it disables token signature checks)']);
+  }
   if (!result.success) {
     throw new ConfigError(result.error.issues.map((i) => `${i.path.join('.') || '(config)'}: ${i.message}`));
   }

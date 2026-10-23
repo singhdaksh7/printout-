@@ -101,8 +101,27 @@ model User {
   twoFactor       AdminTwoFactor?
   recoveryCodes   AdminRecoveryCode[]
   loginChallenges AdminLoginChallenge[]
+  phoneIdentity   UserPhoneIdentity?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
+}
+
+/// Verified Firebase phone identity linked to ONE shop-owner account (an optional extra sign-in method; the password always
+/// remains). A verified phone number never grants access by itself: a row exists only after an authenticated, password-
+/// reauthenticated link. No OTP, ID token or raw secret is ever stored here.
+model UserPhoneIdentity {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firebaseUid  String    @unique
+  /// E.164, e.g. +919876543210. Unique across ALL accounts: one phone can sign in to exactly one shop owner.
+  phoneE164    String    @unique
+  linkedAt     DateTime  @default(now())
+  lastSignInAt DateTime?
+  /// Firebase auth_time (the OTP verification instant) of the newest token accepted: a token with auth_time <= this is a replay.
+  lastAuthTime DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 /// Platform-admin TOTP second factor. One row per admin. `enabledAt` is NULL while an enrollment is pending (secret

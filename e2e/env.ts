@@ -5,6 +5,10 @@ export const ROOT = path.resolve(__dirname, '..');
 export const API_PORT = Number(process.env.E2E_API_PORT ?? 3100);
 export const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 5273);
 export const PREVIEW_PORT = Number(process.env.E2E_PREVIEW_PORT ?? 5274);
+// Dedicated web server with phone sign-in switched on (mock Firebase client). Every other spec keeps the email-only login screen.
+export const PHONE_WEB_PORT = Number(process.env.E2E_PHONE_WEB_PORT ?? 5276);
+export const PHONE_WEB = `http://localhost:${PHONE_WEB_PORT}`;
+export const FIREBASE_E2E_PROJECT = 'printout-e2e';
 export const API = `http://localhost:${API_PORT}`;
 export const WEB = `http://localhost:${WEB_PORT}`;
 export const PREVIEW = `http://localhost:${PREVIEW_PORT}`;
@@ -36,5 +40,11 @@ export const serverEnv: Record<string, string> = {
   PUBLIC_RATE_LIMIT_MAX: '5000',
   SSE_HEARTBEAT_MS: '5000',
   // Disposable test-only key for the admin two-factor e2e.
-  TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString('base64')
+  TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 11).toString('base64'),
+  // Phone sign-in. FIREBASE_AUTH_EMULATOR_HOST makes the REAL firebase-admin accept unsigned (alg=none) test tokens while still
+  // checking project, issuer, expiry and claims; no network call is made. The API refuses this variable in production.
+  FIREBASE_PROJECT_ID: FIREBASE_E2E_PROJECT,
+  FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
+  FIREBASE_CHECK_REVOKED: 'false',
+  PHONE_ALLOWED_CALLING_CODES: '+91'
 };

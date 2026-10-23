@@ -34,6 +34,9 @@ import { createStorage, type Storage } from './storage/index.js';
 import { uploadRoutes } from './uploads.js';
 import { buildKeyring } from './two-factor/crypto.js';
 import { adminTwoFactorRoutes } from './routes/admin-two-factor.js';
+import { createPhoneVerifier, type PhoneTokenVerifier } from './firebase/verifier.js';
+import { authPhoneRoutes } from './routes/auth-phone.js';
+import { shopAccountPhoneRoutes } from './routes/shop-account-phone.js';
 
 export interface AppDeps {
   config?: Config;
@@ -42,6 +45,8 @@ export interface AppDeps {
   events?: ShopEvents;
   /** Device push signal sink. Defaults to a no-op (no Firebase needed). */
   notifier?: Notifier;
+  /** Phone-token verifier. Defaults to the Firebase Admin SDK verifier when FIREBASE_PROJECT_ID is set, else phone sign-in is off. Tests inject a fake. */
+  phoneVerifier?: PhoneTokenVerifier | null;
   /** Test hook: destination for the request logger. */
   logStream?: NodeJS.WritableStream;
   /** Test hook: Node http server timeouts (e.g. to prove SSE streams outlive requestTimeout). */
@@ -70,7 +75,8 @@ export function createApp(deps: AppDeps = {}) {
     if (config.NODE_ENV !== 'test') console.error(JSON.stringify({ level: 'warn', msg: 'notification hub error', err: err instanceof Error ? err.name : 'unknown' }));
   });
   const twoFactorKeys = config.TWO_FACTOR_ENCRYPTION_KEY ? buildKeyring(config.TWO_FACTOR_ENCRYPTION_KEY, config.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS) : null;
-  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, twoFactorKeys, notifier };
+  const phoneVerifier = deps.phoneVerifier !== undefined ? deps.phoneVerifier : createPhoneVerifier(config);
+  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, twoFactorKeys, notifier, phoneVerifier };
 
   const app = Fastify({
     logger: {
@@ -88,6 +94,7 @@ export function createApp(deps: AppDeps = {}) {
         '*.currentPassword',
         '*.newPassword',
         '*.code',
+        '*.idToken',
         '*.recoveryCodes',
         '*.secret',
         '*.manualKey',
@@ -165,6 +172,8 @@ export function createApp(deps: AppDeps = {}) {
   app.register(
     async (api) => {
       await api.register((i) => authRoutes(i, ctx));
+      await api.register((i) => authPhoneRoutes(i, ctx));
+      await api.register((i) => shopAccountPhoneRoutes(i, ctx));
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));

@@ -43,6 +43,12 @@ export type ErrorCode =
   | 'IDEMPOTENCY_CONFLICT'
   | 'DUPLICATE_PRICING_RULE'
   | 'CONFLICT'
+  // Firebase phone sign-in
+  | 'PHONE_TOKEN_INVALID'
+  | 'PHONE_NOT_LINKED'
+  | 'PHONE_REVERIFY_REQUIRED'
+  | 'PHONE_UNAVAILABLE'
+  | 'PHONE_LOGIN_UNAVAILABLE'
   // Windows print agent
   | 'PRINT_JOB_NOT_FOUND'
   | 'LEASE_MISMATCH'
