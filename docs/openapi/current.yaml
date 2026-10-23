@@ -707,6 +707,13 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/google/session:
+    post:
+      summary: "Web Google sign-in: Firebase ID token for the session cookie (shop owners; strict Origin check)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /auth:
     post:
       summary: "Mobile sign-in. loginMethod otp|google|email. Flat response: accessToken, refreshToken, tokenType, expiresIn, refreshTokenExpiresIn, isShopRegisteredAtLeastOne, showQr, nextStep, user, shops, shop, onboardingAvailable. Unlinked verified identity gets a restricted pair (user.id null, nextStep create_shop). Suspended: 403 ACCOUNT_BLOCKED, no tokens. Admins refused."

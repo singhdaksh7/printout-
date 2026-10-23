@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { ApiError, setCsrfToken } from '../lib/api';
 import {
   cancelSecondFactor as apiCancelSecondFactor, fetchSession, isTwoFactorRequired, login as apiLogin, logout as apiLogout, setUnauthorizedHandler,
-  phoneSession as apiPhoneSession, verifySecondFactor as apiVerifySecondFactor, type LoginResult, type SecondFactorMethod, type SessionData
+  phoneSession as apiPhoneSession, googleSession as apiGoogleSession, verifySecondFactor as apiVerifySecondFactor, type LoginResult, type SecondFactorMethod, type SessionData
 } from '../lib/shop-api';
 import { Button } from '../ui';
 
@@ -19,6 +19,8 @@ interface AuthApi {
   login(email: string, password: string): Promise<LoginResult>;
   /** Signs in with a Firebase phone ID token (server verifies it and resolves the linked shop account). */
   phoneLogin(idToken: string): Promise<SessionData>;
+  /** Signs in with a Firebase Google ID token (server verifies it and resolves the linked shop account). */
+  googleLogin(idToken: string): Promise<SessionData>;
   /** Completes a pending admin sign-in with an authenticator or recovery code. */
   completeSecondFactor(method: SecondFactorMethod, code: string): Promise<SessionData & { recoveryCodesRemaining?: number }>;
   /** Abandons the pending second-factor step. */
@@ -73,6 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: 'authed', session: s });
     return s;
   }, []);
+  const googleLogin = useCallback(async (idToken: string) => {
+    const s = await apiGoogleSession(idToken);
+    setCsrfToken(s.csrfToken);
+    setState({ status: 'authed', session: s });
+    return s;
+  }, []);
   const completeSecondFactor = useCallback(async (method: SecondFactorMethod, code: string) => {
     const s = await apiVerifySecondFactor(method, code);
     setCsrfToken(s.csrfToken);
@@ -90,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const endSession = useCallback(() => { setCsrfToken(null); setState({ status: 'anon' }); }, []);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  const value = useMemo(() => ({ state, login, phoneLogin, completeSecondFactor, cancelSecondFactor, logout, endSession, retry }), [state, login, phoneLogin, completeSecondFactor, cancelSecondFactor, logout, endSession, retry]);
+  const value = useMemo(() => ({ state, login, phoneLogin, googleLogin, completeSecondFactor, cancelSecondFactor, logout, endSession, retry }), [state, login, phoneLogin, googleLogin, completeSecondFactor, cancelSecondFactor, logout, endSession, retry]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

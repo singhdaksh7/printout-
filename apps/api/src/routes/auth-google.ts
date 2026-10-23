@@ -1,4 +1,5 @@
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { mobileAuthResponse } from '../domain/auth-response.js';
 import { accountBlocked, issueRestrictedCredentials, revokeOnboardingFamilies } from '../domain/credentials.js';
 import { restrictedProfile } from '../domain/profile.js';
@@ -6,10 +7,52 @@ import { AppError } from '../errors.js';
 import { PhoneTokenInvalidError, PhoneVerifierUnavailableError, maskEmail, type VerifiedGoogle } from '../firebase/verifier.js';
 import { clientIpKey } from '../rate-limits.js';
 import { authResponseFor, type FirebaseSignInResult } from './auth-firebase.js';
-import { audit, type AppContext } from './context.js';
+import { assertSameOrigin } from './auth-phone.js';
+import { sessionPayload } from './auth.js';
+import { audit, json, openSession, type AppContext } from './context.js';
 
 export const GOOGLE_UNAVAILABLE_ERROR = () => new AppError(503, 'GOOGLE_LOGIN_UNAVAILABLE', 'Google sign-in is unavailable right now. Use another sign-in method.');
 export const GOOGLE_TOKEN_INVALID_ERROR = () => new AppError(401, 'GOOGLE_TOKEN_INVALID', 'That Google sign-in could not be confirmed. Try again.');
+
+const sessionBody = z.object({ idToken: z.string().min(20).max(4096) }).strict();
+
+/** Web Google sign-in: exchange of a verified Firebase Google ID token for the normal session cookie. */
+export async function authGoogleRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+  const { prisma, config } = ctx;
+
+  app.post(
+    '/auth/google/session',
+    { config: { rateLimit: { max: config.LOGIN_RATE_LIMIT_MAX, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      assertSameOrigin(ctx, request);
+      const body = sessionBody.parse(request.body);
+      const { verified, ipKey } = await verifyGoogleToken(ctx, request, body.idToken);
+      const masked = maskEmail(verified.email);
+
+      const identity = await prisma.userGoogleIdentity.findUnique({ where: { firebaseUid: verified.uid }, include: { user: { include: { shop: true } } } });
+      const notLinked = () => new AppError(403, 'GOOGLE_NOT_LINKED', 'This Google account is not linked to a shop account. Sign in with your email and password, then link it in Settings.');
+      if (!identity) throw notLinked();
+
+      const user = identity.user;
+      if (user.role !== 'SHOP_OWNER' || !user.shopId) throw notLinked();
+      if (user.shop?.status === 'SUSPENDED') throw new AppError(403, 'SHOP_SUSPENDED', 'This shop is suspended');
+
+      const claimed = await prisma.userGoogleIdentity.updateMany({
+        where: { id: identity.id, OR: [{ lastAuthTime: null }, { lastAuthTime: { lt: verified.authTime } }] },
+        data: { lastAuthTime: verified.authTime, lastSignInAt: new Date(), email: verified.email }
+      });
+      if (claimed.count !== 1) {
+        await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: 'SHOP_OWNER', action: 'auth.google.login_refused', targetType: 'user', targetId: user.id, metadata: { reason: 'replay', email: masked } });
+        throw GOOGLE_TOKEN_INVALID_ERROR();
+      }
+
+      ctx.loginThrottle.reset(ipKey);
+      const csrf = await openSession(ctx, request, reply, user.id);
+      await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: 'SHOP_OWNER', action: 'auth.google.login', targetType: 'user', targetId: user.id, metadata: { email: masked } });
+      return json(sessionPayload(user, csrf, config.PRINT_RETENTION_MINUTES));
+    }
+  );
+}
 
 /** Verifies a Firebase Google ID token (project, freshness, revocation per config, provider google.com, Google-VERIFIED email). */
 export async function verifyGoogleToken(ctx: AppContext, request: FastifyRequest, idToken: string): Promise<{ verified: VerifiedGoogle; ipKey: string }> {
