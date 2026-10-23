@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { burnPasswordCheck, csrfToken, newToken, tokenHash, verifyPassword } from '../auth.js';
+import { revokeFamily } from '../domain/credentials.js';
+import { resolveGrant } from '../domain/onboarding-grant.js';
+import { revokeInstallation } from '../notifications/fcm-registrations.js';
 import { AppError } from '../errors.js';
 import { getLimiters } from '../rate-limits.js';
 import {
@@ -195,10 +198,43 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
     return reply.code(204).send();
   });
 
+  /**
+   * Ends THIS session, and for a mobile session its whole refresh family and the device's push registration. Cookie callers need the CSRF
+   * header; bearer callers do not. A mobile app whose access token already expired can still sign out by sending its refresh token in
+   * the body (idempotent: an unknown or already-revoked token answers 204 as well).
+   */
   app.post('/auth/logout', { preHandler: limits.shopMutation }, async (request, reply) => {
-    const auth = await authenticate(ctx, request);
+    const optional = z.object({ refreshToken: z.string().min(20).max(200).optional() }).strict().parse(request.body ?? {});
+    let auth;
+    try {
+      auth = await authenticate(ctx, request);
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'UNAUTHORIZED') throw error;
+      // A restricted onboarding principal (access token = grant) signs out by ending its grant and refresh family.
+      const grant = await resolveGrant(ctx, request);
+      if (grant) {
+        await prisma.phoneOnboardingGrant.deleteMany({ where: { id: grant.id } });
+        if (grant.familyId) await revokeFamily(prisma, grant.familyId, 'logout');
+        return reply.code(204).send();
+      }
+      if (!optional.refreshToken) throw error;
+      const row = await prisma.refreshToken.findUnique({ where: { tokenHash: tokenHash(optional.refreshToken) } });
+      if (row) {
+        await revokeFamily(prisma, row.familyId, 'logout');
+        await audit(prisma, { shopId: null, actorUserId: row.userId, action: 'auth.logout', targetType: row.userId ? 'user' : 'phone', ...(row.userId ? { targetId: row.userId } : {}), metadata: { transport: 'refresh' } });
+      }
+      return reply.code(204).send();
+    }
     assertCsrf(ctx, request, auth);
+    const session = await prisma.session.findUnique({ where: { id: auth.sessionId }, select: { familyId: true, deviceId: true } });
     await prisma.session.updateMany({ where: { id: auth.sessionId }, data: { invalidatedAt: new Date() } });
+    if (session?.familyId) await revokeFamily(prisma, session.familyId, 'logout');
+    if (optional.refreshToken) {
+      const row = await prisma.refreshToken.findUnique({ where: { tokenHash: tokenHash(optional.refreshToken) } });
+      if (row && row.userId === auth.userId) await revokeFamily(prisma, row.familyId, 'logout');
+    }
+    if (session?.deviceId) await revokeInstallation(prisma, auth.userId, session.deviceId);
+    await audit(prisma, { shopId: auth.shopId, actorUserId: auth.userId, action: 'auth.logout', targetType: 'user', targetId: auth.userId, metadata: { transport: auth.viaBearer ? 'bearer' : 'cookie' } });
     clearSessionCookie(ctx, reply);
     return reply.code(204).send();
   });

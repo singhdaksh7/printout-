@@ -136,6 +136,32 @@ const schema = z
       .pipe(z.array(z.string().regex(/^\+[1-9][0-9]{0,3}$/)).min(1)),
     /** A linked phone unused for longer than this must be re-linked with the password first (number recycling). */
     PHONE_IDENTITY_MAX_IDLE_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+    /**
+     * Phone self-onboarding policy. OFF by default: a verified phone with no linked shop owner can then only be told to
+     * ask for an account. When ON, POST /shops/onboarding may create a restricted PILOT shop (no plan, not live, no
+     * premium) that a platform admin must activate; nothing else is granted automatically.
+     */
+    /** Continue with Google (Firebase Auth, provider google.com) on POST /auth. OFF by default; needs FIREBASE_PROJECT_ID and the Google provider enabled in the Firebase console. */
+    GOOGLE_LOGIN_ENABLED: bool.default('false'),
+    SHOP_SELF_ONBOARDING_ENABLED: bool.default('false'),
+    /** Lifetime of the restricted onboarding grant issued to a verified phone that has no linked account. */
+    ONBOARDING_GRANT_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(30),
+
+    /** Mobile only (client:'mobile'): lifetime of the opaque access token (an ordinary Session row sent as Authorization: Bearer). Web cookie sessions keep SESSION_DAYS. */
+    ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().min(1).max(120).default(15),
+    /** Mobile only: absolute lifetime of a refresh-token family member; each use rotates it. */
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    /** A just-rotated refresh token presented again within this window is a client race (409 REFRESH_CONFLICT, no revocation); later = reuse = family revoked. */
+    REFRESH_REUSE_GRACE_SECONDS: z.coerce.number().int().min(0).max(60).default(5),
+
+    /** Push (FCM) delivery to mobile owners. OFF by default: no Firebase messaging call is ever made while false. */
+    FCM_PUSH_ENABLED: bool.default('false'),
+    /** 32 random bytes, base64, for FCM tokens at rest. Unset = a purpose-bound key is derived from SESSION_SECRET (HKDF, label printout:fcm:v1). */
+    FCM_TOKEN_ENCRYPTION_KEY: optionalString,
+    /** Registrations not refreshed by the app for this long are skipped and swept. */
+    FCM_STALE_DAYS: z.coerce.number().int().min(1).max(365).default(60),
+    /** Consecutive transient send failures after which a registration is revoked. */
+    FCM_FAILURE_REVOKE_AFTER: z.coerce.number().int().min(1).max(50).default(5),
 
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     LOCAL_UPLOAD_DIR: z.string().default('.data/uploads'),
@@ -149,6 +175,9 @@ const schema = z
     ALLOW_LOCAL_STORAGE_IN_PRODUCTION: bool.default('false')
   })
   .superRefine((cfg, ctx) => {
+    if (cfg.FCM_TOKEN_ENCRYPTION_KEY && Buffer.from(cfg.FCM_TOKEN_ENCRYPTION_KEY, 'base64').length !== 32) {
+      ctx.addIssue({ code: 'custom', path: ['FCM_TOKEN_ENCRYPTION_KEY'], message: 'FCM_TOKEN_ENCRYPTION_KEY must be 32 random bytes, base64 (openssl rand -base64 32)' });
+    }
     if (cfg.TWO_FACTOR_ENCRYPTION_KEY) {
       try {
         buildKeyring(cfg.TWO_FACTOR_ENCRYPTION_KEY, cfg.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS);

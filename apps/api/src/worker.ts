@@ -3,6 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { ConfigError, loadConfig } from './config.js';
 import { cleanupExpiredDocuments, cleanupPairingCodes, type CleanupLogger, type CleanupResult, type CleanupStorage } from './cleanup.js';
+import { sweepCredentials } from './domain/credentials.js';
+import { sweepFcm } from './notifications/fcm-registrations.js';
 import { cleanupNotifications } from './notifications/shop-notifications.js';
 import { createStorage, type StorageConfig } from './storage/index.js';
 
@@ -21,6 +23,7 @@ const workerEnvSchema = z.object({
   DOCUMENT_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive().default(100),
   DOCUMENT_STALE_UPLOAD_MINUTES: z.coerce.number().positive().default(60),
   NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  FCM_STALE_DAYS: z.coerce.number().int().min(1).max(365).default(60),
   WORKER_RUN_ONCE: z.string().optional()
 });
 
@@ -105,6 +108,14 @@ export function startWorker(options: WorkerOptions = {}): WorkerHandle {
         if (purged.deleted > 0) log.info?.({ deleted: purged.deleted }, 'notification retention sweep finished');
       } catch (error) {
         log.error?.({ err: error instanceof Error ? error.name : 'unknown' }, 'notification retention sweep failed');
+      }
+      // Mobile credentials and push registrations: expired refresh rows, onboarding grants, stale/revoked FCM rows. Same isolation.
+      try {
+        const swept = await sweepCredentials(prisma, new Date(nowMs));
+        const fcm = await sweepFcm(prisma, settings.FCM_STALE_DAYS, new Date(nowMs));
+        if (swept.refreshTokens + swept.grants + fcm.deleted > 0) log.info?.({ ...swept, fcm: fcm.deleted }, 'credential and push sweep finished');
+      } catch (error) {
+        log.error?.({ err: error instanceof Error ? error.name : 'unknown' }, 'credential and push sweep failed');
       }
     }
   };

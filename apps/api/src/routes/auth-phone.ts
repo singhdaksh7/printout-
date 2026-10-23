@@ -12,7 +12,7 @@ export const PHONE_UNAVAILABLE_ERROR = () => new AppError(503, 'PHONE_LOGIN_UNAV
 export const PHONE_TOKEN_INVALID_ERROR = () => new AppError(401, 'PHONE_TOKEN_INVALID', 'That verification could not be confirmed. Request a new code and try again.');
 
 /** Browsers always send Origin on cross-site POSTs; when present it must be our web app (login-CSRF / stray-site guard). */
-function assertSameOrigin(ctx: AppContext, request: FastifyRequest): void {
+export function assertSameOrigin(ctx: AppContext, request: FastifyRequest): void {
   const origin = request.headers.origin;
   if (origin === undefined) return;
   let expected: string;

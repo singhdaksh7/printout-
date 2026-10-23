@@ -693,11 +693,179 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/phone/config:
+    get:
+      summary: "Phone sign-in availability and allowed calling codes (public, no secrets)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/phone/session:
+    post:
+      summary: "Web phone sign-in: Firebase ID token for the session cookie (shop owners; strict Origin check)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth:
+    post:
+      summary: "Mobile sign-in. loginMethod otp|google|email. Flat response: accessToken, refreshToken, tokenType, expiresIn, refreshTokenExpiresIn, isShopRegisteredAtLeastOne, showQr, nextStep, user, shops, shop, onboardingAvailable. Unlinked verified identity gets a restricted pair (user.id null, nextStep create_shop). Suspended: 403 ACCOUNT_BLOCKED, no tokens. Admins refused."
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/refresh:
+    post:
+      summary: "Rotate the token pair (single-use refresh token; reuse after the grace window revokes the family; 409 REFRESH_CONFLICT within the grace window; 401 REFRESH_TOKEN_INVALID/EXPIRED; malformed or over-length tokens also answer 401 REFRESH_TOKEN_INVALID; bad deviceId answers 400 VALIDATION_ERROR)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/logout-all:
+    post:
+      summary: "End every session and refresh family of the caller (all devices); push registrations removed unless keepPush"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '204': { description: 'No content' }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/firebase/exchange:
+    post:
+      summary: "OTP exchange. client=web: session cookie + csrfToken (web shape). client=mobile (needs deviceId): same flat shape as POST /auth. Restricted principal for an unlinked verified phone"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me:
+    get:
+      summary: "Own profile: user, shops (0 or 1), shop, nextStep, isShopRegisteredAtLeastOne, showQr. Accepts a restricted token. Never another user"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+        - restrictedBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    patch:
+      summary: "Change own name; email only for owners with a password and currentPassword"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities:
+    get:
+      summary: "Linked sign-in methods (masked): password.set, phone, google, googleAvailable"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities/google:
+    post:
+      summary: "Link or replace Google (fresh Google Firebase token plus reauth: exactly one of currentPassword or firebaseIdToken); ends other sessions"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities/google/unlink:
+    post:
+      summary: "Unlink Google (reauth required); 409 LAST_SIGNIN_METHOD if it is the only method"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/me:
+    get:
+      summary: "Own shop(s): shops (0 or 1 element), shop, nextStep, isShopRegisteredAtLeastOne, showQr. Unmodelled fields (location, payment, rating, images, referral, isVerified) are null"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    patch:
+      summary: "Change shopName, address, pincode (strict body; status, plan, slug, prices rejected)"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/me/qr:
+    get:
+      summary: "QR readiness {ready, publicUrl, qrCodeUrl, reason}. Virtual QR (origin + /p/slug), never stored. Optional ?shopId must be the caller's own shop"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/onboarding:
+    post:
+      summary: "Register a new PILOT shop for a verified identity with no account (restricted token). 201 created / 200 idempotent repeat. 403 SELF_ONBOARDING_DISABLED unless SHOP_SELF_ONBOARDING_ENABLED. No plan, acceptsOrders=false, admin activation required"
+      security:
+        - restrictedBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/fcm-token:
+    put:
+      summary: "Register, refresh or rotate this installation's FCM token (idempotent; token ownership moves to the caller)"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "Revoke by installationId or token; always 204"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '204': { description: 'No content' }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/account/phone:
+    get:
+      summary: "Linked phone status (masked)"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      summary: "Link or replace the phone: idToken plus currentPassword or reauthIdToken; ends other sessions"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/account/phone/unlink:
+    post:
+      summary: "Unlink the phone (currentPassword or reauthIdToken); 409 LAST_SIGNIN_METHOD"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
 components:
   securitySchemes:
     ownerSession: { type: apiKey, in: cookie, name: printout_session, description: "Shop owner session plus CSRF token header on mutations" }
     adminSession: { type: apiKey, in: cookie, name: printout_session, description: "Platform admin session plus CSRF token header on mutations" }
     deviceBearer: { type: http, scheme: bearer }
+    mobileBearer: { type: http, scheme: bearer, description: "Opaque access token from POST /auth (mobile, 15 min by default). No CSRF header is needed for bearer calls. Renew with POST /auth/refresh." }
+    restrictedBearer: { type: http, scheme: bearer, description: "Restricted access token of a verified identity with no account yet; accepted only by GET /users/me, POST /shops/onboarding and POST /auth/logout." }
   schemas:
     DataEnvelope: { type: object, required: [data], properties: { data: {} } }
     ErrorEnvelope:

@@ -37,6 +37,13 @@ import { adminTwoFactorRoutes } from './routes/admin-two-factor.js';
 import { createPhoneVerifier, type PhoneTokenVerifier } from './firebase/verifier.js';
 import { authPhoneRoutes } from './routes/auth-phone.js';
 import { shopAccountPhoneRoutes } from './routes/shop-account-phone.js';
+import { authFirebaseRoutes } from './routes/auth-firebase.js';
+import { authRefreshRoutes } from './routes/auth-refresh.js';
+import { authMobileRoutes } from './routes/auth-mobile.js';
+import { userIdentityRoutes } from './routes/user-identities.js';
+import { createPushSender, type PushSender } from './notifications/fcm.js';
+import { profileRoutes } from './routes/profile.js';
+import { shopOnboardingRoutes } from './routes/shop-onboarding.js';
 
 export interface AppDeps {
   config?: Config;
@@ -47,6 +54,7 @@ export interface AppDeps {
   notifier?: Notifier;
   /** Phone-token verifier. Defaults to the Firebase Admin SDK verifier when FIREBASE_PROJECT_ID is set, else phone sign-in is off. Tests inject a fake. */
   phoneVerifier?: PhoneTokenVerifier | null;
+  pushSender?: PushSender | null;
   /** Test hook: destination for the request logger. */
   logStream?: NodeJS.WritableStream;
   /** Test hook: Node http server timeouts (e.g. to prove SSE streams outlive requestTimeout). */
@@ -76,7 +84,8 @@ export function createApp(deps: AppDeps = {}) {
   });
   const twoFactorKeys = config.TWO_FACTOR_ENCRYPTION_KEY ? buildKeyring(config.TWO_FACTOR_ENCRYPTION_KEY, config.TWO_FACTOR_ENCRYPTION_KEY_PREVIOUS) : null;
   const phoneVerifier = deps.phoneVerifier !== undefined ? deps.phoneVerifier : createPhoneVerifier(config);
-  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, twoFactorKeys, notifier, phoneVerifier };
+  const pushSender = deps.pushSender !== undefined ? deps.pushSender : createPushSender(config);
+  const ctx: AppContext = { config, prisma, storage, events, notifications, loginThrottle, twoFactorKeys, notifier, phoneVerifier, pushSender };
 
   const app = Fastify({
     logger: {
@@ -174,6 +183,12 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => authRoutes(i, ctx));
       await api.register((i) => authPhoneRoutes(i, ctx));
       await api.register((i) => shopAccountPhoneRoutes(i, ctx));
+      await api.register((i) => authFirebaseRoutes(i, ctx));
+      await api.register((i) => authRefreshRoutes(i, ctx));
+      await api.register((i) => authMobileRoutes(i, ctx));
+      await api.register((i) => userIdentityRoutes(i, ctx));
+      await api.register((i) => profileRoutes(i, ctx));
+      await api.register((i) => shopOnboardingRoutes(i, ctx));
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));

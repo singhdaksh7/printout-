@@ -13,6 +13,9 @@ export interface TestTokenOptions {
   exp?: number;
   aud?: string;
   iss?: string;
+  /** Google tokens: the address and whether Google verified it (default true when `email` is given). */
+  email?: string;
+  emailVerified?: boolean;
 }
 
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
@@ -31,6 +34,17 @@ export function mintEmulatorToken(o: TestTokenOptions): string {
     exp: o.exp ?? authTime + 3600,
     firebase: { identities: {}, sign_in_provider: o.provider ?? 'phone' }
   };
-  if (o.phone !== null) payload.phone_number = o.phone ?? '+919876543210';
+  if (o.provider === 'google.com') {
+    // A Google token carries email claims and no phone number.
+    if (o.email !== undefined) {
+      payload.email = o.email;
+      payload.email_verified = o.emailVerified ?? true;
+    }
+  } else if (o.phone !== null) payload.phone_number = o.phone ?? '+919876543210';
   return `${b64({ alg: 'none', typ: 'JWT' })}.${b64(payload)}.`;
+}
+
+/** Convenience: a Google (google.com) ID token whose email Google has verified (override with emailVerified:false to test rejection). */
+export function mintGoogleToken(o: Omit<TestTokenOptions, 'provider' | 'phone'> & { email: string }): string {
+  return mintEmulatorToken({ ...o, provider: 'google.com', phone: null });
 }

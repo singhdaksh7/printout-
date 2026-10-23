@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { hashPassword, rewrapLike } from '../auth.js';
+import { revokeUserRefreshFamilies } from '../domain/credentials.js';
 import { AppError } from '../errors.js';
 import { reauthenticateAdmin } from './admin-reauth.js';
 import { passwordPolicyProblem } from '../password-policy.js';
@@ -52,6 +53,7 @@ export async function adminAccountRoutes(app: FastifyInstance, ctx: AppContext):
         });
         if (updated.count !== 1) throw new AppError(409, 'CONFLICT', 'Your account changed while this request was running. Reload and try again.');
         const ended = await tx.session.updateMany({ where: { userId: user.id, invalidatedAt: null }, data: { invalidatedAt: new Date() } });
+        await revokeUserRefreshFamilies(tx, user.id, action === 'admin.account.email_changed' ? 'email_changed' : 'password_changed');
         // A pending second-factor sign-in was issued for the OLD credentials: destroy it. 2FA itself stays enabled.
         await tx.adminLoginChallenge.deleteMany({ where: { userId: user.id } });
         await audit(tx, {
