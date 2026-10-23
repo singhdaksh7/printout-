@@ -173,3 +173,45 @@ async function createFirebasePhoneAuth(config: FirebaseWebConfig): Promise<Phone
     reset() { pending = null; clearVerifier(); }
   };
 }
+
+let googleOverride: (() => Promise<string>) | null = null;
+/** Test seam: replace the Google sign-in provider. Never called by application code. */
+export const __setGoogleAuthFactory = (f: (() => Promise<string>) | null) => { googleOverride = f; };
+
+export async function signInWithGoogleWeb(): Promise<string> {
+  if (googleOverride) return googleOverride();
+  if (import.meta.env.VITE_PHONE_AUTH_MOCK === '1') {
+    return 'mock-google-id-token';
+  }
+  const config = firebaseWebConfig();
+  if (!config) throw new PhoneAuthError('not-configured', 'missing firebase env');
+  let sdk: [typeof import('firebase/app'), typeof import('firebase/auth')];
+  try {
+    sdk = await Promise.all([import('firebase/app'), import('firebase/auth')]);
+  } catch {
+    throw new PhoneAuthError('network', 'sdk load failed');
+  }
+  const [{ initializeApp, getApps, getApp }, A] = sdk;
+  const app = getApps().length ? getApp() : initializeApp(config);
+  let auth: import('firebase/auth').Auth;
+  try {
+    auth = A.initializeAuth(app, { persistence: A.inMemoryPersistence });
+  } catch {
+    auth = A.getAuth(app);
+  }
+  const provider = new A.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  try {
+    const cred = await A.signInWithPopup(auth, provider);
+    const token = await cred.user.getIdToken(true);
+    await A.signOut(auth).catch(() => undefined);
+    return token;
+  } catch (e: unknown) {
+    const code = (e as { code?: unknown })?.code;
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      throw new PhoneAuthError('unavailable', 'Google sign-in was cancelled.');
+    }
+    throw mapFirebaseError(e);
+  }
+}
+

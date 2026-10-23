@@ -346,6 +346,8 @@ export interface PhoneLoginConfig { enabled: boolean; allowedCallingCodes: strin
 export const getPhoneLoginConfig = () => api<PhoneLoginConfig>('/auth/phone/config');
 /** Exchanges a Firebase ID token for a normal shop session. The token is the only proof sent; no phone, role or shop id. */
 export const phoneSession = (idToken: string) => api<SessionData>('/auth/phone/session', { method: 'POST', body: { idToken } });
+/** Exchanges a Firebase Google ID token for a normal shop session. */
+export const googleSession = (idToken: string) => api<SessionData>('/auth/google/session', { method: 'POST', body: { idToken } });
 
 export interface PhoneStatus { linked: boolean; phoneMasked?: string; linkedAt?: string; lastSignInAt?: string | null; available: boolean }
 export interface PhoneLinkResult { linked: boolean; phoneMasked: string; replaced: boolean; otherSessionsEnded: number }

@@ -14,6 +14,14 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN pnpm install --frozen-lockfile --filter @printout/web...
 COPY apps/web apps/web
+ARG VITE_FIREBASE_API_KEY
+ARG VITE_FIREBASE_AUTH_DOMAIN
+ARG VITE_FIREBASE_PROJECT_ID
+ARG VITE_FIREBASE_APP_ID
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
+    VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
+    VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID \
+    VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
 RUN pnpm --filter @printout/web build
 
 FROM ${NGINX_IMAGE} AS runtime
