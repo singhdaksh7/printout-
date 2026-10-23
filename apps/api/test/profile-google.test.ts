@@ -625,4 +625,46 @@ describe('Google sign-in (loginMethod google) and Google identity linking', () =
       expect((await exchange(h.app, tok(PHONES.A, next()), 'web')).statusCode).toBe(200);
     });
   });
+
+  describe('web Google sign-in (POST /auth/google/session)', () => {
+    const webGoogle = (idToken: string, headers: Record<string, string> = { origin: 'http://localhost:5173' }) =>
+      h.app.inject({ method: 'POST', url: '/api/v1/auth/google/session', payload: { idToken }, headers });
+
+    it('exchanges a linked Google token for a session cookie and csrfToken', async () => {
+      await linkGoogleDirect(await ownerId(), OWNER_G);
+      const res = await webGoogle(g(OWNER_G));
+      expect(res.statusCode, res.body).toBe(200);
+      const cookie = res.cookies.find((c) => c.name === 'printout_session');
+      expect(cookie).toBeTruthy();
+      expect(cookie?.httpOnly).toBe(true);
+      const d = data(res);
+      expect(d.csrfToken).toBeTruthy();
+      expect(d.user.id).toBe(await ownerId());
+      expect(d.user.role).toBe('SHOP_OWNER');
+      expect(d.shop?.id).toBe(h.world.a.shopId);
+    });
+
+    it('refuses an unlinked Google account with 403 GOOGLE_NOT_LINKED', async () => {
+      const res = await webGoogle(g('unlinked@gmail.test'));
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe('GOOGLE_NOT_LINKED');
+    });
+
+    it('refuses replay of the same token with 401 GOOGLE_TOKEN_INVALID', async () => {
+      await linkGoogleDirect(await ownerId(), OWNER_G);
+      const t = g(OWNER_G);
+      expect((await webGoogle(t)).statusCode).toBe(200);
+      const replayed = await webGoogle(t);
+      expect(replayed.statusCode).toBe(401);
+      expect(replayed.json().error.code).toBe('GOOGLE_TOKEN_INVALID');
+    });
+
+    it('refuses cross-origin requests with 403 FORBIDDEN', async () => {
+      await linkGoogleDirect(await ownerId(), OWNER_G);
+      const res = await webGoogle(g(OWNER_G), { origin: 'https://evil.com' });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe('FORBIDDEN');
+    });
+  });
 });
+
