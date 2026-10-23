@@ -7,6 +7,7 @@ on:
     branches: [development, main]
   push:
     branches: [development, main]
+  workflow_dispatch: # lets the release coordinator run CI on main after a GITHUB_TOKEN merge (such merges do not fire push events)
 
 permissions:
   contents: read

@@ -1,0 +1,35 @@
+{
+  "releaseId": "printout-three-feature-release-1",
+  "repo": "singhdaksh7/printout-",
+  "integrationBranch": "development",
+  "productionBranch": "main",
+  "features": [
+    { "key": "ui-polish", "branch": "feature/daksh-ui-polish" },
+    { "key": "realtime-notifications", "branch": "feature/daksh-realtime-notifications" },
+    { "key": "revenue-dashboard", "branch": "feature/daksh-revenue-dashboard" }
+  ],
+  "requiredChecks": [
+    "Web (types, tests, build)",
+    "API (types, schema, migrations, tests)",
+    "End-to-end (isolated database and ports)",
+    "UI quality (axe, focus, overflow)",
+    "Security (secret scan, dependency audit)"
+  ],
+  "verification": {
+    "_comment": "Fail closed: every group needs at least one existing file per pattern. A group whose pattern matches nothing stops the release (for example revenue tests that were never written).",
+    "groups": [
+      { "name": "Order History", "patterns": ["^apps/api/test/order-history\\.test\\.ts$", "^apps/web/src/shop/__tests__/history\\.test\\.tsx$", "^e2e/.*history.*\\.spec\\.ts$"] },
+      { "name": "Admin Security", "patterns": ["^apps/api/test/admin-account\\.test\\.ts$", "^apps/api/test/security-hardening\\.test\\.ts$", "^apps/web/src/admin/__tests__/account\\.test\\.tsx$", "^e2e/.*admin-account.*\\.spec\\.ts$"] },
+      { "name": "Notification delivery", "patterns": ["^apps/api/test/.*notification.*\\.test\\.ts$", "^apps/web/src/shop/__tests__/.*notification.*\\.test\\.tsx$", "^e2e/.*notification.*\\.spec\\.ts$"] },
+      { "name": "Tenant isolation", "patterns": ["^e2e/03-isolation\\.spec\\.ts$"] },
+      { "name": "Revenue calculations", "patterns": ["^apps/api/test/.*revenue.*\\.test\\.ts$", "^apps/web/src/.*/__tests__/.*revenue.*\\.test\\.tsx?$"] }
+    ]
+  },
+  "deploy": {
+    "expectedHost": "77.37.45.177",
+    "publicUrlsVariable": "PUBLIC_URLS",
+    "minFreeDiskPercent": 20,
+    "minFreeDiskGiB": 5,
+    "minAvailableMemMiB": 300
+  }
+}
