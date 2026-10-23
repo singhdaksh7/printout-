@@ -348,6 +348,8 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       if (body.status === ShopStatus.SUSPENDED) {
         // Immediate lock-out of every shop session.
         await tx.session.updateMany({ where: { user: { shopId: id }, invalidatedAt: null }, data: { invalidatedAt: new Date() } });
+        // Mobile refresh tokens too: a suspended shop cannot renew an access token.
+        await tx.refreshToken.updateMany({ where: { user: { shopId: id }, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'shop_suspended' } });
       }
       await audit(tx, {
         shopId: id,

@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dist = process.argv[2] ?? new URL('../dist', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-const MARKERS = ['PrintoutBuddy component showcase', 'ui-showcase', 'sc-swatch', 'Development only · sample data'];
+const MARKERS = ['PrintoutBuddy component showcase', 'ui-showcase', 'sc-swatch', 'Development only · sample data', 'pb-phone-auth-mock-driver'];
 
 function walk(dir) {
   return readdirSync(dir).flatMap((f) => {

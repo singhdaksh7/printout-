@@ -28,6 +28,9 @@ paths = [
   '''^apps/api/test/admin-account\.test\.ts$''',
   '''^apps/api/test/hardening-ops\.test\.ts$''',
   '''^apps/api/test/two-factor-unit\.test\.ts$''',
+  '''^apps/api/test/phone-login\.test\.ts$''',
+  '''^apps/api/test/profile-me\.test\.ts$''',
+  '''^apps/api/test/profile-google\.test\.ts$''',
   '''^apps/api/vitest\.config\.ts$''',
   '''^apps/windows-agent/vitest\.integration\.config\.ts$''',
   '''^e2e/env\.ts$''',
@@ -44,7 +47,20 @@ regexes = [
   '''^e2e-csrf-secret-0123456789abcdefghijklmn$''',           # fake CSRF secret for the e2e environment
   '''^e2e-twofactor-passphrase-1$''',                         # fake admin passphrase, disposable-database 2FA e2e
   '''^pbd_secret123$''',                                      # Android test fixture device credential
+  '''^definitely-wrong-1$''',                                # intentionally wrong reauthentication password
+  '''^a-long-enough-passphrase-9$''',                         # disposable profile test owner password
+  '''^prod-csrf-8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d$''',        # synthetic production-config validation fixture
+  '''^prod-quote-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d$''',       # synthetic production-config validation fixture
 ]
+
+[[rules]]
+id = "curl-auth-header"
+[rules.allowlist]
+description = "Mobile API documentation placeholders: exact file AND exact value"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^docs/MOBILE_AUTH_API\.md$''']
+regexes = ['''^v3ry-l0ng-opaque-access-token$''', '''^restricted-access-token$''']
 
 [[rules]]
 id = "aws-access-token"

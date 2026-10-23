@@ -61,6 +61,8 @@ model Shop {
   slug               String              @unique
   displayName        String
   address            String?
+  /// Indian PIN code (6 digits). Collected by self-onboarding; NULL for shops created before it existed.
+  pincode            String?
   status             ShopStatus          @default(ACTIVE)
   /// Reference to the shop's data key in a managed KMS (target). Unset until KMS is chosen.
   kmsKeyRef          String?
@@ -101,8 +103,51 @@ model User {
   twoFactor       AdminTwoFactor?
   recoveryCodes   AdminRecoveryCode[]
   loginChallenges AdminLoginChallenge[]
+  phoneIdentity   UserPhoneIdentity?
+  googleIdentity  UserGoogleIdentity?
+  fcmRegistrations FcmRegistration[]
+  refreshTokens   RefreshToken[]
+  /// False for accounts created by phone self-onboarding: passwordHash is a random unusable value and email/password sign-in is not offered.
+  passwordSet     Boolean               @default(true)
+  /// Set whenever a session is opened (any sign-in method).
+  lastLoginAt     DateTime?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
+}
+
+/// Verified Firebase phone identity linked to ONE shop-owner account (an optional extra sign-in method; the password always
+/// remains). A verified phone number never grants access by itself: a row exists only after an authenticated, password-
+/// reauthenticated link. No OTP, ID token or raw secret is ever stored here.
+model UserPhoneIdentity {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firebaseUid  String    @unique
+  /// E.164, e.g. +919876543210. Unique across ALL accounts: one phone can sign in to exactly one shop owner.
+  phoneE164    String    @unique
+  linkedAt     DateTime  @default(now())
+  lastSignInAt DateTime?
+  /// Firebase auth_time (the OTP verification instant) of the newest token accepted: a token with auth_time <= this is a replay.
+  lastAuthTime DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+/// Verified Firebase Google identity linked to ONE shop-owner account (an optional extra sign-in method). Resolution is ONLY by the
+/// Firebase uid: an email or phone that merely matches an existing user never links or signs in anything. Linking is explicit and
+/// re-authenticated. `email` is the Google-verified address at link/sign-in time (lowercased).
+model UserGoogleIdentity {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firebaseUid  String    @unique
+  email        String
+  linkedAt     DateTime  @default(now())
+  lastSignInAt DateTime?
+  /// Firebase auth_time of the newest token accepted (replay protection, same rule as the phone identity).
+  lastAuthTime DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 /// Platform-admin TOTP second factor. One row per admin. `enabledAt` is NULL while an enrollment is pending (secret
@@ -158,9 +203,14 @@ model Session {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt     DateTime
   invalidatedAt DateTime?
+  /// Mobile only: the rotating refresh-token family this access session belongs to (NULL for web cookie sessions).
+  familyId      String?
+  /// Mobile only: installation id bound at sign-in (also the key of the device's FCM registration).
+  deviceId      String?
   createdAt     DateTime  @default(now())
 
   @@index([userId])
+  @@index([familyId])
 }
 
 model ShopSettings {
@@ -652,4 +702,89 @@ model DevicePrintJob {
   @@index([shopId, orderId])
   @@index([deviceId, status])
   @@index([shopId, status, createdAt])
+}
+
+/// Mobile app refresh credential (rotating, one live token per family). Only the SHA-256 hash is stored. Distinct from the Firebase
+/// refresh token (never seen by the API) and from the access Session token it mints.
+model RefreshToken {
+  id            String    @id @default(cuid())
+  familyId      String
+  /// NULL for kind 'onboarding' (a verified phone that has no account yet).
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 'user' = normal account family; 'onboarding' = restricted identity (subjectUid/subjectPhone), upgraded to a user family once the identity is linked.
+  kind          String    @default("user")
+  /// phone | google (restricted families only)
+  subjectProvider String?
+  subjectUid    String?
+  subjectPhone  String?
+  subjectEmail  String?
+  tokenHash     String    @unique
+  /// The access Session issued together with this token (ended when the token is rotated or revoked).
+  sessionId     String?
+  /// Installation id bound at exchange; a refresh from another device id is refused.
+  deviceId      String
+  clientType    String
+  expiresAt     DateTime
+  /// Set when the token was exchanged for a successor. Presenting it again later = reuse = the family is revoked.
+  rotatedAt     DateTime?
+  revokedAt     DateTime?
+  revokedReason String?
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime?
+
+  @@index([familyId])
+  @@index([userId])
+  @@index([subjectUid])
+  @@index([expiresAt])
+}
+
+/// Push registration of one app installation of one user. SENSITIVE: the FCM token is stored only AES-256-GCM encrypted
+/// (tokenCipher) plus a SHA-256 lookup hash; it is never returned by any API and never logged or audited.
+model FcmRegistration {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Tenant of the owner at registration time (from the session, never from the client).
+  shopId           String?
+  installationId   String
+  /// android | ios | web
+  platform         String
+  tokenCipher      String
+  tokenHash        String    @unique
+  enabled          Boolean   @default(true)
+  revokedAt        DateTime?
+  lastRegisteredAt DateTime  @default(now())
+  lastSuccessAt    DateTime?
+  failureCount     Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, installationId])
+  @@index([shopId])
+}
+
+/// Restricted, short-lived proof that a Firebase phone number was verified but is linked to NO shop account yet. It only
+/// authorises POST /shops/onboarding and GET /users/me; it is not a session and is consumed by a successful onboarding.
+model PhoneOnboardingGrant {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  /// phone | google: which verified identity this restricted principal represents.
+  provider    String   @default("phone")
+  firebaseUid String
+  /// Set for provider phone, NULL for google.
+  phoneE164   String?
+  /// Google-verified email (provider google only); the account email at onboarding comes from here, never from the client.
+  email       String?
+  /// Firebase auth_time of the verified OTP / Google sign-in.
+  authTime    DateTime
+  expiresAt   DateTime
+  /// Mobile only: the onboarding refresh family this grant (used as the restricted access token) belongs to, and its bound installation.
+  familyId    String?
+  deviceId    String?
+  createdAt   DateTime @default(now())
+
+  @@index([familyId])
+  @@index([firebaseUid])
+  @@index([expiresAt])
 }

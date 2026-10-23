@@ -159,3 +159,33 @@ Job status: `QUEUED, CLAIMED, DOWNLOADING, SUBMITTING, SUBMITTED_TO_SPOOLER, PRI
 | `POST /shop/print-jobs/:id/cancel` / `retry` / `reconcile` | owner | `reconcile` `{resolution: PRINTED|NOT_PRINTED_REQUEUE|NOT_PRINTED_GIVE_UP, clientRequestId?}` |
 
 Compatibility: no existing field or route changed; `DeviceView.printers` is new. Migration `20261017031501_windows_print_agent` only adds enums, tables and nullable columns.
+
+## Shared user profile, mobile auth and shop onboarding (additive)
+
+Full request/response examples, error table, field nullability and Android guidance: [MOBILE_AUTH_API.md](MOBILE_AUTH_API.md). Setup and operations: [FIREBASE_PHONE_LOGIN.md](FIREBASE_PHONE_LOGIN.md). Envelope `{data}`, error format and rate-limit behaviour are unchanged. No existing route, field or status code changed.
+
+| Route | Auth | Notes |
+|---|---|---|
+| `GET /auth/phone/config` | none | `{enabled, allowedCallingCodes, defaultCallingCode, resendCooldownSeconds}` |
+| `POST /auth/phone/session` `{idToken}` | Firebase ID token | web phone sign-in (cookie); unchanged |
+| `POST /auth` `{loginMethod: otp\|google\|email, firebaseIdToken?, phoneNumber?, email?, password?, fcmToken?, installationId, platform}` | proof in body | mobile sign-in. Flat response: `accessToken, refreshToken, tokenType:"Bearer", expiresIn, refreshTokenExpiresIn, isShopRegisteredAtLeastOne, showQr, nextStep, user, shops, shop, onboardingAvailable`. Unlinked verified identity: restricted pair (`user.id` null, `shops` [], `nextStep: create_shop`). Suspended: 403 `ACCOUNT_BLOCKED` (`details.nextStep: account_blocked`), no tokens. Admins refused. |
+| `POST /auth/refresh` `{refreshToken, deviceId}` | none | rotation; reuse after the grace window revokes the family; 409 `REFRESH_CONFLICT` inside `REFRESH_REUSE_GRACE_SECONDS`; 401 `REFRESH_TOKEN_INVALID` / `REFRESH_TOKEN_EXPIRED`; 403 `ACCOUNT_BLOCKED`. Every malformed, forged, empty or over-length refresh token gets the same 401 `REFRESH_TOKEN_INVALID` (no length oracle); a missing or malformed `deviceId` is 400 `VALIDATION_ERROR`. A chunked body over 4096 bytes with no declared size can still receive the framework's 413. |
+| `POST /auth/logout` | cookie+CSRF or Bearer | optional `{refreshToken}`; ends the session, its refresh family and the device's push registration; 204 |
+| `POST /auth/logout-all` `{keepPush?}` | session | all sessions and refresh families; 204 |
+| `POST /auth/firebase/exchange` `{idToken, client?: web\|mobile, deviceId?}` | Firebase ID token | web: cookie + `csrfToken` (profile + `session`/`onboarding`); mobile: same flat shape as `POST /auth` (needs `deviceId`) |
+| `GET /users/me` | Bearer/cookie, or restricted token | `{user, shops, shop, nextStep, isShopRegisteredAtLeastOne, showQr}`; there is no `GET /users/:id` |
+| `PATCH /users/me` `{name?, email?, currentPassword?}` | session | email change: owners with a password only, needs `currentPassword`; 403 `EMAIL_CHANGE_NOT_ALLOWED` for accounts without a password |
+| `GET /users/me/identities`, `POST /users/me/identities/google`, `POST /users/me/identities/google/unlink` | owner | Google link/unlink with `reauth: {currentPassword \| firebaseIdToken}`; 409 `LAST_SIGNIN_METHOD`, `GOOGLE_IDENTITY_UNAVAILABLE`; 403 `REAUTH_FAILED` |
+| `GET /shops/me` | owner | `{shops (0 or 1), shop, nextStep, isShopRegisteredAtLeastOne, showQr}`; `location`, `payment`, `rating`, `images`, `referral`, `isVerified` are always `null` |
+| `PATCH /shops/me` `{shopName?, address?, pincode?}` | owner | strict body |
+| `GET /shops/me/qr[?shopId=]` | owner | `{ready, publicUrl, qrCodeUrl, reason}`; virtual QR (`<origin>/p/<slug>`), nothing stored |
+| `POST /shops/onboarding` | restricted token | 201 created / 200 idempotent repeat; disabled (403 `SELF_ONBOARDING_DISABLED`) unless `SHOP_SELF_ONBOARDING_ENABLED`; creates a `PILOT` shop, no plan, `acceptsOrders=false`; unknown body keys ignored; 409 `ALREADY_ONBOARDED`, `EMAIL_UNAVAILABLE` |
+| `PUT /users/me/fcm-token` `{installationId, token, platform}` | owner | idempotent upsert per installation; never returned by any endpoint |
+| `DELETE /users/me/fcm-token` `{installationId}` or `{token}` | owner | always 204 |
+| `GET /shop/account/phone`, `POST /shop/account/phone`, `POST /shop/account/phone/unlink` | owner | link/replace/unlink a phone with `currentPassword` or `reauthIdToken`; ends other sessions |
+
+`nextStep` (server-derived): admin `dashboard`; no shop `create_shop`; suspended `account_blocked`; missing name or address `complete_profile`; QR not ready `generate_qr`; else `dashboard`. QR readiness is a readiness check, never an authentication factor.
+
+Session transport: web keeps `printout_session` + `x-csrf-token`. Mobile sends `Authorization: Bearer <accessToken>` (opaque, default 15 min); CSRF is not required for bearer requests. The refresh token (default 30 days, single-use, rotating) is sent only in the body of `POST /auth/refresh` or `POST /auth/logout`.
+
+Compatibility: `POST /auth/login`, Admin 2FA, device bearer credentials, customer upload/tracking, `/shop/qr` and the existing cookie-session routes behave as before.

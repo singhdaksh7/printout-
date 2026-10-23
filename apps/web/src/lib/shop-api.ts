@@ -340,3 +340,17 @@ export const reconcilePrintJob = (id: string, resolution: Reconciliation) =>
   shopRequest<{ job: PrintJobView; next: PrintJobView | null }>(`/shop/print-jobs/${encodeURIComponent(id)}/reconcile`, {
     method: 'POST', body: { resolution, ...(resolution === 'NOT_PRINTED_REQUEUE' ? { clientRequestId: newRequestId() } : {}) }
   });
+
+// ---- phone (SMS OTP) sign-in ---------------------------------------------------------------------------
+export interface PhoneLoginConfig { enabled: boolean; allowedCallingCodes: string[]; defaultCallingCode: string; resendCooldownSeconds: number }
+export const getPhoneLoginConfig = () => api<PhoneLoginConfig>('/auth/phone/config');
+/** Exchanges a Firebase ID token for a normal shop session. The token is the only proof sent; no phone, role or shop id. */
+export const phoneSession = (idToken: string) => api<SessionData>('/auth/phone/session', { method: 'POST', body: { idToken } });
+
+export interface PhoneStatus { linked: boolean; phoneMasked?: string; linkedAt?: string; lastSignInAt?: string | null; available: boolean }
+export interface PhoneLinkResult { linked: boolean; phoneMasked: string; replaced: boolean; otherSessionsEnded: number }
+export const getPhoneStatus = () => shopRequest<PhoneStatus>('/shop/account/phone');
+export const linkPhone = (idToken: string, currentPassword: string) =>
+  shopRequest<PhoneLinkResult>('/shop/account/phone', { method: 'POST', body: { idToken, currentPassword } });
+export const unlinkPhone = (currentPassword: string) =>
+  shopRequest<{ linked: false; otherSessionsEnded?: number }>('/shop/account/phone/unlink', { method: 'POST', body: { currentPassword } });
