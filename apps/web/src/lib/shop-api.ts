@@ -344,10 +344,63 @@ export const reconcilePrintJob = (id: string, resolution: Reconciliation) =>
 // ---- phone (SMS OTP) sign-in ---------------------------------------------------------------------------
 export interface PhoneLoginConfig { enabled: boolean; allowedCallingCodes: string[]; defaultCallingCode: string; resendCooldownSeconds: number }
 export const getPhoneLoginConfig = () => api<PhoneLoginConfig>('/auth/phone/config');
+export interface UserProfileView {
+  id: string | null;
+  role: 'shop' | 'admin' | null;
+  name: string | null;
+  email: string | null;
+  phoneNumber: string | null;
+  loginMethods: Array<'email' | 'otp' | 'google'>;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  lastLoginAt: string | null;
+}
+
+export interface WebAuthProfileResponse {
+  user: UserProfileView;
+  shops: Array<{ id: string; shopName: string; slug: string; status: string }>;
+  shop: { id: string; shopName: string; slug: string; status: string } | null;
+  nextStep: string;
+  isShopRegisteredAtLeastOne: boolean;
+  showQr: boolean;
+  session?: { transport: 'cookie'; expiresAt: string } | null;
+  onboarding?: { transport: 'cookie'; expiresAt: string } | null;
+  csrfToken?: string;
+  retentionMinutes?: number;
+  onboardingAvailable?: boolean;
+}
+
+export type GoogleSessionResponse = SessionData | WebAuthProfileResponse;
+
 /** Exchanges a Firebase ID token for a normal shop session. The token is the only proof sent; no phone, role or shop id. */
 export const phoneSession = (idToken: string) => api<SessionData>('/auth/phone/session', { method: 'POST', body: { idToken } });
-/** Exchanges a Firebase Google ID token for a normal shop session. */
-export const googleSession = (idToken: string) => api<SessionData>('/auth/google/session', { method: 'POST', body: { idToken } });
+/** Exchanges a Firebase Google ID token for a normal shop session or a restricted onboarding grant. */
+export const googleSession = (idToken: string) => api<GoogleSessionResponse>('/auth/google/session', { method: 'POST', body: { idToken } });
+
+export interface OnboardShopInput {
+  ownerName: string;
+  shopName: string;
+  address: string;
+  pincode: string;
+  email?: string;
+}
+
+export interface OnboardShopResponse {
+  user: { id: string; role: 'shop'; name: string | null; email: string | null };
+  shop: { id: string; shopName: string; slug: string; status: string } | null;
+  csrfToken: string;
+  retentionMinutes?: number;
+}
+
+export const onboardShop = (input: OnboardShopInput) =>
+  api<OnboardShopResponse>('/shops/onboarding', {
+    method: 'POST',
+    body: { ...input, client: 'web' }
+  });
+
+export const getMyProfile = () => api<WebAuthProfileResponse>('/users/me');
 
 export interface PhoneStatus { linked: boolean; phoneMasked?: string; linkedAt?: string; lastSignInAt?: string | null; available: boolean }
 export interface PhoneLinkResult { linked: boolean; phoneMasked: string; replaced: boolean; otherSessionsEnded: number }

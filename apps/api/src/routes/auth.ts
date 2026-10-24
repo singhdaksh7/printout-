@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { burnPasswordCheck, csrfToken, newToken, tokenHash, verifyPassword } from '../auth.js';
 import { revokeFamily } from '../domain/credentials.js';
-import { resolveGrant } from '../domain/onboarding-grant.js';
+import { clearGrantCookie, resolveGrant } from '../domain/onboarding-grant.js';
 import { revokeInstallation } from '../notifications/fcm-registrations.js';
 import { AppError } from '../errors.js';
 import { getLimiters } from '../rate-limits.js';
@@ -215,14 +215,19 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
       if (grant) {
         await prisma.phoneOnboardingGrant.deleteMany({ where: { id: grant.id } });
         if (grant.familyId) await revokeFamily(prisma, grant.familyId, 'logout');
+        clearGrantCookie(ctx, reply);
         return reply.code(204).send();
       }
-      if (!optional.refreshToken) throw error;
+      if (!optional.refreshToken) {
+        clearGrantCookie(ctx, reply);
+        throw error;
+      }
       const row = await prisma.refreshToken.findUnique({ where: { tokenHash: tokenHash(optional.refreshToken) } });
       if (row) {
         await revokeFamily(prisma, row.familyId, 'logout');
         await audit(prisma, { shopId: null, actorUserId: row.userId, action: 'auth.logout', targetType: row.userId ? 'user' : 'phone', ...(row.userId ? { targetId: row.userId } : {}), metadata: { transport: 'refresh' } });
       }
+      clearGrantCookie(ctx, reply);
       return reply.code(204).send();
     }
     assertCsrf(ctx, request, auth);
@@ -236,6 +241,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
     if (session?.deviceId) await revokeInstallation(prisma, auth.userId, session.deviceId);
     await audit(prisma, { shopId: auth.shopId, actorUserId: auth.userId, action: 'auth.logout', targetType: 'user', targetId: auth.userId, metadata: { transport: auth.viaBearer ? 'bearer' : 'cookie' } });
     clearSessionCookie(ctx, reply);
+    clearGrantCookie(ctx, reply);
     return reply.code(204).send();
   });
 

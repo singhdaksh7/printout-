@@ -101,7 +101,48 @@ describe('simplified shop login screen (Google + Email/Password only)', () => {
     expect(googleTokenSent).toBe('google-test-id-token');
   });
 
-  it('Continue with Google: shows friendly error when Google account is unlinked', async () => {
+  it('Continue with Google: redirects to /shop/register when Google account requires onboarding (nextStep create_shop)', async () => {
+    const user = userEvent.setup();
+    api((req) => {
+      if (req.path === '/auth/google/session') {
+        return {
+          data: {
+            user: { id: null, role: null, name: null, email: 'newbie@gmail.com', loginMethods: ['google'] },
+            shops: [],
+            shop: null,
+            nextStep: 'create_shop',
+            isShopRegisteredAtLeastOne: false,
+            showQr: false,
+            onboarding: { transport: 'cookie', expiresAt: '2026-10-24T15:00:00Z' },
+            onboardingAvailable: true
+          }
+        };
+      }
+      if (req.path === '/users/me') {
+        return {
+          data: {
+            user: { id: null, role: null, name: null, email: 'newbie@gmail.com', loginMethods: ['google'] },
+            shops: [],
+            shop: null,
+            nextStep: 'create_shop',
+            isShopRegisteredAtLeastOne: false,
+            showQr: false,
+            onboardingAvailable: true
+          }
+        };
+      }
+      return { data: session() };
+    });
+    __setGoogleAuthFactory(async () => 'google-newbie-token');
+
+    renderShop('/shop/login');
+    const googleBtn = await screen.findByRole('button', { name: 'Continue with Google' });
+    await user.click(googleBtn);
+
+    expect(await screen.findByRole('heading', { name: 'Register Your Shop' })).toBeInTheDocument();
+  });
+
+  it('Continue with Google: shows friendly error when Google account is unlinked or returns error', async () => {
     const user = userEvent.setup();
     api(() => ({ status: 403, error: { code: 'GOOGLE_NOT_LINKED' } }));
     __setGoogleAuthFactory(async () => 'google-unlinked-token');

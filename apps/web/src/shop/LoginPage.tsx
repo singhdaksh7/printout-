@@ -123,6 +123,10 @@ export default function LoginPage() {
     try {
       const idToken = await signInWithGoogleWeb();
       const s = await googleLogin(idToken);
+      if (('nextStep' in s && s.nextStep === 'create_shop') || ('onboarding' in s && s.onboarding) || !s.user?.id) {
+        navigate('/shop/register', { replace: true });
+        return;
+      }
       navigate(s.user.role === 'PLATFORM_ADMIN' ? '/admin' : safeShopRedirect(from), { replace: true });
     } catch (err) {
       setError(googleLoginError(err));
