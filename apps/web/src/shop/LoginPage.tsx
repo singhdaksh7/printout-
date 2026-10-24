@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { phoneAuthConfigured, signInWithGoogleWeb } from '../lib/phone-auth';
+import { PhoneAuthError, googleAuthErrorMessage, phoneAuthConfigured, signInWithGoogleWeb } from '../lib/phone-auth';
 import { getPhoneLoginConfig, type PhoneLoginConfig } from '../lib/shop-api';
 import { Banner, BrandLogo, Button, Card, Skeleton, TextField } from '../ui';
 import { useAuth } from './auth';
@@ -55,7 +55,7 @@ export function googleLoginError(e: unknown): string {
     if (e.status === 429) return 'Too many sign-in attempts. Please wait a minute and try again.';
     if (e.status >= 500) return 'The server had a problem. Please try again shortly.';
   }
-  if (e instanceof Error && e.message) return e.message;
+  if (e instanceof PhoneAuthError) return googleAuthErrorMessage(e);
   return 'Could not sign in with Google. Try again or use another method.';
 }
 

@@ -48,7 +48,7 @@ export const maskPhone = (e164: string): string => (e164.length > 6 ? `${e164.sl
 
 export type PhoneAuthErrorKind =
   | 'invalid-phone' | 'rate-limited' | 'quota' | 'code-expired' | 'code-invalid' | 'captcha' | 'network' | 'region-blocked'
-  | 'domain' | 'unavailable' | 'not-configured' | 'no-session';
+  | 'domain' | 'unavailable' | 'config' | 'cancelled' | 'not-configured' | 'no-session';
 
 export class PhoneAuthError extends Error {
   constructor(public kind: PhoneAuthErrorKind, message: string) { super(message); }
@@ -65,6 +65,8 @@ const MESSAGES: Record<PhoneAuthErrorKind, string> = {
   'region-blocked': 'Codes cannot be sent to this country. Use email and password instead.',
   domain: 'Phone sign-in is not available on this address. Use email and password instead.',
   unavailable: 'Phone sign-in is unavailable right now. Use email and password instead.',
+  config: 'Phone sign-in is unavailable right now. Use email and password instead.',
+  cancelled: 'Sign-in was cancelled.',
   'not-configured': 'Phone sign-in is not set up. Use email and password instead.',
   'no-session': 'Request a new code first.'
 };
@@ -84,8 +86,35 @@ export function mapFirebaseError(e: unknown): PhoneAuthError {
     : code === 'auth/network-request-failed' ? 'network'
     : code === 'auth/operation-not-allowed' ? 'region-blocked'
     : code === 'auth/unauthorized-domain' || code === 'auth/app-not-authorized' || code === 'auth/invalid-app-credential' ? 'domain'
+    : code === 'auth/argument-error' ? 'config' // the SDK was called with a bad argument (a wiring bug), never user input
     : 'unavailable';
+  // Only the code is logged (never the SDK text, token, number or key) so an unexplained "unavailable" can be diagnosed from the console.
+  if (kind === 'unavailable' || kind === 'config') console.warn('[phone-auth] Firebase error', code || 'unknown');
   return new PhoneAuthError(kind, code || 'unknown');
+}
+
+/** User-facing text for a failed Google web sign-in: never the Firebase code, never phone wording. */
+export function googleAuthErrorMessage(e: PhoneAuthError): string {
+  switch (e.kind) {
+    case 'cancelled': return 'Google sign-in was cancelled.';
+    case 'network': return MESSAGES.network;
+    case 'domain': return 'Google sign-in is not available on this address. Use another sign-in method.';
+    case 'not-configured': return 'Google sign-in is not set up. Use another sign-in method.';
+    default: return 'Google sign-in is unavailable right now. Use another sign-in method.';
+  }
+}
+
+/**
+ * The one Auth instance for this page. It must be created WITH the popup/redirect resolver: initializeAuth() without one makes
+ * signInWithPopup() throw auth/argument-error, and phone and Google sign-in share the instance.
+ */
+function firebaseAuthFor(A: typeof import('firebase/auth'), app: import('firebase/app').FirebaseApp): import('firebase/auth').Auth {
+  try {
+    // No persistence: the Firebase session is only a stepping stone to one ID token and must not outlive this page.
+    return A.initializeAuth(app, { persistence: A.inMemoryPersistence, popupRedirectResolver: A.browserPopupRedirectResolver });
+  } catch {
+    return A.getAuth(app);
+  }
 }
 
 /**
@@ -135,13 +164,7 @@ async function createFirebasePhoneAuth(config: FirebaseWebConfig): Promise<Phone
   }
   const [{ initializeApp, getApps, getApp }, A] = sdk;
   const app = getApps().length ? getApp() : initializeApp(config);
-  let auth: import('firebase/auth').Auth;
-  try {
-    // No persistence: the Firebase session is only a stepping stone to one ID token and must not outlive this page.
-    auth = A.initializeAuth(app, { persistence: A.inMemoryPersistence });
-  } catch {
-    auth = A.getAuth(app);
-  }
+  const auth = firebaseAuthFor(A, app);
   let verifier: import('firebase/auth').RecaptchaVerifier | null = null;
   let pending: import('firebase/auth').ConfirmationResult | null = null;
 
@@ -193,12 +216,7 @@ export async function signInWithGoogleWeb(): Promise<string> {
   }
   const [{ initializeApp, getApps, getApp }, A] = sdk;
   const app = getApps().length ? getApp() : initializeApp(config);
-  let auth: import('firebase/auth').Auth;
-  try {
-    auth = A.initializeAuth(app, { persistence: A.inMemoryPersistence });
-  } catch {
-    auth = A.getAuth(app);
-  }
+  const auth = firebaseAuthFor(A, app);
   const provider = new A.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   try {
@@ -209,7 +227,7 @@ export async function signInWithGoogleWeb(): Promise<string> {
   } catch (e: unknown) {
     const code = (e as { code?: unknown })?.code;
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-      throw new PhoneAuthError('unavailable', 'Google sign-in was cancelled.');
+      throw new PhoneAuthError('cancelled', 'cancelled');
     }
     throw mapFirebaseError(e);
   }
