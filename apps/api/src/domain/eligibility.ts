@@ -1,14 +1,15 @@
 import type { Prisma } from '@prisma/client';
 
 /**
- * A shop accepts NEW public uploads / quotes / orders when shop.status = ACTIVE.
- * Platform billing is disabled; Printout Buddy is completely free to use, and subscription
- * status never gates normal operational features. Shop status SUSPENDED blocks public intake and owner login.
+ * A shop accepts NEW public uploads / quotes / orders when shop.status = ACTIVE AND it has either no subscription
+ * row (free platform access) or a subscription with status ACTIVE. Platform billing is disabled, but admin
+ * suspension or cancellation of an existing subscription is honored. Shop status SUSPENDED additionally blocks owner login/sessions.
  */
 export const publicIntakeWhere: Prisma.ShopWhereInput = {
-  status: 'ACTIVE'
+  status: 'ACTIVE',
+  OR: [{ subscription: { is: null } }, { subscription: { is: { status: 'ACTIVE' } } }]
 };
 
-export const subscriptionAllowsIntake = (_subscription?: { status: string } | null | undefined): boolean =>
-  true;
+export const subscriptionAllowsIntake = (subscription: { status: string } | null | undefined): boolean =>
+  !subscription || subscription.status === 'ACTIVE';
 

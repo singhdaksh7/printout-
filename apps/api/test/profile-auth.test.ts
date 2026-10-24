@@ -312,7 +312,7 @@ describe('POST /auth (mobile sign-in: otp and email)', () => {
       const created = await req(h.app, bearerAuth(d.accessToken), 'POST', '/shops/onboarding', { ...ONBOARDING_BODY, client: 'mobile', deviceId: INSTALL });
       expect([200, 201], created.body).toContain(created.statusCode);
       const pair = data(created);
-      expect(pair).toMatchObject({ tokenType: 'Bearer', nextStep: 'generate_qr', isShopRegisteredAtLeastOne: true });
+      expect(pair).toMatchObject({ tokenType: 'Bearer', nextStep: 'dashboard', isShopRegisteredAtLeastOne: true });
       expect(pair.user.role).toBe('shop');
       const shop = await req(h.app, bearerAuth(pair.accessToken), 'GET', '/shops/me');
       expect(shop.statusCode, shop.body).toBe(200);
