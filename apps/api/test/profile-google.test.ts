@@ -644,10 +644,103 @@ describe('Google sign-in (loginMethod google) and Google identity linking', () =
       expect(d.shop?.id).toBe(h.world.a.shopId);
     });
 
-    it('refuses an unlinked Google account with 403 GOOGLE_NOT_LINKED', async () => {
+    it('creates a restricted onboarding grant cookie for an unlinked Google account (nextStep create_shop)', async () => {
       const res = await webGoogle(g('unlinked@gmail.test'));
-      expect(res.statusCode).toBe(403);
-      expect(res.json().error.code).toBe('GOOGLE_NOT_LINKED');
+      expect(res.statusCode, res.body).toBe(200);
+      const cookie = res.cookies.find((c) => c.name === 'printout_onboarding');
+      expect(cookie).toBeTruthy();
+      expect(cookie?.httpOnly).toBe(true);
+      expect(res.cookies.find((c) => c.name === 'printout_session')).toBeUndefined();
+      const d = data(res);
+      expect(d.nextStep).toBe('create_shop');
+      expect(d.user.id).toBeNull();
+      expect(d.user.role).toBeNull();
+      expect(d.user.email).toBe('unlinked@gmail.test');
+      expect(d.user.loginMethods).toContain('google');
+      expect(d.onboarding).toMatchObject({ transport: 'cookie' });
+      expect(d.shops).toEqual([]);
+      expect(d.shop).toBeNull();
+      expect(d.isShopRegisteredAtLeastOne).toBe(false);
+    });
+
+    it('allows web Google onboarding via POST /shops/onboarding: creates shop, user without password, links Google, and returns full session', async () => {
+      const gRes = await webGoogle(g('web_owner@gmail.test'));
+      expect(gRes.statusCode).toBe(200);
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+
+      const onboardRes = await h.app.inject({
+        method: 'POST',
+        url: '/api/v1/shops/onboarding',
+        payload: { ownerName: 'Web Owner', shopName: 'Web Shop Prints', address: '42 MG Road, Bangalore', pincode: '560001', client: 'web' },
+        headers: { origin: 'http://localhost:5173', cookie: `printout_onboarding=${grantCookie.value}` }
+      });
+      expect([200, 201], onboardRes.body).toContain(onboardRes.statusCode);
+
+      const sessionCookie = onboardRes.cookies.find((c) => c.name === 'printout_session');
+      expect(sessionCookie).toBeTruthy();
+      expect(sessionCookie?.httpOnly).toBe(true);
+
+      const d = data(onboardRes);
+      expect(d.csrfToken).toBeTruthy();
+      expect(d.user.role).toBe('shop');
+      expect(d.user.email).toBe('web_owner@gmail.test');
+      expect(d.shop.shopName).toBe('Web Shop Prints');
+
+      const user = await h.prisma.user.findUniqueOrThrow({ where: { email: 'web_owner@gmail.test' }, include: { shop: true } });
+      expect(user.displayName).toBe('Web Owner');
+      expect(user.passwordSet).toBe(false);
+      expect(user.shop?.displayName).toBe('Web Shop Prints');
+      const identity = await h.prisma.userGoogleIdentity.findUnique({ where: { userId: user.id } });
+      expect(identity).toBeTruthy();
+      expect(identity?.firebaseUid).toBe('guid-web_owner@gmail.test');
+
+      // Subsequent Google login for this account logs in directly as the shop owner
+      const nextLogin = await webGoogle(g('web_owner@gmail.test'));
+      expect(nextLogin.statusCode).toBe(200);
+      expect(data(nextLogin).user.id).toBe(user.id);
+      expect(data(nextLogin).shop?.id).toBe(user.shopId);
+    });
+
+    it('refuses web onboarding when Google email collides with an existing account (409 EMAIL_UNAVAILABLE)', async () => {
+      const gRes = await webGoogle(g(h.world.b.ownerEmail));
+      expect(gRes.statusCode).toBe(200);
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+
+      const onboardRes = await h.app.inject({
+        method: 'POST',
+        url: '/api/v1/shops/onboarding',
+        payload: { ownerName: 'Colliding Owner', shopName: 'Colliding Shop', address: '42 MG Road', pincode: '560001', client: 'web' },
+        headers: { origin: 'http://localhost:5173', cookie: `printout_onboarding=${grantCookie.value}` }
+      });
+      expect(onboardRes.statusCode).toBe(409);
+      expect(onboardRes.json().error.code).toBe('EMAIL_UNAVAILABLE');
+    });
+
+    it('restricted onboarding session cannot access protected shop endpoints', async () => {
+      const gRes = await webGoogle(g('restricted_web@gmail.test'));
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+      const headers = { cookie: `printout_onboarding=${grantCookie.value}` };
+
+      const me = await h.app.inject({ method: 'GET', url: '/api/v1/users/me', headers });
+      expect(me.statusCode).toBe(200);
+      expect(data(me).nextStep).toBe('create_shop');
+
+      for (const path of ['/api/v1/shop/orders', '/api/v1/shops/me', '/api/v1/shop/settings', '/api/v1/admin/shops']) {
+        const blocked = await h.app.inject({ method: 'GET', url: path, headers });
+        expect([401, 403, 404], path).toContain(blocked.statusCode);
+      }
+    });
+
+    it('logout with onboarding grant terminates the grant and clears the cookie', async () => {
+      const gRes = await webGoogle(g('logout_web@gmail.test'));
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+      const headers = { cookie: `printout_onboarding=${grantCookie.value}` };
+
+      const logoutRes = await h.app.inject({ method: 'POST', url: '/api/v1/auth/logout', headers });
+      expect(logoutRes.statusCode).toBe(204);
+
+      const me = await h.app.inject({ method: 'GET', url: '/api/v1/users/me', headers });
+      expect(me.statusCode).toBe(401);
     });
 
     it('refuses replay of the same token with 401 GOOGLE_TOKEN_INVALID', async () => {

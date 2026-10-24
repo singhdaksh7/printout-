@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { hashPassword, newToken } from '../auth.js';
-import { resolveGrant, type Grant } from '../domain/onboarding-grant.js';
+import { resolveGrant, clearGrantCookie, type Grant } from '../domain/onboarding-grant.js';
 import { AppError } from '../errors.js';
 import { maskEmail, maskPhone } from '../firebase/verifier.js';
 import { clientIpKey } from '../rate-limits.js';
@@ -165,6 +165,7 @@ export async function shopOnboardingRoutes(app: FastifyInstance, ctx: AppContext
         data: { revokedAt: new Date(), revokedReason: 'onboarded' }
       });
     }
+    if (client === 'web') clearGrantCookie(ctx, reply);
     reply.code(status);
     return json(out);
   }
