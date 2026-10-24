@@ -116,6 +116,17 @@ export default function SettingsPage() {
         </div>
       </form>
       </Card>
+      <Card className="pb-card--pad-md">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <strong>Platform Access</strong>
+            <p className="pb-muted" style={{ margin: '0.25rem 0 0' }}>
+              Printout Buddy is currently free to use. All printing features, live queue, customer QR ordering, and Windows agent printing are included.
+            </p>
+          </div>
+          <Chip tone="ok">Free</Chip>
+        </div>
+      </Card>
       <GoogleAccountSection />
       <PhoneSignInSection />
       <HoursSection />

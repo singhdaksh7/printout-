@@ -1,15 +1,14 @@
 import type { Prisma } from '@prisma/client';
 
 /**
- * A shop accepts NEW public uploads / quotes / orders only when shop.status = ACTIVE AND it has either no subscription
- * row (not yet billed) or a subscription with status ACTIVE. SUSPENDED/CANCELLED subscriptions therefore stop new public
- * intake WITHOUT locking out the owner: login, reads and handling of existing orders keep working, and the retention
- * worker deletes documents on schedule regardless. Shop status SUSPENDED additionally blocks owner login/sessions.
+ * A shop accepts NEW public uploads / quotes / orders when shop.status = ACTIVE.
+ * Platform billing is disabled; Printout Buddy is completely free to use, and subscription
+ * status never gates normal operational features. Shop status SUSPENDED blocks public intake and owner login.
  */
 export const publicIntakeWhere: Prisma.ShopWhereInput = {
-  status: 'ACTIVE',
-  OR: [{ subscription: { is: null } }, { subscription: { is: { status: 'ACTIVE' } } }]
+  status: 'ACTIVE'
 };
 
-export const subscriptionAllowsIntake = (subscription: { status: string } | null | undefined): boolean =>
-  !subscription || subscription.status === 'ACTIVE';
+export const subscriptionAllowsIntake = (_subscription?: { status: string } | null | undefined): boolean =>
+  true;
+

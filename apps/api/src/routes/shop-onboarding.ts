@@ -90,7 +90,7 @@ export async function shopOnboardingRoutes(app: FastifyInstance, ctx: AppContext
         try {
           const userId = await prisma.$transaction(async (tx) => {
             const shop = await tx.shop.create({
-              data: { slug: newSlug(body.shopName), displayName: body.shopName, address: body.address, pincode: body.pincode, status: 'PILOT', acceptsOrders: false, settings: { create: {} } }
+              data: { slug: newSlug(body.shopName), displayName: body.shopName, address: body.address, pincode: body.pincode, status: 'ACTIVE', acceptsOrders: true, settings: { create: {} } }
             });
             const user = await tx.user.create({
               data: { email: accountEmail, displayName: body.ownerName, passwordHash, passwordSet: false, role: 'SHOP_OWNER', shopId: shop.id }

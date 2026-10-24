@@ -68,6 +68,7 @@ describe('RegisterShopPage', () => {
       expect(screen.getByRole('heading', { name: 'Register Your Shop' })).toBeInTheDocument();
     });
 
+    expect(screen.getByText('Printout Buddy is currently free to use.')).toBeInTheDocument();
     expect(screen.getByText('anita@gmail.com')).toBeInTheDocument();
     expect(screen.getByLabelText(/Owner Name/i)).toHaveValue('Anita Verma');
     expect(screen.getByLabelText(/Shop Name/i)).toBeInTheDocument();
@@ -223,7 +224,7 @@ describe('RegisterShopPage', () => {
 
     vi.mocked(shopApi.onboardShop).mockResolvedValue({
       user: { id: 'usr-new-123', role: 'shop', name: 'Rajesh Kumar', email: 'rajesh@gmail.com' },
-      shop: { id: 'shp-new-456', shopName: 'Rajesh Copies', slug: 'rajesh-copies-abcd', status: 'PILOT' },
+      shop: { id: 'shp-new-456', shopName: 'Rajesh Copies', slug: 'rajesh-copies-abcd', status: 'ACTIVE' },
       csrfToken: 'csrf-new-session',
       retentionMinutes: 30
     });
