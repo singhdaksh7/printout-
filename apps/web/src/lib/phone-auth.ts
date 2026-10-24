@@ -48,7 +48,8 @@ export const maskPhone = (e164: string): string => (e164.length > 6 ? `${e164.sl
 
 export type PhoneAuthErrorKind =
   | 'invalid-phone' | 'rate-limited' | 'quota' | 'code-expired' | 'code-invalid' | 'captcha' | 'network' | 'region-blocked'
-  | 'domain' | 'unavailable' | 'config' | 'cancelled' | 'not-configured' | 'no-session';
+  | 'domain' | 'unavailable' | 'config' | 'cancelled' | 'not-configured' | 'no-session'
+  | 'popup-blocked';
 
 export class PhoneAuthError extends Error {
   constructor(public kind: PhoneAuthErrorKind, message: string) { super(message); }
@@ -68,7 +69,8 @@ const MESSAGES: Record<PhoneAuthErrorKind, string> = {
   config: 'Phone sign-in is unavailable right now. Use email and password instead.',
   cancelled: 'Sign-in was cancelled.',
   'not-configured': 'Phone sign-in is not set up. Use email and password instead.',
-  'no-session': 'Request a new code first.'
+  'no-session': 'Request a new code first.',
+  'popup-blocked': 'The sign-in popup was blocked by your browser. Please allow popups for this site and try again.'
 };
 export const phoneErrorMessage = (e: unknown): string =>
   e instanceof PhoneAuthError ? MESSAGES[e.kind] : MESSAGES.unavailable;
@@ -86,6 +88,7 @@ export function mapFirebaseError(e: unknown): PhoneAuthError {
     : code === 'auth/network-request-failed' ? 'network'
     : code === 'auth/operation-not-allowed' ? 'region-blocked'
     : code === 'auth/unauthorized-domain' || code === 'auth/app-not-authorized' || code === 'auth/invalid-app-credential' ? 'domain'
+    : code === 'auth/popup-blocked' ? 'popup-blocked'
     : code === 'auth/argument-error' ? 'config' // the SDK was called with a bad argument (a wiring bug), never user input
     : 'unavailable';
   // Only the code is logged (never the SDK text, token, number or key) so an unexplained "unavailable" can be diagnosed from the console.
@@ -97,6 +100,7 @@ export function mapFirebaseError(e: unknown): PhoneAuthError {
 export function googleAuthErrorMessage(e: PhoneAuthError): string {
   switch (e.kind) {
     case 'cancelled': return 'Google sign-in was cancelled.';
+    case 'popup-blocked': return 'The Google sign-in popup was blocked by your browser. Please allow popups for this site and try again.';
     case 'network': return MESSAGES.network;
     case 'domain': return 'Google sign-in is not available on this address. Use another sign-in method.';
     case 'not-configured': return 'Google sign-in is not set up. Use another sign-in method.';
@@ -134,8 +138,9 @@ export function firebaseWebConfig(env: Record<string, string | undefined> = impo
   return c.apiKey && c.authDomain && c.projectId && c.appId ? (c as FirebaseWebConfig) : null;
 }
 
-/** True when this build can run a phone verification at all (Firebase env present, or the build-time e2e mock). */
+/** True when this build can run a phone verification or Google sign-in at all (Firebase env present, or the build-time e2e mock). */
 export const phoneAuthConfigured = (): boolean => import.meta.env.VITE_PHONE_AUTH_MOCK === '1' || firebaseWebConfig() !== null;
+export const firebaseAuthConfigured = phoneAuthConfigured;
 
 /** Id of the DOM node the invisible reCAPTCHA attaches to. */
 export const RECAPTCHA_CONTAINER_ID = 'pb-recaptcha';
@@ -143,6 +148,44 @@ export const RECAPTCHA_CONTAINER_ID = 'pb-recaptcha';
 let override: (() => Promise<PhoneAuthProvider>) | null = null;
 /** Test seam: replace the provider factory. Never called by application code. */
 export const __setPhoneAuthFactory = (f: (() => Promise<PhoneAuthProvider>) | null) => { override = f; };
+
+export type FirebaseAuthBundle = {
+  auth: import('firebase/auth').Auth;
+  A: typeof import('firebase/auth');
+};
+
+let initPromise: Promise<FirebaseAuthBundle> | null = null;
+
+export function resetFirebaseAuthForTesting(): void {
+  initPromise = null;
+}
+
+/** Pre-initializes Firebase Auth with popup resolver before user interaction, preventing popup-blocked errors. */
+export function initFirebaseAuth(): Promise<FirebaseAuthBundle> {
+  if (initPromise) return initPromise;
+  if (import.meta.env.VITE_PHONE_AUTH_MOCK === '1') {
+    initPromise = Promise.resolve({} as FirebaseAuthBundle);
+    return initPromise;
+  }
+  const config = firebaseWebConfig();
+  if (!config) {
+    initPromise = Promise.reject(new PhoneAuthError('not-configured', 'missing firebase env'));
+    return initPromise;
+  }
+  initPromise = (async () => {
+    let sdk: [typeof import('firebase/app'), typeof import('firebase/auth')];
+    try {
+      sdk = await Promise.all([import('firebase/app'), import('firebase/auth')]);
+    } catch {
+      throw new PhoneAuthError('network', 'sdk load failed');
+    }
+    const [{ initializeApp, getApps, getApp }, A] = sdk;
+    const app = getApps().length ? getApp() : initializeApp(config);
+    const auth = firebaseAuthFor(A, app);
+    return { auth, A };
+  })();
+  return initPromise;
+}
 
 export async function createPhoneAuth(): Promise<PhoneAuthProvider> {
   if (override) return override();
@@ -155,16 +198,8 @@ export async function createPhoneAuth(): Promise<PhoneAuthProvider> {
   return createFirebasePhoneAuth(config);
 }
 
-async function createFirebasePhoneAuth(config: FirebaseWebConfig): Promise<PhoneAuthProvider> {
-  let sdk: [typeof import('firebase/app'), typeof import('firebase/auth')];
-  try {
-    sdk = await Promise.all([import('firebase/app'), import('firebase/auth')]);
-  } catch {
-    throw new PhoneAuthError('network', 'sdk load failed');
-  }
-  const [{ initializeApp, getApps, getApp }, A] = sdk;
-  const app = getApps().length ? getApp() : initializeApp(config);
-  const auth = firebaseAuthFor(A, app);
+async function createFirebasePhoneAuth(_config: FirebaseWebConfig): Promise<PhoneAuthProvider> {
+  const { auth, A } = await initFirebaseAuth();
   let verifier: import('firebase/auth').RecaptchaVerifier | null = null;
   let pending: import('firebase/auth').ConfirmationResult | null = null;
 
@@ -208,15 +243,7 @@ export async function signInWithGoogleWeb(): Promise<string> {
   }
   const config = firebaseWebConfig();
   if (!config) throw new PhoneAuthError('not-configured', 'missing firebase env');
-  let sdk: [typeof import('firebase/app'), typeof import('firebase/auth')];
-  try {
-    sdk = await Promise.all([import('firebase/app'), import('firebase/auth')]);
-  } catch {
-    throw new PhoneAuthError('network', 'sdk load failed');
-  }
-  const [{ initializeApp, getApps, getApp }, A] = sdk;
-  const app = getApps().length ? getApp() : initializeApp(config);
-  const auth = firebaseAuthFor(A, app);
+  const { auth, A } = await initFirebaseAuth();
   const provider = new A.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   try {
@@ -228,6 +255,9 @@ export async function signInWithGoogleWeb(): Promise<string> {
     const code = (e as { code?: unknown })?.code;
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
       throw new PhoneAuthError('cancelled', 'cancelled');
+    }
+    if (code === 'auth/popup-blocked') {
+      throw new PhoneAuthError('popup-blocked', 'popup-blocked');
     }
     throw mapFirebaseError(e);
   }

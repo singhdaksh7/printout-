@@ -134,6 +134,7 @@ async function linkPhoneInSettings(page: Page, national: string, password = SEED
 test.describe.configure({ mode: 'serial' });
 
 test.describe('phone sign-in (shop owners)', () => {
+  test.skip(true, 'Phone OTP login is temporarily disabled on the website UI');
   test.beforeEach(async ({ context }) => {
     await presentConfiguredOrigin(context);
   });

@@ -356,3 +356,28 @@ export const linkPhone = (idToken: string, currentPassword: string) =>
   shopRequest<PhoneLinkResult>('/shop/account/phone', { method: 'POST', body: { idToken, currentPassword } });
 export const unlinkPhone = (currentPassword: string) =>
   shopRequest<{ linked: false; otherSessionsEnded?: number }>('/shop/account/phone/unlink', { method: 'POST', body: { currentPassword } });
+
+// ---- Google account identity linking -------------------------------------------------------------------
+export interface UserIdentities {
+  password: { set: boolean };
+  phone: { linked: boolean; phoneMasked?: string };
+  google: { linked: boolean; emailMasked?: string };
+  googleAvailable: boolean;
+}
+export interface GoogleLinkResult {
+  linked: true;
+  emailMasked: string;
+  replaced: boolean;
+  otherSessionsEnded: number;
+}
+export const getUserIdentities = () => shopRequest<UserIdentities>('/users/me/identities');
+export const linkGoogleIdentity = (firebaseIdToken: string, currentPassword?: string) =>
+  shopRequest<GoogleLinkResult>('/users/me/identities/google', {
+    method: 'POST',
+    body: { firebaseIdToken, reauth: { ...(currentPassword ? { currentPassword } : {}) } }
+  });
+export const unlinkGoogleIdentity = (currentPassword?: string) =>
+  shopRequest<{ linked: false; otherSessionsEnded: number }>('/users/me/identities/google/unlink', {
+    method: 'POST',
+    body: { reauth: { ...(currentPassword ? { currentPassword } : {}) } }
+  });

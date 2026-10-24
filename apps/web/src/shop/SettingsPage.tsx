@@ -5,6 +5,7 @@ import { Banner, Button, Card, Checkbox, Chip, Icon, Skeleton, TextArea, TextFie
 import { useUnsavedGuard } from './components';
 import HoursSection from './HoursSection';
 import PhoneSignInSection from './PhoneSignInSection';
+import GoogleAccountSection from './GoogleAccountSection';
 import './hours.css';
 
 interface Form { displayName: string; address: string; publicContact: string; brandColor: string; acceptsOrders: boolean }
@@ -115,6 +116,7 @@ export default function SettingsPage() {
         </div>
       </form>
       </Card>
+      <GoogleAccountSection />
       <PhoneSignInSection />
       <HoursSection />
       {toast}
