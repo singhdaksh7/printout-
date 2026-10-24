@@ -135,4 +135,17 @@ describe('error classification for wiring errors', () => {
     expect(googleAuthErrorMessage(mapFirebaseError({ code: 'auth/network-request-failed' }))).toMatch(/connection/);
     warn.mockRestore();
   });
+
+  it('maps auth/popup-blocked to popup-blocked with clear user guidance to allow popups', async () => {
+    const { mapFirebaseError, googleAuthErrorMessage } = await import('./phone-auth');
+    const err = mapFirebaseError({ code: 'auth/popup-blocked' });
+    expect(err.kind).toBe('popup-blocked');
+    expect(googleAuthErrorMessage(err)).toBe('The Google sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
+  });
+
+  it('maps cancelled popup to cancelled with clear message', async () => {
+    const { PhoneAuthError, googleAuthErrorMessage } = await import('./phone-auth');
+    const err = new PhoneAuthError('cancelled', 'cancelled');
+    expect(googleAuthErrorMessage(err)).toBe('Google sign-in was cancelled.');
+  });
 });

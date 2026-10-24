@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { PhoneAuthError, googleAuthErrorMessage, phoneAuthConfigured, signInWithGoogleWeb } from '../lib/phone-auth';
-import { getPhoneLoginConfig, type PhoneLoginConfig } from '../lib/shop-api';
-import { Banner, BrandLogo, Button, Card, Skeleton, TextField } from '../ui';
+import { PhoneAuthError, googleAuthErrorMessage, initFirebaseAuth, phoneAuthConfigured, signInWithGoogleWeb } from '../lib/phone-auth';
+import { Banner, BrandLogo, Button, Card, TextField } from '../ui';
 import { useAuth } from './auth';
-import { PhoneVerifier, type Classified } from './PhoneVerifier';
 import { safeShopRedirect } from './safe-redirect';
 import './phone.css';
 
@@ -59,7 +57,9 @@ export function googleLoginError(e: unknown): string {
   return 'Could not sign in with Google. Try again or use another method.';
 }
 
-/** Copy for the phone-token exchange. `restart` = the code/token is spent or refused, so the person must start again. */
+export type Classified = { message: string; restart: boolean };
+
+/** Copy for the phone-token exchange (preserved for identity-linking flows). */
 export function phoneLoginError(e: unknown): Classified {
   if (e instanceof ApiError) {
     switch (e.code) {
@@ -77,10 +77,8 @@ export function phoneLoginError(e: unknown): Classified {
   return { message: 'We could not sign you in with that code. Request a new one and try again.', restart: true };
 }
 
-type PhoneState = { status: 'off' } | { status: 'loading' } | { status: 'on'; config: PhoneLoginConfig };
-
 export default function LoginPage() {
-  const { state, login, phoneLogin, googleLogin } = useAuth();
+  const { state, login, googleLogin } = useAuth();
   const loc = useLocation();
   const navigate = useNavigate();
   const from = (loc.state as { from?: string; expired?: boolean } | null)?.from;
@@ -89,21 +87,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'phone' | 'email'>('phone');
-  const [phone, setPhone] = useState<PhoneState>(() => (phoneAuthConfigured() ? { status: 'loading' } : { status: 'off' }));
-  const [step, setStep] = useState<'phone' | 'code'>('phone');
-  const [masked, setMasked] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!phoneAuthConfigured()) return;
-    let alive = true;
-    getPhoneLoginConfig()
-      .then((config) => { if (alive) setPhone(config.enabled ? { status: 'on', config } : { status: 'off' }); })
-      .catch(() => { if (alive) setPhone({ status: 'off' }); }); // outage or older API: password sign-in keeps working
-    return () => { alive = false; };
+    if (phoneAuthConfigured()) {
+      initFirebaseAuth().catch(() => undefined);
+    }
   }, []);
-
-  const onStep = useCallback((s: 'phone' | 'code', m: string | null) => { setStep(s); setMasked(m); }, []);
 
   if (state.status === 'authed' && !busy) {
     if (state.session.user.role === 'PLATFORM_ADMIN') return <Navigate to="/admin" replace />;
@@ -127,12 +116,6 @@ export default function LoginPage() {
     }
   }
 
-  async function onToken(idToken: string) {
-    const s = await phoneLogin(idToken);
-    // Phone sign-in never yields an admin session (the API refuses it); guard anyway.
-    navigate(s.user.role === 'PLATFORM_ADMIN' ? '/admin' : safeShopRedirect(from), { replace: true });
-  }
-
   async function onGoogleClick() {
     if (busy) return;
     setBusy(true);
@@ -147,96 +130,42 @@ export default function LoginPage() {
     }
   }
 
-  const phoneMode = phone.status === 'on' && mode === 'phone';
-
   return (
     <div className="pb-theme pb-login">
       <div className="pb-login__brand"><BrandLogo /></div>
       <Card as="section" className="pb-login__card">
-        {phone.status === 'loading' ? (
-          <Skeleton lines={4} label="Loading sign-in options" />
-        ) : phoneMode ? (
-          <div className="pb-login__form" data-testid="phone-login">
-            <div>
-              <h1 id="login-title" className="pb-h1">{step === 'phone' ? 'Welcome back' : 'Enter your code'}</h1>
-              <p className="pb-muted pb-pagehead__sub">
-                {step === 'phone' ? 'Sign in to your print shop with your mobile number.' : masked ? `We sent a 6-digit code to ${masked}.` : ''}
-              </p>
-            </div>
-            {expired && <Banner tone="warn">Session expired — sign in again.</Banner>}
-            {error && <Banner tone="err">{error}</Banner>}
-            {step === 'phone' && phoneAuthConfigured() && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  fullWidth
-                  className="pb-login__google-btn"
-                  onClick={onGoogleClick}
-                  disabled={busy}
-                  data-testid="google-login-btn"
-                >
-                  <GoogleIcon />
-                  <span>Continue with Google</span>
-                </Button>
-                <div className="pb-login__divider" role="separator">
-                  <span>or</span>
-                </div>
-              </>
-            )}
-            <PhoneVerifier
-              allowedCallingCodes={phone.config.allowedCallingCodes}
-              defaultCallingCode={phone.config.defaultCallingCode}
-              resendCooldownSeconds={phone.config.resendCooldownSeconds}
-              onToken={onToken}
-              classify={phoneLoginError}
-              onStep={onStep}
-              verifyLabel="Verify OTP"
-              idPrefix="login"
-            />
-            <Button type="button" variant="ghost" fullWidth onClick={() => { setMode('email'); setError(null); }} disabled={busy}>
-              Sign in with email and password instead
-            </Button>
+        <form onSubmit={submit} aria-labelledby="login-title" noValidate className="pb-login__form">
+          <div>
+            <h1 id="login-title" className="pb-h1">Shop sign in</h1>
+            <p className="pb-muted pb-pagehead__sub">Printout for print shops</p>
           </div>
-        ) : (
-          <form onSubmit={submit} aria-labelledby="login-title" noValidate className="pb-login__form">
-            <div>
-              <h1 id="login-title" className="pb-h1">Shop sign in</h1>
-              <p className="pb-muted pb-pagehead__sub">Printout for print shops</p>
-            </div>
-            {expired && !error && <Banner tone="warn">Session expired — sign in again.</Banner>}
-            {error && <Banner tone="err">{error}</Banner>}
-            {phoneAuthConfigured() && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  fullWidth
-                  className="pb-login__google-btn"
-                  onClick={onGoogleClick}
-                  disabled={busy}
-                  data-testid="google-login-btn"
-                >
-                  <GoogleIcon />
-                  <span>Continue with Google</span>
-                </Button>
-                <div className="pb-login__divider" role="separator">
-                  <span>or</span>
-                </div>
-              </>
-            )}
-            <TextField label="Email" type="email" autoComplete="username" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
-            <TextField label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-            <Button type="submit" variant="primary" fullWidth disabled={busy || !email || !password} loading={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
-            </Button>
-            {phone.status === 'on' && (
-              <Button type="button" variant="ghost" fullWidth onClick={() => { setMode('phone'); setError(null); }} disabled={busy}>
-                Sign in with mobile number instead
+          {expired && !error && <Banner tone="warn">Session expired — sign in again.</Banner>}
+          {error && <Banner tone="err">{error}</Banner>}
+          {phoneAuthConfigured() && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                fullWidth
+                className="pb-login__google-btn"
+                onClick={onGoogleClick}
+                disabled={busy}
+                data-testid="google-login-btn"
+              >
+                <GoogleIcon />
+                <span>Continue with Google</span>
               </Button>
-            )}
-          </form>
-        )}
+              <div className="pb-login__divider" role="separator">
+                <span>or</span>
+              </div>
+            </>
+          )}
+          <TextField label="Email" type="email" autoComplete="username" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+          <TextField label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+          <Button type="submit" variant="primary" fullWidth disabled={busy || !email || !password} loading={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </Button>
+        </form>
       </Card>
     </div>
   );
