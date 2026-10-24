@@ -302,6 +302,7 @@ test.describe('phone sign-in (shop owners)', () => {
 });
 
 test.describe('phone sign-in responsive and accessible', () => {
+  test.skip(true, 'Phone OTP login is temporarily disabled on the website UI');
   test.beforeEach(async ({ context }) => {
     await presentConfiguredOrigin(context);
   });
