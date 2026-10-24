@@ -142,6 +142,23 @@ export default function LoginPage() {
           <div>
             <h1 id="login-title" className="pb-h1">Shop sign in</h1>
             <p className="pb-muted pb-pagehead__sub">Printout for print shops</p>
+            <div
+              data-testid="free-platform-notice"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                marginTop: '0.375rem',
+                padding: '0.25rem 0.625rem',
+                background: 'rgba(34, 197, 94, 0.1)',
+                color: '#15803d',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: 600
+              }}
+            >
+              Printout Buddy is currently free to use.
+            </div>
           </div>
           {expired && !error && <Banner tone="warn">Session expired — sign in again.</Banner>}
           {error && <Banner tone="err">{error}</Banner>}

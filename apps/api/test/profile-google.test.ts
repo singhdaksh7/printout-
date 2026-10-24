@@ -306,21 +306,21 @@ describe('Google sign-in (loginMethod google) and Google identity linking', () =
       expect(await h.prisma.fcmRegistration.count()).toBe(0);
     });
 
-    it('onboarding with the Google grant uses the verified email (body email absent): creates user + shop + Google link, restricted PILOT shop, no plan', async () => {
+    it('onboarding with the Google grant uses the verified email (body email absent): creates user + shop + Google link, active shop, no plan', async () => {
       const restricted = await google(g(NEWBIE));
       const created = await req(h.app, bearer(restricted), 'POST', '/shops/onboarding', ONBOARD_NO_EMAIL);
       expect([200, 201], created.body).toContain(created.statusCode);
       const user = await h.prisma.user.findUniqueOrThrow({ where: { email: NEWBIE }, include: { shop: true } });
       expect(user.role).toBe('SHOP_OWNER');
-      expect(user.shop).toMatchObject({ displayName: shopName, status: 'PILOT', acceptsOrders: false });
+      expect(user.shop).toMatchObject({ displayName: shopName, status: 'ACTIVE', acceptsOrders: true });
       expect(await h.prisma.subscription.count({ where: { shopId: user.shopId! } })).toBe(0);
       const links = await googleRows(user.id);
       expect(links).toHaveLength(1);
       expect(links[0]!.firebaseUid).toBe(`guid-${NEWBIE}`);
-      // a normal pair now: a fresh Google sign-in goes straight to generate_qr with the new shop
+      // a normal pair now: a fresh Google sign-in goes straight to dashboard with the new shop
       const again = await google(g(NEWBIE));
       expect(again.statusCode, again.body).toBe(200);
-      expect(data(again)).toMatchObject({ nextStep: 'generate_qr', isShopRegisteredAtLeastOne: true, showQr: false });
+      expect(data(again)).toMatchObject({ nextStep: 'dashboard', isShopRegisteredAtLeastOne: true, showQr: true });
       expect(data(again).user.role).toBe('shop');
       expect(data(again).user.emailVerified).toBe(true); // linked Google email == account email
     });
@@ -690,6 +690,8 @@ describe('Google sign-in (loginMethod google) and Google identity linking', () =
       expect(user.displayName).toBe('Web Owner');
       expect(user.passwordSet).toBe(false);
       expect(user.shop?.displayName).toBe('Web Shop Prints');
+      expect(user.shop?.status).toBe('ACTIVE');
+      expect(user.shop?.acceptsOrders).toBe(true);
       const identity = await h.prisma.userGoogleIdentity.findUnique({ where: { userId: user.id } });
       expect(identity).toBeTruthy();
       expect(identity?.firebaseUid).toBe('guid-web_owner@gmail.test');

@@ -41,6 +41,7 @@ describe('simplified shop login screen (Google + Email/Password only)', () => {
     renderShop('/shop/login');
     expect(await screen.findByRole('heading', { name: /shop sign in/i })).toBeInTheDocument();
     expect(screen.getByText('Printout for print shops')).toBeInTheDocument();
+    expect(screen.getByText('Printout Buddy is currently free to use.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
