@@ -22,6 +22,7 @@ const workerEnvSchema = z.object({
   DOCUMENT_CLEANUP_INTERVAL_MINUTES: z.coerce.number().positive().default(1),
   DOCUMENT_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive().default(100),
   DOCUMENT_STALE_UPLOAD_MINUTES: z.coerce.number().positive().default(60),
+  DOCUMENT_ACTIVE_JOB_GRACE_MINUTES: z.coerce.number().int().min(0).max(30).default(5),
   NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
   FCM_STALE_DAYS: z.coerce.number().int().min(1).max(365).default(60),
   WORKER_RUN_ONCE: z.string().optional()
@@ -85,6 +86,7 @@ export function startWorker(options: WorkerOptions = {}): WorkerHandle {
         now: options.now?.() ?? new Date(),
         batchSize: settings.DOCUMENT_CLEANUP_BATCH_SIZE,
         staleUploadMinutes: settings.DOCUMENT_STALE_UPLOAD_MINUTES,
+        activeJobGraceMinutes: settings.DOCUMENT_ACTIVE_JOB_GRACE_MINUTES,
         log
       });
       runs.push(result);
