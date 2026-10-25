@@ -118,17 +118,21 @@ export const verifySecondFactor = (method: SecondFactorMethod, code: string) =>
 export const cancelSecondFactor = () => api<void>('/auth/login/2fa/cancel', { method: 'POST', body: {} });
 export const logout = () => api<void>('/auth/logout', { method: 'POST', body: {} });
 
-export interface OrderQuery { status?: string; active?: boolean; print?: 'pending' | 'initiated'; cursor?: string | undefined }
+export interface OrderQuery { status?: string; active?: boolean; print?: 'pending' | 'initiated' | 'attention'; sort?: 'newest' | 'oldest'; cursor?: string | undefined }
 /** `status` may be one status or a comma-separated list; `active` hides terminal orders (both documented by the API). */
 export function listOrders(params: OrderQuery = {}, signal?: AbortSignal) {
   const q = new URLSearchParams();
   if (params.status) q.set('status', params.status);
   if (params.active) q.set('active', '1');
   if (params.print) q.set('print', params.print);
+  if (params.sort && params.sort !== 'newest') q.set('sort', params.sort);
   if (params.cursor) q.set('cursor', params.cursor);
   const qs = q.toString();
   return shopRequest<OrderListPage>(`/shop/orders${qs ? `?${qs}` : ''}`, signal ? { signal } : {});
 }
+/** Live counters: requests nobody printed yet, and orders whose latest print job needs the shopkeeper. */
+export const getQueueCounts = (signal?: AbortSignal) =>
+  shopRequest<{ pending: number; attention: number }>('/shop/orders/counts', signal ? { signal } : {});
 export const getOrder = (id: string, signal?: AbortSignal) =>
   shopRequest<OrderDetail>(`/shop/orders/${encodeURIComponent(id)}`, signal ? { signal } : {});
 /** Shop owners can only cancel; every other lifecycle step is retired (Print does the internal steps itself). */

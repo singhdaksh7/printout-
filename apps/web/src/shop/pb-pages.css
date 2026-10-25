@@ -133,3 +133,10 @@
   .pb-ov .pb-hbars__row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
   .pb-ov .pb-hbars__track { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Queue: filter tabs + sort selector share one wrapping row (no horizontal overflow on phones). */
+.pb-queue-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.pb-queue-controls > .pb-tabs { align-self: auto; max-width: 100%; }
+.pb-queue-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.pb-queue-sort select { min-height: 40px; padding: 0 10px; border: 1px solid var(--pb-n300, #d4d4d8); border-radius: 8px; background: var(--pb-surface, #fff); color: inherit; font: inherit; }
+.pb-queue-sort select:focus-visible { outline: 2px solid var(--pb-orange, #f97316); outline-offset: 2px; }
