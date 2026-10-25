@@ -7,10 +7,11 @@
 //   SMOKE_WRITE=1 ... node deploy/smoke.mjs                                     # + ONE tiny test order (see warning)
 //
 // Default mode is READ-ONLY (logins create sessions, which is the only state change; they are logged out again).
-// SMOKE_WRITE=1 creates a real order + uploads a tiny generated PDF to the shop's private bucket, then prints it
-// through the normal lifecycle so the 30-minute retention clock is exercised. Only use a shop reserved for smoke tests.
+// SMOKE_WRITE=1 creates a real order + uploads a tiny generated PDF to the shop's private bucket, checks queue/tracking/isolation,
+// then CANCELS the order (nothing is printed; the retention worker later expires the unprinted document). Only use a dedicated smoke
+// shop with NO print device connected. Optional OTHER_SHOP_EMAIL / OTHER_SHOP_PASSWORD (a different shop) enable the tenant-isolation check.
 //
-// Optional env: SMOKE_INSECURE=1 (accept self-signed TLS, e.g. Caddy internal CA locally), SSE_WAIT_SECONDS (default 8),
+// Optional env: OTHER_SHOP_EMAIL, OTHER_SHOP_PASSWORD, SMOKE_INSECURE=1 (accept self-signed TLS, e.g. Caddy internal CA locally), SSE_WAIT_SECONDS (default 8),
 //               SKIP_HSTS=1 (plain-http local stacks), EXPECT_RETENTION_MINUTES (default: value from the public shop API).
 // Exit code 0 = all executed checks passed (skipped ones are listed), 1 otherwise.
 import { randomUUID } from 'node:crypto';
@@ -267,7 +268,9 @@ if (env.ADMIN_EMAIL && env.ADMIN_PASSWORD) {
   }
 } else skip('admin login / dashboard', 'ADMIN_EMAIL / ADMIN_PASSWORD not set');
 
-// ---------- 4. WRITE mode: one tiny order through the full lifecycle ----------
+// ---------- 4. WRITE mode: one tiny order through the current lifecycle (create -> verify -> cancel) ----------
+// Current lifecycle: the shop can only CANCEL via transitions; printing is device-driven (print-now) and print-confirmation is retired.
+// The smoke shop must have NO print device connected, so nothing can ever print. The only cleanup is cancelling the order.
 if (WRITE) {
   if (!(SLUG && shopOk)) {
     record('fail', 'SMOKE_WRITE prerequisites', 'needs SHOP_SLUG + SHOP_EMAIL + SHOP_PASSWORD (a smoke-test shop)');
@@ -323,17 +326,59 @@ if (WRITE) {
       return state.order.orderNumber;
     });
     await step('write: shop finds the order in its queue', async () => {
-      const { body } = await shop.get('/shop/orders?limit=20');
+      const { res, body } = await shop.get('/shop/orders?limit=50');
+      assert(res.status === 200, `HTTP ${res.status}`);
       const found = body.data.items.find((o) => o.orderNumber === state.order.orderNumber);
       assert(found, 'order not in queue');
       state.orderId = found.id;
+      const s = await shop.get('/auth/session');
+      state.shopId = s.body?.data?.shop?.id;
     });
-    for (const toStatus of ['ACCEPTED', 'PRINTING']) {
-      await step(`write: transition to ${toStatus}`, async () => {
-        const { res, body } = await shop.post(`/shop/orders/${state.orderId}/transitions`, { toStatus, clientRequestId: randomUUID() });
-        assert(res.status === 200, `HTTP ${res.status} ${body?.error?.code ?? ''}`);
+    await step('write: queue counts show pending >= 1', async () => {
+      const { res, body } = await shop.get('/shop/orders/counts');
+      assert(res.status === 200, `HTTP ${res.status}`);
+      assert(Number.isInteger(body.data.pending) && body.data.pending >= 1, `pending=${body.data.pending}`);
+      return `pending=${body.data.pending} attention=${body.data.attention}`;
+    });
+    await step('write: queue sort=oldest works', async () => {
+      const { res, body } = await shop.get('/shop/orders?sort=oldest&limit=20');
+      assert(res.status === 200, `HTTP ${res.status} ${body?.error?.code ?? ''}`);
+      assert(Array.isArray(body.data.items), 'no items array');
+    });
+    await step('write: customer tracking is NEW, has pickup, no print issue, leaks no internal ids', async () => {
+      const res = await req(`${API}/public/orders/${state.order.trackingToken}`);
+      const text = await res.text();
+      assert(res.status === 200, `HTTP ${res.status}`);
+      const data = JSON.parse(text).data;
+      assert(data.status === 'NEW', `status ${data.status}`);
+      assert(data.pickup && typeof data.pickup === 'object', 'no pickup object');
+      assert(data.printIssue === false, `printIssue=${data.printIssue}`);
+      const internal = { 'order id': state.orderId, 'document id': state.documentId, 'shop id': state.shopId };
+      for (const [label, value] of Object.entries(internal)) {
+        if (value) assert(!text.includes(value), `tracking response contains the ${label}`);
+      }
+      return state.shopId ? 'no order/document/shop id in response' : 'no order/document id in response (shop id unavailable)';
+    });
+    if (env.OTHER_SHOP_EMAIL && env.OTHER_SHOP_PASSWORD) {
+      await step('write: tenant isolation (second shop cannot see the order)', async () => {
+        const other = new Session('other-shop');
+        try {
+          const data = await other.login(env.OTHER_SHOP_EMAIL, env.OTHER_SHOP_PASSWORD);
+          assert(data.shop && data.shop.slug !== SLUG, 'OTHER_SHOP_EMAIL must belong to a different shop than SHOP_SLUG');
+          const detail = await other.get(`/shop/orders/${state.orderId}`);
+          assert(detail.res.status === 404, `GET /shop/orders/:id HTTP ${detail.res.status} (expected 404)`);
+          const list = await other.get('/shop/orders?limit=100');
+          assert(list.res.status === 200, `list HTTP ${list.res.status}`);
+          assert(!JSON.stringify(list.body).includes(state.orderId), 'order id appears in the other shop list');
+          assert(!JSON.stringify(list.body).includes(state.order.orderNumber), 'order number appears in the other shop list');
+          const counts = await other.get('/shop/orders/counts');
+          assert(counts.res.status === 200, `counts HTTP ${counts.res.status}`);
+          return 'detail 404, not in list';
+        } finally {
+          await other.logout();
+        }
       });
-    }
+    } else skip('write: tenant isolation', 'OTHER_SHOP_EMAIL / OTHER_SHOP_PASSWORD not set (a second shop is needed)');
     await step('write: document-access URL fetches a real PDF', async () => {
       const { res, body } = await shop.post(`/shop/orders/${state.orderId}/document-access`, {});
       assert(res.status === 200, `HTTP ${res.status} ${body?.error?.code ?? ''}`);
@@ -345,25 +390,21 @@ if (WRITE) {
       assert(bytes.equals(pdf), 'fetched PDF differs from the uploaded bytes');
       return `${bytes.length} bytes, identical to upload`;
     });
-    await step('write: print confirmation sets retention clock', async () => {
-      const { res, body } = await shop.post(`/shop/orders/${state.orderId}/print-confirmation`, { clientRequestId: randomUUID() });
-      assert(res.status === 200, `HTTP ${res.status} ${body?.error?.code ?? ''}`);
-      const d = body.data.document;
-      const minutes = (new Date(d.deleteAfter) - new Date(d.printedAt)) / 60000;
-      const expected = Number(env.EXPECT_RETENTION_MINUTES ?? shopPublic?.retentionMinutes ?? 30);
-      assert(d.status === 'PRINTED_RETENTION', `document status ${d.status}`);
-      assert(minutes === expected, `deleteAfter - printedAt = ${minutes} min, expected ${expected}`);
-      return `deleteAfter - printedAt = ${minutes} min`;
-    });
-    await step('write: customer tracking shows deleteAfter', async () => {
-      const res = await req(`${API}/public/orders/${state.order.trackingToken}`);
-      const body = await json(res);
-      assert(res.status === 200 && body.data.status === 'PRINTED', `HTTP ${res.status} status ${body?.data?.status}`);
-      assert(body.data.document.deleteAfter, 'no deleteAfter on tracking page');
-    });
+    // Cleanup, and the only state change after creation. Deliberately no print-now / print-confirmation: nothing may print.
+    // Runs even if an earlier step failed, so a half-finished smoke order never stays in the queue.
     if (state.orderId) {
-      console.log(`NOTE  smoke order ${state.order?.orderNumber} left in PRINTED state; its document is deleted by the worker ~${shopPublic?.retentionMinutes ?? 30} min after printing.`);
-      console.log('NOTE  re-check in ~35 minutes that the document is DELETED (shop order detail) to prove the worker + R2 deletion.');
+      const { res, body } = await shop.post(`/shop/orders/${state.orderId}/transitions`, { toStatus: 'CANCELLED', clientRequestId: randomUUID() });
+      if (res.status === 200) record('pass', 'write: cancel order (cleanup)', `status ${body?.data?.status ?? 'CANCELLED'}`);
+      else record('fail', 'write: cancel order (cleanup)', `HTTP ${res.status} ${body?.error?.code ?? ''}; cancel order ${state.order?.orderNumber} manually`);
+      if (res.status === 200) {
+        await check('write: customer tracking shows CANCELLED', async () => {
+          const t = await req(`${API}/public/orders/${state.order.trackingToken}`);
+          const tb = await json(t);
+          assert(t.status === 200 && tb.data.status === 'CANCELLED', `HTTP ${t.status} status ${tb?.data?.status}`);
+        });
+      } else skip('write: customer tracking shows CANCELLED', 'cancel failed');
+      console.log(`NOTE  smoke order ${state.order?.orderNumber} was cancelled and never printed. This script does not delete its synthetic document:`);
+      console.log('NOTE  the retention worker removes it when the unprinted-expiry window passes (up to UNPRINTED_RETENTION_HOURS). Never delete it manually.');
     }
   }
 } else {
