@@ -183,4 +183,50 @@ describe('queue', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(screen.getByText(/Deletes in 23:\d\d/)).toBeInTheDocument();
   });
+
+  it('shows a "Needs attention" tab only while the counts endpoint reports failed print jobs, and queries that filter', async () => {
+    const user = userEvent.setup();
+    const seen: string[] = [];
+    const counts: Handler = ({ method, path }) => (method === 'GET' && path === '/shop/orders/counts' ? { data: { pending: 1, attention: 2 } } : undefined);
+    const spy: Handler = ({ method, path, query }) => { if (method === 'GET' && path === '/shop/orders') seen.push(query.toString()); return undefined; };
+    mockFetch(authedSession, counts, spy, orders({ items: [order()] }));
+    renderShop('/shop');
+    const tab = await screen.findByRole('tab', { name: 'Needs attention' });
+    await user.click(tab);
+    await waitFor(() => expect(seen.some((q) => q.includes('print=attention'))).toBe(true));
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('hides the attention tab when nothing needs attention', async () => {
+    mockFetch(authedSession, orders({ items: [order()] }));
+    renderShop('/shop');
+    await screen.findByTestId('order-card');
+    expect(screen.queryByRole('tab', { name: 'Needs attention' })).toBeNull();
+  });
+
+  it('sorts oldest first by asking the API, and resets back to newest', async () => {
+    const user = userEvent.setup();
+    const seen: string[] = [];
+    const spy: Handler = ({ method, path, query }) => { if (method === 'GET' && path === '/shop/orders') seen.push(query.toString()); return undefined; };
+    mockFetch(authedSession, spy, orders({ items: [order()] }));
+    renderShop('/shop');
+    await screen.findByTestId('order-card');
+    await user.selectOptions(screen.getByTestId('queue-sort'), 'oldest');
+    await waitFor(() => expect(seen.some((q) => q.includes('sort=oldest'))).toBe(true));
+    expect(screen.getByText(/Oldest first\./)).toBeInTheDocument();
+    await user.selectOptions(screen.getByTestId('queue-sort'), 'newest');
+    await waitFor(() => expect(screen.getByText(/Newest first\./)).toBeInTheDocument());
+  });
+
+  it('does not duplicate a row when the same order arrives via a realtime event and a refresh', async () => {
+    const store = { items: [order()] };
+    mockFetch(authedSession, orders(store));
+    renderShop('/shop');
+    await screen.findByTestId('order-card');
+    store.items = [order({ id: 'o9', orderNumber: 'CENT-9' }), ...store.items];
+    const es = FakeES.open[0]!;
+    act(() => { es.open_(); es.emit('order.created', { id: 'o9' }, 'e1'); es.emit('order.created', { id: 'o9' }, 'e1'); });
+    await waitFor(() => expect(screen.getAllByTestId('order-card')).toHaveLength(2));
+    expect(screen.getAllByTestId('order-card')).toHaveLength(2);
+  });
 });

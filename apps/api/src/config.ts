@@ -72,6 +72,8 @@ const schema = z
     DOCUMENT_CLEANUP_INTERVAL_MINUTES: z.coerce.number().positive().default(1),
     DOCUMENT_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive().default(100),
     DOCUMENT_STALE_UPLOAD_MINUTES: z.coerce.number().int().positive().default(60),
+    /** Hard cap on sparing a document whose print job an agent is actively processing. 0 disables the grace. */
+    DOCUMENT_ACTIVE_JOB_GRACE_MINUTES: z.coerce.number().int().min(0).max(30).default(5),
 
     SESSION_DAYS: z.coerce.number().int().positive().default(7),
     COOKIE_SAMESITE: z.enum(['lax', 'strict']).default('lax'),

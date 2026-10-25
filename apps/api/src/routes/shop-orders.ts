@@ -1,7 +1,7 @@
 import { OrderStatus } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { listOrders, orderCore, orderDetail, orderListQuery, toStatusEvent } from '../domain/order-serializers.js';
+import { listOrders, orderCore, orderDetail, orderListQuery, queueCounts, toStatusEvent } from '../domain/order-serializers.js';
 import { buildHistoryCsv, historyFilterQuery, historyListQuery, historySummary, listHistory, resolveHistoryRange } from '../domain/order-history.js';
 import { initiatePrint, issueDocumentAccess } from '../domain/print-service.js';
 import { assertRequestedTransition } from '../domain/lifecycle.js';
@@ -41,6 +41,9 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     const q = orderListQuery.parse(request.query);
     return json(await listOrders(prisma, shopId, q));
   });
+
+  /** Cheap live counters (pending print requests, orders needing attention). Tenant-scoped; no order data. */
+  app.get('/shop/orders/counts', { preHandler: limits.shopRead }, async (request) => json(await queueCounts(prisma, shopIdOf(request))));
 
   /**
    * Order history (metadata only): date-ranged (Asia/Kolkata calendar days), searchable, cursor-paginated. Registered before

@@ -155,4 +155,29 @@ describe('countdown and polling (fake timers)', () => {
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(10); });
     expect(get(m)).toBe(n + 1);
   });
+
+  it('shows pickup details, the privacy note and a ready-for-pickup message', async () => {
+    mockApi({ [`GET /public/orders/${TOKEN}`]: { data: order({ status: 'READY', pickup: { address: '12 Market Rd', contact: '+91 98000 00000' } }) } });
+    renderAt(`/t/${TOKEN}`);
+    expect(await screen.findByTestId('ready-banner')).toHaveTextContent('DEMO-9');
+    expect(screen.getByTestId('pickup-address')).toHaveTextContent('12 Market Rd');
+    expect(screen.getByText('+91 98000 00000')).toBeInTheDocument();
+    expect(screen.getByTestId('tracking-privacy')).toHaveTextContent(/deleted automatically 30 minutes/);
+  });
+
+  it('tells the customer about a print issue without technical detail, and not for finished orders', async () => {
+    mockApi({ [`GET /public/orders/${TOKEN}`]: { data: order({ status: 'PRINTING', printIssue: true, pickup: { contact: '+91 98000 00000' } }) } });
+    renderAt(`/t/${TOKEN}`);
+    const note = await screen.findByTestId('print-issue');
+    expect(note).toHaveTextContent(/sorting out a printing issue/i);
+    expect(note).toHaveTextContent('+91 98000 00000');
+    expect(note.textContent).not.toMatch(/printer|spooler|error/i);
+  });
+
+  it('shows order-complete messaging once collected', async () => {
+    mockApi({ [`GET /public/orders/${TOKEN}`]: { data: order({ status: 'COLLECTED', printIssue: true }) } });
+    renderAt(`/t/${TOKEN}`);
+    expect(await screen.findByTestId('collected-banner')).toHaveTextContent(/order complete/i);
+    expect(screen.queryByTestId('print-issue')).toBeNull();
+  });
 });
