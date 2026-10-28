@@ -42,7 +42,7 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 | Customer uploads (existing pipeline, 50 MiB, hourly limit), quotes, orders (shared server-authoritative pricing), history, cancel; guest QR unchanged | MERGED | PR #51 squash `5184848`; 10 tests; full suite 61 files |
 | 30-minute retention untouched; no customer file download | MERGED | by design |
 
-## Phase 4 - Lifecycle and payments (PR open into development, not deployed)
+## Phase 4 - Lifecycle and payments (MERGED to development, not deployed; PR #52, squash `43dd97b`)
 
 | Requirement | Status | Evidence |
 |---|---|---|
@@ -52,9 +52,19 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 | Shop order list `/shops/{shopId}/orders`, status adapter | TESTED | 17 tests |
 | Contract | IMPLEMENTED | `PHASE4_CONTRACT.md`; full suite 62 files green |
 
-## Phases 5-6
+## Phase 5 - Reviews and notifications (PR open into development, not deployed)
 
-Phase 5 (reviews, customer notifications, FCM for customers) and phase 6 (web/admin UI, OpenAPI, ER/sequence diagrams, architecture PDF, production rollout) are NOT_STARTED. No production access, migration, PostGIS enablement or deployment has been performed.
+| Requirement | Status | Evidence |
+|---|---|---|
+| Reviews: one per order, eligibility, aggregate in the same transaction, listings, no edit/delete | TESTED | `schema-v2-phase5.test.ts` 15 tests |
+| Customer notification inbox (outbox rows, read/read-all, retention) | TESTED | same |
+| Customer + shop-owner push, token cleanup, failure isolation (fake sender) | TESTED | same |
+| Shop-owner in-app inbox rows for payment submission / verification | NOT_STARTED (deferred to phase 6 with the web bell) | `PHASE5_CONTRACT.md` |
+| Contract | IMPLEMENTED | `PHASE5_CONTRACT.md`; full suite 63 files green |
+
+## Phase 6
+
+Web and admin UI, OpenAPI, ER and sequence diagrams, architecture PDF, skill update, production pre-flight and rollout are NOT_STARTED. No production access, migration, PostGIS enablement or deployment has been performed.
 
 ## Blockers and notes
 
