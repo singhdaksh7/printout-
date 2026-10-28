@@ -86,6 +86,47 @@ export async function authGoogleRoutes(app: FastifyInstance, ctx: AppContext): P
   );
 }
 
+/**
+ * Web Google sign-in for MARKETPLACE CUSTOMERS (separate route so the owner web flow above is untouched). Same rules: resolution only by
+ * the Firebase uid (an email or phone that merely matches an owner never links or signs in), replay protection on auth_time, strict
+ * Origin check, cookie + CSRF session. An unlinked identity gets the restricted onboarding cookie (nextStep create_customer) and
+ * finishes with POST /customers/onboarding (client web). Only CUSTOMER accounts are accepted here; owners and admins get 403.
+ */
+export async function authCustomerGoogleRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+  const { prisma, config } = ctx;
+  app.post('/auth/customer/google/session', { config: { rateLimit: { max: config.LOGIN_RATE_LIMIT_MAX, timeWindow: '1 minute' } } }, async (request, reply) => {
+    reply.header('cache-control', 'no-store');
+    assertSameOrigin(ctx, request);
+    const body = sessionBody.parse(request.body);
+    const { verified, ipKey } = await verifyGoogleToken(ctx, request, body.idToken);
+    const masked = maskEmail(verified.email);
+    const identity = await prisma.userGoogleIdentity.findUnique({ where: { firebaseUid: verified.uid }, include: { user: true } });
+    if (!identity) {
+      ctx.loginThrottle.reset(ipKey);
+      await audit(prisma, { shopId: null, actorUserId: null, actorType: 'SYSTEM', action: 'auth.google.login', targetType: 'google', metadata: { method: 'google', client: 'web', audience: 'customer', outcome: 'onboarding', email: masked } });
+      const grant = await issueGrant(ctx, { provider: 'google', firebaseUid: verified.uid, email: verified.email, authTime: verified.authTime });
+      setGrantCookie(ctx, reply, grant.raw, grant.expiresAt);
+      return json(webAuthResponse(ctx, restrictedProfile({ provider: 'google', email: verified.email }, 'customer'), { onboarding: { expiresAt: grant.expiresAt } }));
+    }
+    const user = identity.user;
+    if (user.role !== 'CUSTOMER') throw new AppError(403, 'FORBIDDEN', 'Google sign-in is not available for this account.');
+    if (!user.isActive) throw new AppError(403, 'ACCOUNT_BLOCKED', 'This account is blocked. Contact Printout Buddy support.', { nextStep: 'account_blocked' });
+    const claimed = await prisma.userGoogleIdentity.updateMany({
+      where: { id: identity.id, OR: [{ lastAuthTime: null }, { lastAuthTime: { lt: verified.authTime } }] },
+      data: { lastAuthTime: verified.authTime, lastSignInAt: new Date(), email: verified.email }
+    });
+    if (claimed.count !== 1) {
+      await audit(prisma, { shopId: null, actorUserId: user.id, actorType: 'CUSTOMER', action: 'auth.google.login_refused', targetType: 'user', targetId: user.id, metadata: { reason: 'replay', email: masked } });
+      throw GOOGLE_TOKEN_INVALID_ERROR();
+    }
+    ctx.loginThrottle.reset(ipKey);
+    clearGrantCookie(ctx, reply);
+    const out = await authResponseFor(ctx, request, reply, user.id, 'web', undefined);
+    await audit(prisma, { shopId: null, actorUserId: user.id, actorType: 'CUSTOMER', action: 'auth.google.login', targetType: 'user', targetId: user.id, metadata: { client: 'web', audience: 'customer', email: masked } });
+    return json(out);
+  });
+}
+
 /** Verifies a Firebase Google ID token (project, freshness, revocation per config, provider google.com, Google-VERIFIED email). */
 export async function verifyGoogleToken(ctx: AppContext, request: FastifyRequest, idToken: string): Promise<{ verified: VerifiedGoogle; ipKey: string }> {
   const verifier = ctx.phoneVerifier;

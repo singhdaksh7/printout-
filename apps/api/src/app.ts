@@ -40,7 +40,7 @@ import { shopAccountPhoneRoutes } from './routes/shop-account-phone.js';
 import { authFirebaseRoutes } from './routes/auth-firebase.js';
 import { authRefreshRoutes } from './routes/auth-refresh.js';
 import { authMobileRoutes } from './routes/auth-mobile.js';
-import { authGoogleRoutes } from './routes/auth-google.js';
+import { authCustomerGoogleRoutes, authGoogleRoutes } from './routes/auth-google.js';
 import { userIdentityRoutes } from './routes/user-identities.js';
 import { createPushSender, type PushSender } from './notifications/fcm.js';
 import { profileRoutes } from './routes/profile.js';
@@ -52,6 +52,7 @@ import { selectGeoRepository } from './domain/geo.js';
 import { shopProfileRoutes } from './routes/shop-profile.js';
 import { customerOrderRoutes } from './routes/customer-orders.js';
 import { orderPaymentRoutes } from './routes/order-payments.js';
+import { customerReviewRoutes } from './routes/customer-reviews.js';
 
 export interface AppDeps {
   config?: Config;
@@ -191,6 +192,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => authRoutes(i, ctx));
       await api.register((i) => authPhoneRoutes(i, ctx));
       await api.register((i) => authGoogleRoutes(i, ctx));
+      await api.register((i) => authCustomerGoogleRoutes(i, ctx));
       await api.register((i) => shopAccountPhoneRoutes(i, ctx));
       await api.register((i) => authFirebaseRoutes(i, ctx));
       await api.register((i) => authRefreshRoutes(i, ctx));
@@ -204,6 +206,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopProfileRoutes(i, ctx));
       await api.register((i) => customerOrderRoutes(i, ctx));
       await api.register((i) => orderPaymentRoutes(i, ctx));
+      await api.register((i) => customerReviewRoutes(i, ctx));
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));

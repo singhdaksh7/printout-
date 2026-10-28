@@ -57,11 +57,10 @@ export function createPushSender(config: Config): PushSender | null {
   return new FirebasePushSender(config.FIREBASE_PROJECT_ID);
 }
 
-/**
- * Post-commit, best-effort push to the OWNERS OF THIS SHOP only. Never throws and never delays the request that created the order.
- * Tenant isolation: registrations are selected by shopId AND the user must still belong to that shop.
- */
-export async function notifyShopOwners(ctx: AppContext, shopId: string, message: PushMessage): Promise<void> {
+type RegistrationWhere = Parameters<AppContext['prisma']['fcmRegistration']['findMany']>[0] extends infer A ? (A extends { where?: infer W } ? W : never) : never;
+
+/** Shared delivery: decrypt, send, and clean up registrations FCM reports as permanently dead (or failing too often). Never throws. */
+async function deliver(ctx: AppContext, where: RegistrationWhere, message: PushMessage): Promise<void> {
   const { prisma, config } = ctx;
   const sender = ctx.pushSender;
   if (!sender || !config.FCM_PUSH_ENABLED) return;
@@ -69,7 +68,7 @@ export async function notifyShopOwners(ctx: AppContext, shopId: string, message:
     const key = fcmKey(config);
     const staleBefore = new Date(Date.now() - config.FCM_STALE_DAYS * 86_400_000);
     const rows = await prisma.fcmRegistration.findMany({
-      where: { shopId, enabled: true, revokedAt: null, lastRegisteredAt: { gte: staleBefore }, user: { role: 'SHOP_OWNER', shopId } },
+      where: { ...where, enabled: true, revokedAt: null, lastRegisteredAt: { gte: staleBefore } },
       select: { id: true, tokenCipher: true, failureCount: true },
       take: 100
     });
@@ -96,4 +95,17 @@ export async function notifyShopOwners(ctx: AppContext, shopId: string, message:
   } catch {
     /* push is best effort: never surfaces to the order flow */
   }
+}
+
+/**
+ * Post-commit, best-effort push to the OWNERS OF THIS SHOP only. Never throws and never delays the request that created the order.
+ * Tenant isolation: registrations are selected by shopId AND the user must still belong to that shop.
+ */
+export async function notifyShopOwners(ctx: AppContext, shopId: string, message: PushMessage): Promise<void> {
+  await deliver(ctx, { shopId, user: { role: 'SHOP_OWNER', shopId } }, message);
+}
+
+/** Post-commit, best-effort push to ONE customer's own devices (registrations are scoped by user id and the CUSTOMER role). */
+export async function notifyUser(ctx: AppContext, userId: string, message: PushMessage): Promise<void> {
+  await deliver(ctx, { userId, user: { id: userId, role: 'CUSTOMER', isActive: true } }, message);
 }

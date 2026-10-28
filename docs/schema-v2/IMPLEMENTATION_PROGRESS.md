@@ -2,6 +2,12 @@
 
 Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (only with verified production evidence), BLOCKED. Resume rule: a new session reads this file, `02-architecture-decisions.md` and the architecture skill, then continues at the first row that is not MERGED/DEPLOYED.
 
+## Production deployment record
+
+| Release | Evidence |
+|---|---|
+| Phases 1-4 DEPLOYED 2026-10-28 ~09:45 UTC to the production VPS (api + worker; web unchanged) | main merge `52b6a0b` (PR #54), tag `release-20261028-schemav2-p1-4`; 6 additive migrations `20261028100000`..`20261028130100` applied (18 total, 0 failed); `/health` 200, `/ready` ready, read-only smoke 10/10 (`retentionMinutes=30` confirmed); new routes answer 401 unauthenticated; row counts unchanged (16 shops, 12 users, 27 orders, 44 documents); no error logs. Flags OFF: `CUSTOMER_SIGNUP_ENABLED`, `ORDER_REJECT_ENABLED`; `GEO_BACKEND=haversine`. Rollback images `printout-{api,web}:rollback-pre-schemav2-20261028`. Backups before deploy (age-encrypted, copied off-server to the operator laptop with matching sha256): `printout-20261028T092927Z`, `printout-20261028T093929Z`; restore rehearsal and migration rehearsal passed on a restored copy before deploying. NOTE: the scheduled backup job still has no off-server remote (`BACKUP_RCLONE_REMOTE` unset); off-server copies are manual until a remote is configured. |
+
 ## Repository state
 
 | Step | Status | Evidence |
@@ -11,13 +17,13 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 | Decisions recorded APPROVED | IN_PROGRESS | branch `docs/schema-v2-approvals` |
 | development/main sync (PR #47) | IN_PROGRESS | candidate tree identical to main |
 
-## Phase 1 - Identity and multi-shop (MERGED to development, not deployed)
+## Phase 1 - Identity and multi-shop (DEPLOYED, flags off)
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Customer role, role grants, nullable email, customer profile, `GET /shops/mine`, customer sign-in (audience), onboarding (flag off) | MERGED | PR #49, squash `2b17805`; 23 tests + full suite 58 files |
+| Customer role, role grants, nullable email, customer profile, `GET /shops/mine`, customer sign-in (audience), onboarding (flag off) | DEPLOYED | PR #49, squash `2b17805`; 23 tests + full suite 58 files |
 
-## Phase 2 - Discovery (MERGED to development, not deployed; PR #50, squash `d8baff6`)
+## Phase 2 - Discovery (DEPLOYED; haversine backend, PostGIS not enabled)
 
 | Requirement | Status | Evidence |
 |---|---|---|
@@ -29,14 +35,14 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 | Customer discovery APIs | TESTED | phase 2 tests |
 | Contract | IMPLEMENTED | `PHASE2_CONTRACT.md`, `POSTGIS_RUNBOOK.md` |
 
-## Phase 3 - Customer orders (MERGED to development, not deployed)
+## Phase 3 - Customer orders (DEPLOYED, customer sign-up flag off so unused)
 
 | Requirement | Status | Evidence |
 |---|---|---|
 | Customer uploads (existing pipeline, 50 MiB, hourly limit), quotes, orders (shared server-authoritative pricing), history, cancel; guest QR unchanged | MERGED | PR #51 squash `5184848`; 10 tests; full suite 61 files |
 | 30-minute retention untouched; no customer file download | MERGED | by design |
 
-## Phase 4 - Lifecycle and payments (PR open into development, not deployed)
+## Phase 4 - Lifecycle and payments (MERGED to development, not deployed; PR #52, squash `43dd97b`)
 
 | Requirement | Status | Evidence |
 |---|---|---|
@@ -46,9 +52,19 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 | Shop order list `/shops/{shopId}/orders`, status adapter | TESTED | 17 tests |
 | Contract | IMPLEMENTED | `PHASE4_CONTRACT.md`; full suite 62 files green |
 
-## Phases 5-6
+## Phase 5 - Reviews and notifications (PR open into development, not deployed)
 
-Phase 5 (reviews, customer notifications, FCM for customers) and phase 6 (web/admin UI, OpenAPI, ER/sequence diagrams, architecture PDF, production rollout) are NOT_STARTED. No production access, migration, PostGIS enablement or deployment has been performed.
+| Requirement | Status | Evidence |
+|---|---|---|
+| Reviews: one per order, eligibility, aggregate in the same transaction, listings, no edit/delete | TESTED | `schema-v2-phase5.test.ts` 15 tests |
+| Customer notification inbox (outbox rows, read/read-all, retention) | TESTED | same |
+| Customer + shop-owner push, token cleanup, failure isolation (fake sender) | TESTED | same |
+| Shop-owner in-app inbox rows for payment submission / verification | NOT_STARTED (deferred to phase 6 with the web bell) | `PHASE5_CONTRACT.md` |
+| Contract | IMPLEMENTED | `PHASE5_CONTRACT.md`; full suite 63 files green |
+
+## Phase 6
+
+Web and admin UI, OpenAPI, ER and sequence diagrams, architecture PDF, skill update, production pre-flight and rollout are NOT_STARTED. No production access, migration, PostGIS enablement or deployment has been performed.
 
 ## Blockers and notes
 

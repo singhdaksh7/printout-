@@ -8,7 +8,7 @@ import { fcmKey, registerToken, revokeInstallation, revokeUserToken } from '../n
 import { revokeUserRefreshFamilies } from '../domain/credentials.js';
 import { deviceIdSchema } from './auth-firebase.js';
 import { getLimiters } from '../rate-limits.js';
-import { assertCsrf, audit, authenticate, authOf, isUniqueViolation, json, shopGuard, shopIdOf, type AppContext, type AuthContext } from './context.js';
+import { actorTypeOf, assertCsrf, audit, authenticate, authOf, isUniqueViolation, json, shopGuard, shopIdOf, type AppContext, type AuthContext } from './context.js';
 import { reauthenticateShopOwner } from './shop-reauth.js';
 
 export const PINCODE = /^[1-9][0-9]{5}$/;
@@ -153,8 +153,9 @@ export async function profileRoutes(app: FastifyInstance, ctx: AppContext): Prom
   // scoped by the session's user id: an installationId or token never reaches another user's registration.
   const fcmGuard = async (request: FastifyRequest): Promise<void> => {
     await sessionGuard(request);
-    // Push is for shop owners' devices; an admin session may not register.
-    if (authOf(request).role !== 'SHOP_OWNER') throw new AppError(403, 'FORBIDDEN', 'Push registration is only available to shop accounts.');
+    // Push is for shop owners' and customers' devices; an admin session may not register.
+    const role = authOf(request).role;
+    if (role !== 'SHOP_OWNER' && role !== 'CUSTOMER') throw new AppError(403, 'FORBIDDEN', 'Push registration is only available to shop and customer accounts.');
   };
 
   app.put('/users/me/fcm-token', { preHandler: [fcmGuard, limits.shopMutation] }, async (request) => {
@@ -169,7 +170,7 @@ export async function profileRoutes(app: FastifyInstance, ctx: AppContext): Prom
       if (!isUniqueViolation(error)) throw error;
       outcome = await run(); // lost a race with an identical concurrent registration
     }
-    await audit(prisma, { shopId: auth.shopId, actorUserId: auth.userId, actorType: 'SHOP_OWNER', action: 'user.fcm_token.registered', targetType: 'user', targetId: auth.userId, metadata: { platform: body.platform, moved: outcome.moved, evicted: outcome.evicted } });
+    await audit(prisma, { shopId: auth.shopId, actorUserId: auth.userId, actorType: actorTypeOf(auth.role), action: 'user.fcm_token.registered', targetType: 'user', targetId: auth.userId, metadata: { platform: body.platform, moved: outcome.moved, evicted: outcome.evicted } });
     return json({ registered: true as const, installationId: body.installationId, platform: body.platform });
   });
 
@@ -178,7 +179,7 @@ export async function profileRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const body = fcmDeleteBody.parse(request.body);
     // Only the caller's own registration is touched; absent or someone else's answers the same 204 (no probing).
     const removed = body.installationId ? await revokeInstallation(prisma, auth.userId, body.installationId) : await revokeUserToken(prisma, auth.userId, body.token!);
-    if (removed > 0) await audit(prisma, { shopId: auth.shopId, actorUserId: auth.userId, actorType: 'SHOP_OWNER', action: 'user.fcm_token.removed', targetType: 'user', targetId: auth.userId });
+    if (removed > 0) await audit(prisma, { shopId: auth.shopId, actorUserId: auth.userId, actorType: actorTypeOf(auth.role), action: 'user.fcm_token.removed', targetType: 'user', targetId: auth.userId });
     return reply.code(204).send();
   });
 }

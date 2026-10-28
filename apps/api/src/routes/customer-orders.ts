@@ -6,6 +6,7 @@ import { quoteSecret } from '../config.js';
 import { subscriptionAllowsIntake } from '../domain/eligibility.js';
 import { assertAcceptingByHours } from '../domain/hours-view.js';
 import { createOrderFromQuote } from '../domain/order-create.js';
+import { notifyShopOwners } from '../notifications/fcm.js';
 import { apiPaymentMethod, apiPaymentStatus, dbPaymentMethod, normaliseUpiRef, paymentLocksStatusChange, submitUpiReference, UPI_REF } from '../domain/payments.js';
 import { MAX_TOTAL_PAISE, pageSelectionSchema, quote } from '../domain/pricing.js';
 import { signQuote, verifyQuote } from '../domain/quote-token.js';
@@ -82,6 +83,7 @@ const customerOrderView = (o: OrderRow) => ({
     upiId: o.paymentMethod === 'UPI' ? o.shop.upiId : null
   },
   note: o.note,
+  isReviewed: o.isReviewed,
   createdAt: o.createdAt,
   updatedAt: o.updatedAt
 });
@@ -228,6 +230,8 @@ export async function customerOrderRoutes(app: FastifyInstance, ctx: AppContext)
     const body = paymentBody.parse(request.body);
     const updated = await submitUpiReference(prisma, { customerUserId: auth.userId, orderId: id, upiTxnRef: normaliseUpiRef(body.upiTxnRef) });
     if (!updated) throw orderNotFound();
+    void notifyShopOwners(ctx, updated.shopId, { type: 'order.payment_submitted', orderId: updated.id, title: 'Payment reference to verify' });
+    events.emit(updated.shopId, 'order.updated', { id: updated.id, orderNumber: updated.orderNumber, status: updated.status, updatedAt: updated.updatedAt });
     const full = await prisma.order.findUniqueOrThrow({ where: { id }, include: { shop: { select: { displayName: true, upiId: true } }, document: true } });
     return json(customerOrderView(full));
   });
