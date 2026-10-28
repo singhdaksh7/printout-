@@ -5,6 +5,7 @@ import { sanitizeFilename } from '../storage/filename.js';
 import { documentAccessWindow } from './access.js';
 import { assertRequestedTransition } from './lifecycle.js';
 import { toStatusEvent } from './order-serializers.js';
+import { pushCustomerNotification, recordCustomerNotification } from './customer-notifications.js';
 
 /**
  * THE print engine. Browser (owner session) and device (Bearer) routes both call it, so retention semantics exist once:
@@ -145,7 +146,8 @@ export async function initiatePrint(ctx: AppContext, input: InitiatePrintInput):
         metadata: { from: start, to: current, transitioned: path.length > 0, firstPrint }
       });
       const fresh = await tx.order.findFirstOrThrow({ where: { id, shopId } });
-      return { order: fresh, document: d, changed: path.length > 0, firstPrint };
+      const notification = path.length > 0 ? await recordCustomerNotification(tx, { customerUserId: fresh.customerUserId, event: 'order.printing', orderId: fresh.id, orderNumber: fresh.orderNumber }) : null;
+      return { order: fresh, document: d, changed: path.length > 0, firstPrint, notification };
     });
     return { result, access, mimeType: doc0.detectedMimeType };
   };
@@ -159,7 +161,8 @@ export async function initiatePrint(ctx: AppContext, input: InitiatePrintInput):
     out = await attempt(); // a concurrent request moved the order: re-evaluate once (now typically PRINTING -> just access)
   }
 
-  const { order, document, changed, firstPrint } = out.result;
+  const { order, document, changed, firstPrint, notification } = out.result;
+  pushCustomerNotification(ctx, notification);
   if (changed) {
     events.emit(shopId, 'order.statusChanged', toStatusEvent(order));
     events.emit(shopId, 'order.updated', toStatusEvent(order));

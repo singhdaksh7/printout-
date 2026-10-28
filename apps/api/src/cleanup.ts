@@ -1,3 +1,4 @@
+import { recordCustomerNotification } from './domain/customer-notifications.js';
 import { DevicePrintJobStatus, DocumentStatus, OrderStatus, Prisma, type Document, type PrismaClient } from '@prisma/client';
 
 /**
@@ -253,7 +254,7 @@ async function markDeleted(prisma: PrismaClient, document: DueDocument, now: Dat
 
     let expired: { id: string; status: OrderStatus; updatedAt: Date } | null = null;
     if (reason !== 'print_retention') {
-      const order = await tx.order.findUnique({ where: { documentId: document.id }, select: { id: true, shopId: true, status: true } });
+      const order = await tx.order.findUnique({ where: { documentId: document.id }, select: { id: true, shopId: true, status: true, orderNumber: true, customerUserId: true } });
       if (order && EXPIRABLE_ORDER_STATUSES.includes(order.status)) {
         // BE's lifecycle table has no PRINTING -> EXPIRED edge; the worker updates directly (spec decision reported to lead).
         const moved = await tx.order.updateMany({ where: { id: order.id, status: order.status }, data: { status: OrderStatus.EXPIRED } });
@@ -264,6 +265,8 @@ async function markDeleted(prisma: PrismaClient, document: DueDocument, now: Dat
           await tx.auditLog.create({
             data: { shopId: order.shopId, action: 'order.expired', targetType: 'order', targetId: order.id, metadata: { reason: 'document_expired' } }
           });
+          // Customers of marketplace orders see why the order ended (in-app inbox; the worker sends no push). Guest orders: no-op.
+          await recordCustomerNotification(tx, { customerUserId: order.customerUserId, event: 'order.expired', orderId: order.id, orderNumber: order.orderNumber });
           const fresh = await tx.order.findUniqueOrThrow({ where: { id: order.id }, select: { id: true, status: true, updatedAt: true } });
           expired = fresh;
         }

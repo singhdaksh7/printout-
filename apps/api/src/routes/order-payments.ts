@@ -1,6 +1,7 @@
 import { OrderStatus, type Prisma } from '@prisma/client';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { pushCustomerNotification } from '../domain/customer-notifications.js';
 import { shopChangeStatus } from '../domain/order-transition.js';
 import { apiPaymentMethod, apiPaymentStatus, recordRefundByAdmin, setPaymentByShop } from '../domain/payments.js';
 import { requireOwnedShop } from '../domain/shop-access.js';
@@ -93,8 +94,10 @@ export async function orderPaymentRoutes(app: FastifyInstance, ctx: AppContext):
     const { shopId, orderId } = ids.parse(request.params);
     await requireOwnedShop(prisma, auth.userId, shopId);
     const body = paymentBody.parse(request.body);
-    const updated = await setPaymentByShop(prisma, { shopId, orderId, actor: { userId: auth.userId, role: 'SHOP_OWNER' }, to: body.paymentStatus === 'paid' ? 'PAID' : 'UNPAID' });
-    if (!updated) throw orderNotFound();
+    const result = await setPaymentByShop(prisma, { shopId, orderId, actor: { userId: auth.userId, role: 'SHOP_OWNER' }, to: body.paymentStatus === 'paid' ? 'PAID' : 'UNPAID' });
+    if (!result) throw orderNotFound();
+    pushCustomerNotification(ctx, result.notification);
+    const updated = result.order;
     return json({ id: updated.id, paymentMethod: apiPaymentMethod(updated.paymentMethod), paymentStatus: apiPaymentStatus(updated.paymentStatus), upiTxnRef: updated.upiTxnRef });
   });
 
@@ -103,8 +106,10 @@ export async function orderPaymentRoutes(app: FastifyInstance, ctx: AppContext):
     const auth = authOf(request);
     const { id } = z.object({ id: z.string().min(8).max(64) }).strict().parse(request.params);
     const body = refundBody.parse(request.body);
-    const updated = await recordRefundByAdmin(prisma, { orderId: id, adminUserId: auth.userId, reason: body.reason, amountPaise: body.amountPaise });
-    if (!updated) throw orderNotFound();
+    const result = await recordRefundByAdmin(prisma, { orderId: id, adminUserId: auth.userId, reason: body.reason, amountPaise: body.amountPaise });
+    if (!result) throw orderNotFound();
+    pushCustomerNotification(ctx, result.notification);
+    const updated = result.order;
     return json({ id: updated.id, paymentStatus: apiPaymentStatus(updated.paymentStatus), totalPaise: updated.totalPaise });
   });
 }
