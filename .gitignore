@@ -25,3 +25,10 @@ docs/visual-qa/after/*.png
 # Local worktrees
 Print-*/
 
+
+# Never commit database backups, dumps or key material (see docs/DEPLOYMENT.md: keep them off git).
+/backups/
+*.dump
+*.dump.age
+*.dump.gpg
+*age-key*
