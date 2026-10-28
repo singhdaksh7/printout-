@@ -17,8 +17,8 @@ Base URL: `https://printoutbuddy.tech/api/v1` (never the PDF placeholder). Envel
 | POST /uploads/presign | `POST /public/shops/:slug/uploads/initiate` + upload PUT (HMAC token) | CURRENT_DIFFERENT_CONTRACT | `POST /customer/uploads/presign` wrapping the same storage driver; keys scoped `uploads/{userId}/...` | customer |
 | POST /orders | `POST /public/shops/:slug/orders` | CURRENT_DIFFERENT_CONTRACT | `POST /customer/orders` sharing pricing and validation | customer |
 | GET /orders, GET /orders/{id} | `GET /public/orders/:token` (capability) | CURRENT_DIFFERENT_CONTRACT | `GET /customer/orders`, `GET /customer/orders/{id}` | customer |
-| GET /orders/{id}/file | shop document routes | CURRENT_DIFFERENT_CONTRACT | `GET /customer/orders/{id}/file` (short-lived URL; 410 after deletion). Shop access stays on shop routes | customer |
-| POST /orders/{id}/cancel | cancel is shop-side only today | NEW_PROPOSED | `POST /customer/orders/{id}/cancel` (pending/accepted only) | customer |
+| GET /orders/{id}/file | shop document routes | CURRENT_DIFFERENT_CONTRACT | **BLOCKED** while 30-minute retention stands (D3): not offered to customers. If 7-day retention is separately approved: `GET /customer/orders/{id}/file` (short-lived URL, 410 after deletion). Shop access stays on shop routes | customer |
+| POST /orders/{id}/cancel | cancel is shop-side only today | NEW_PROPOSED | `POST /customer/orders/{id}/cancel` (NEW/ACCEPTED only) | customer |
 | POST /orders/{id}/payment | none | NEW_PROPOSED | `POST /customer/orders/{id}/payment` (UTR) | customer |
 | POST /reviews | none | NEW_PROPOSED | `POST /customer/reviews` | customer |
 | GET /shops/mine | `GET /shops/me` | CURRENT_DIFFERENT_CONTRACT | New `GET /shops/mine` from `Membership`; `/shops/me` unchanged | owner |

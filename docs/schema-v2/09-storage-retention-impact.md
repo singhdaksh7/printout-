@@ -25,4 +25,4 @@
 
 A. Keep 30 minutes; customer file download endpoint not offered. B. Per-source: 30 minutes for guest, 7 days for authenticated customer orders. C. 7 days for all.
 
-Recommendation: A for the first release, with B revisited once a privacy notice is drafted. Implementation of any option stays behind configuration plus a worker update; cleanup must remain idempotent with storage-failure retries.
+Owner preference recorded (02 D3, pending confirmation): option A. Recommendation: A for the first release, with B revisited once a privacy notice is drafted. Implementation of any option stays behind configuration plus a worker update; cleanup must remain idempotent with storage-failure retries.

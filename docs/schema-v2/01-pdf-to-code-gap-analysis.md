@@ -41,7 +41,7 @@ Current schema: 32 Prisma models and 14 enums (`grep -c '^model '` on `schema.pr
 |---|---|---|---|
 | userRole | customer, shopOwner, admin | `Role`: SHOP_OWNER, PLATFORM_ADMIN | PARTIAL: `CUSTOMER` missing; naming differs (map, do not rename). |
 | printingType | colored, blackWhite | `ColourMode`: bw, colour (+ `PrintSides`) | C: spelling and a missing sides dimension. |
-| orderStatus | pending, accepted, printing, ready, completed, rejected, cancelled | `OrderStatus`: NEW, ACCEPTED, PRINTING, PRINTED, READY, COLLECTED, CANCELLED, EXPIRED | C: no REJECTED; extra PRINTED/EXPIRED; COLLECTED ~ completed. Cancel is currently shop-side. |
+| orderStatus | pending, accepted, printing, ready, completed, rejected, cancelled | `OrderStatus`: NEW, ACCEPTED, PRINTING, PRINTED, READY, COLLECTED, CANCELLED, EXPIRED | C: no REJECTED (D7 adds it); extra PRINTED/EXPIRED; COLLECTED ~ completed. Cancel is currently shop-side. |
 | paymentMethod | cash, upi | none | MISSING |
 | paymentStatus | unpaid, pendingVerification, paid, refunded | none (`Payment.status` is free text, unused, platform billing) | MISSING |
 

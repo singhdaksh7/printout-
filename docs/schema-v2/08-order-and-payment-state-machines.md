@@ -24,7 +24,7 @@ Cancellation today is shop-side only. There is no REJECTED state; no customer ac
 | ready | READY | |
 | completed | COLLECTED | |
 | cancelled | CANCELLED | actor customer or shop |
-| rejected | CANCELLED from NEW with `reason` and an actor-role marker, **or** new `REJECTED` | Recommended: first release maps to CANCELLED + `rejectReason` (no enum change); a distinct `REJECTED` value is a later optional step **[APPROVAL]** |
+| rejected | new `REJECTED` (decision D7, owner preference pending) | Until the additive migration ships and every client tolerates unknown statuses, a shop reject is the existing NEW -> CANCELLED with a reason. Rollout order is in 02 D7 |
 | (none) | EXPIRED | Internal; PDF-style clients see `cancelled` |
 
 ## Target transition matrix
@@ -32,7 +32,7 @@ Cancellation today is shop-side only. There is no REJECTED state; no customer ac
 | From | To | Actor | Conditions |
 |---|---|---|---|
 | NEW | ACCEPTED | shop owner (membership) | shop not blocked |
-| NEW | CANCELLED (reject) | shop owner | `rejectReason` required |
+| NEW | REJECTED | shop owner | `rejectReason` required; after D7 rollout only |
 | NEW | CANCELLED | customer (owner of order) | optional `cancelReason` |
 | ACCEPTED | PRINTING | shop owner / print-now | existing print path, unchanged |
 | ACCEPTED | CANCELLED | customer or shop | allowed until printing starts |
