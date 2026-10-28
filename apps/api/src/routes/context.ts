@@ -78,6 +78,7 @@ export async function authenticate(ctx: AppContext, request: FastifyRequest, opt
     include: { user: { include: { shop: { select: { status: true } } } } }
   });
   if (!session) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  if (!session.user.isActive) throw new AppError(403, 'ACCOUNT_BLOCKED', 'This account is blocked. Contact Printout Buddy support.', { nextStep: 'account_blocked' });
   if (session.user.shop?.status === 'SUSPENDED' && !opts.allowSuspended) {
     throw new AppError(403, 'SHOP_SUSPENDED', 'This shop is suspended');
   }
@@ -110,6 +111,21 @@ export function shopGuard(ctx: AppContext) {
   };
 }
 
+/** preHandler for marketplace-customer routes: session + CUSTOMER role + CSRF on cookie mutations. Owners and admins are refused. */
+export function customerGuard(ctx: AppContext) {
+  return async (request: FastifyRequest): Promise<void> => {
+    const auth = await authenticate(ctx, request);
+    if (auth.role !== 'CUSTOMER') throw new AppError(403, 'FORBIDDEN', 'Customer account required');
+    if (MUTATING.has(request.method)) assertCsrf(ctx, request, auth);
+  };
+}
+
+/** Staff accounts (owner/admin) always have an email (database CHECK); this narrows the now-nullable column or fails closed. */
+export function staffEmail(user: { email: string | null }): string {
+  if (!user.email) throw new AppError(403, 'FORBIDDEN', 'Account is missing a required email');
+  return user.email;
+}
+
 /** preHandler for platform-admin scope. */
 export function adminGuard(ctx: AppContext) {
   return async (request: FastifyRequest): Promise<void> => {
@@ -139,8 +155,8 @@ export function audit(
   entry: {
     shopId: string | null;
     actorUserId: string | null;
-    /** SHOP_OWNER | SHOP_DEVICE | PLATFORM_ADMIN | SYSTEM. Derived to SHOP_DEVICE / SYSTEM when omitted. */
-    actorType?: 'SHOP_OWNER' | 'SHOP_DEVICE' | 'PLATFORM_ADMIN' | 'SYSTEM';
+    /** SHOP_OWNER | SHOP_DEVICE | PLATFORM_ADMIN | CUSTOMER | SYSTEM. Derived to SHOP_DEVICE / SYSTEM when omitted. */
+    actorType?: 'SHOP_OWNER' | 'SHOP_DEVICE' | 'PLATFORM_ADMIN' | 'SYSTEM' | 'CUSTOMER';
     actorDeviceId?: string | null;
     action: string;
     targetType?: string;
@@ -151,6 +167,9 @@ export function audit(
   const actorType = entry.actorType ?? (entry.actorDeviceId ? 'SHOP_DEVICE' : entry.actorUserId ? undefined : 'SYSTEM');
   return db.auditLog.create({ data: { ...entry, ...(actorType ? { actorType } : {}) } });
 }
+
+/** Audit actor type of a signed-in user. */
+export const actorTypeOf = (role: Role): 'SHOP_OWNER' | 'PLATFORM_ADMIN' | 'CUSTOMER' => (role === 'PLATFORM_ADMIN' ? 'PLATFORM_ADMIN' : role === 'CUSTOMER' ? 'CUSTOMER' : 'SHOP_OWNER');
 
 export function isUniqueViolation(error: unknown, field?: string): boolean {
   const e = error as { code?: string; meta?: { target?: string[] | string } } | null;

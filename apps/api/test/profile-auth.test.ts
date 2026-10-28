@@ -401,7 +401,7 @@ describe('POST /auth (mobile sign-in: otp and email)', () => {
 
     it('an owner with no shop gets create_shop and an empty shops array', async () => {
       const owner = await makeShoplessOwner(h.prisma);
-      const res = await email(owner.email);
+      const res = await email(owner.email!);
       expect(res.statusCode, res.body).toBe(200);
       expect(data(res)).toMatchObject({ nextStep: 'create_shop', isShopRegisteredAtLeastOne: false, showQr: false, shops: [] });
     });

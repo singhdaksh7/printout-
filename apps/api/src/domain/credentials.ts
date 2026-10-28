@@ -170,32 +170,32 @@ export async function rotateRefreshToken(ctx: AppContext, input: RefreshInput, i
       await audit(prisma, { shopId: null, actorUserId: null, actorType: 'SYSTEM', action: 'auth.refresh', targetType: 'phone', metadata: { kind: 'onboarding', provider } });
       return { kind: 'onboarding', subject, credentials };
     }
-    const owner = await prisma.user.findUnique({ where: { id: linkedUserId }, select: { id: true, role: true, shop: { select: { status: true } } } });
-    if (!owner || owner.role !== 'SHOP_OWNER' || owner.shop?.status === 'SUSPENDED') {
+    const owner = await prisma.user.findUnique({ where: { id: linkedUserId }, select: { id: true, role: true, isActive: true, shop: { select: { status: true } } } });
+    if (!owner || (owner.role !== 'SHOP_OWNER' && owner.role !== 'CUSTOMER') || !owner.isActive || owner.shop?.status === 'SUSPENDED') {
       await revokeFamily(prisma, row.familyId, 'account_blocked');
-      throw owner?.shop?.status === 'SUSPENDED' ? accountBlocked() : new AppError(403, 'FORBIDDEN', 'This account cannot be renewed.');
+      throw owner?.shop?.status === 'SUSPENDED' || (owner && !owner.isActive) ? accountBlocked() : new AppError(403, 'FORBIDDEN', 'This account cannot be renewed.');
     }
     await claim();
     await revokeFamily(prisma, row.familyId, 'upgraded'); // the restricted family ends; a normal user family starts
     await revokeDeviceFamilies(prisma, owner.id, row.deviceId);
     const credentials = await issueMobileCredentials(ctx, owner.id, row.deviceId);
     ctx.loginThrottle.reset(ipKey);
-    await audit(prisma, { shopId: null, actorUserId: owner.id, actorType: 'SHOP_OWNER', action: 'auth.refresh', targetType: 'user', targetId: owner.id, metadata: { kind: 'onboarding_upgraded' } });
+    await audit(prisma, { shopId: null, actorUserId: owner.id, actorType: owner.role === 'CUSTOMER' ? 'CUSTOMER' : 'SHOP_OWNER', action: 'auth.refresh', targetType: 'user', targetId: owner.id, metadata: { kind: 'onboarding_upgraded' } });
     return { kind: 'user', userId: owner.id, credentials };
   }
 
   // Account checks on every refresh: a removed, demoted or suspended account loses the whole family.
-  const user = await prisma.user.findUnique({ where: { id: row.userId! }, select: { id: true, role: true, shop: { select: { status: true } } } });
-  if (!user || user.role !== 'SHOP_OWNER' || user.shop?.status === 'SUSPENDED') {
+  const user = await prisma.user.findUnique({ where: { id: row.userId! }, select: { id: true, role: true, isActive: true, shop: { select: { status: true } } } });
+  if (!user || (user.role !== 'SHOP_OWNER' && user.role !== 'CUSTOMER') || !user.isActive || user.shop?.status === 'SUSPENDED') {
     await revokeFamily(prisma, row.familyId, 'account_blocked');
-    throw user?.shop?.status === 'SUSPENDED' ? accountBlocked() : new AppError(403, 'FORBIDDEN', 'This account cannot be renewed.');
+    throw user?.shop?.status === 'SUSPENDED' || (user && !user.isActive) ? accountBlocked() : new AppError(403, 'FORBIDDEN', 'This account cannot be renewed.');
   }
 
   await claim();
   if (row.sessionId) await prisma.session.updateMany({ where: { id: row.sessionId, invalidatedAt: null }, data: { invalidatedAt: now } });
   const credentials = await issueMobileCredentials(ctx, user.id, row.deviceId, row.familyId);
   ctx.loginThrottle.reset(ipKey);
-  await audit(prisma, { shopId: null, actorUserId: user.id, actorType: 'SHOP_OWNER', action: 'auth.refresh', targetType: 'user', targetId: user.id });
+  await audit(prisma, { shopId: null, actorUserId: user.id, actorType: user.role === 'CUSTOMER' ? 'CUSTOMER' : 'SHOP_OWNER', action: 'auth.refresh', targetType: 'user', targetId: user.id });
   return { kind: 'user', userId: user.id, credentials };
 }
 

@@ -223,7 +223,7 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     let colour = 0;
     for (const o of orders) {
       ordersByStatus[o.status] += 1;
-      if (o.status === OrderStatus.CANCELLED || o.status === OrderStatus.EXPIRED) continue;
+      if (o.status === OrderStatus.CANCELLED || o.status === OrderStatus.EXPIRED || o.status === OrderStatus.REJECTED) continue;
       const options = o.printOptionsSnapshot as { copies?: number; colourMode?: string };
       const selected = (o.priceSnapshot as { selectedPageCount?: number }).selectedPageCount ?? 0;
       pages += selected * (options.copies ?? 1);

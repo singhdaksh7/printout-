@@ -1,3 +1,4 @@
+import { shopChangeStatus } from '../domain/order-transition.js';
 import { OrderStatus } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -21,7 +22,7 @@ const transitionBody = z
   .object({
     // Shop owners can only cancel. Accept / Start printing / Ready / Collected are retired: Print (print-now) performs the
     // internal NEW -> ACCEPTED -> PRINTING steps itself. Legacy PRINTED/READY/COLLECTED rows remain readable.
-    toStatus: z.literal(OrderStatus.CANCELLED),
+    toStatus: z.enum([OrderStatus.CANCELLED, OrderStatus.REJECTED]),
     reason: z.string().trim().max(250).optional(),
     clientRequestId: z.string().uuid()
   })
@@ -102,31 +103,7 @@ export async function shopOrderRoutes(app: FastifyInstance, ctx: AppContext): Pr
     const { id } = idParam.parse(request.params);
     const body = transitionBody.parse(request.body);
 
-    const result = await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findFirst({ where: { id, shopId }, include: { document: true } });
-      if (!order) throw orderNotFound();
-      if (order.status === body.toStatus) return { order, changed: false };
-      const from = order.status;
-      assertRequestedTransition(from, body.toStatus);
-
-      const updated = await tx.order.updateMany({ where: { id, shopId, status: from }, data: { status: body.toStatus } });
-      if (updated.count !== 1) {
-        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Order status changed concurrently; reload and retry');
-      }
-      await tx.orderStatusHistory.create({
-        data: { orderId: id, fromStatus: from, toStatus: body.toStatus, reason: body.reason ?? null, actorUserId: auth.userId }
-      });
-      await audit(tx, {
-        shopId,
-        actorUserId: auth.userId,
-        action: 'order.transition',
-        targetType: 'order',
-        targetId: id,
-        metadata: { from, to: body.toStatus }
-      });
-      const fresh = await tx.order.findFirstOrThrow({ where: { id, shopId } });
-      return { order: fresh, changed: true };
-    });
+    const result = await shopChangeStatus(ctx, { shopId, orderId: id, actorUserId: auth.userId, toStatus: body.toStatus, reason: body.reason });
 
     if (result.changed) {
       events.emit(shopId, 'order.statusChanged', toStatusEvent(result.order));

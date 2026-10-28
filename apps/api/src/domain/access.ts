@@ -19,7 +19,7 @@ export function documentAccessWindow(
   orderStatus: OrderStatus,
   nowMs: number
 ): { ttlSeconds: number; deadline: Date } | null {
-  if (orderStatus === OrderStatus.CANCELLED || orderStatus === OrderStatus.EXPIRED) return null;
+  if (orderStatus === OrderStatus.CANCELLED || orderStatus === OrderStatus.EXPIRED || orderStatus === OrderStatus.REJECTED) return null;
   const deadlines: number[] = [];
   if (doc.status === DocumentStatus.PRINTED_RETENTION) {
     if (!doc.deleteAfter) return null;
