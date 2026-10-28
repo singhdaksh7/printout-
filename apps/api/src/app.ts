@@ -40,7 +40,7 @@ import { shopAccountPhoneRoutes } from './routes/shop-account-phone.js';
 import { authFirebaseRoutes } from './routes/auth-firebase.js';
 import { authRefreshRoutes } from './routes/auth-refresh.js';
 import { authMobileRoutes } from './routes/auth-mobile.js';
-import { authGoogleRoutes } from './routes/auth-google.js';
+import { authCustomerGoogleRoutes, authGoogleRoutes } from './routes/auth-google.js';
 import { userIdentityRoutes } from './routes/user-identities.js';
 import { createPushSender, type PushSender } from './notifications/fcm.js';
 import { profileRoutes } from './routes/profile.js';
@@ -192,6 +192,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => authRoutes(i, ctx));
       await api.register((i) => authPhoneRoutes(i, ctx));
       await api.register((i) => authGoogleRoutes(i, ctx));
+      await api.register((i) => authCustomerGoogleRoutes(i, ctx));
       await api.register((i) => shopAccountPhoneRoutes(i, ctx));
       await api.register((i) => authFirebaseRoutes(i, ctx));
       await api.register((i) => authRefreshRoutes(i, ctx));
