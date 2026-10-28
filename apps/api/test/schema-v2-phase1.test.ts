@@ -1,7 +1,7 @@
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { listOwnedShops, requireOwnedShop } from '../src/domain/shop-access.js';
-import { bearerAuth, DEVICE_A, gtok, makeShopReady, PHONES, req, startHarness, tok, type Harness } from './helpers/profile-harness.js';
+import { bearerAuth, cookieAuth, DEVICE_A, gtok, makeShopReady, PHONES, req, startHarness, tok, type Harness } from './helpers/profile-harness.js';
 import { login } from './api-helpers.js';
 
 /**
@@ -22,6 +22,10 @@ describe('schema-v2 phase 1: identity and multi-shop', () => {
     await makeShopReady(h.prisma, h.world.b.shopId);
   });
 
+  const asAuth = async (email: string) => {
+    const session = await login(h.app, email);
+    return cookieAuth(session.cookie, session.csrf);
+  };
   const next = () => age--;
   const gt = (email: string, uid?: string) => gtok(email, { ago: next(), ...(uid ? { uid } : {}) });
   const authCall = (body: Record<string, unknown>) => h.app.inject({ method: 'POST', url: '/api/v1/auth', payload: body });
@@ -178,9 +182,9 @@ describe('schema-v2 phase 1: identity and multi-shop', () => {
     });
 
     it('owner and admin sessions are refused by customer routes', async () => {
-      const owner = await login(h.app, h.world.a.ownerEmail);
+      const owner = await asAuth(h.world.a.ownerEmail);
       expect((await req(h.app, owner, 'GET', '/customers/me')).statusCode).toBe(403);
-      const admin = await login(h.app, h.world.adminEmail);
+      const admin = await asAuth(h.world.adminEmail);
       expect((await req(h.app, admin, 'GET', '/customers/me')).statusCode).toBe(403);
       expect((await h.app.inject({ method: 'GET', url: '/api/v1/customers/me' })).statusCode).toBe(401);
     });
@@ -225,14 +229,14 @@ describe('schema-v2 phase 1: identity and multi-shop', () => {
 
   describe('GET /shops/mine and shop-scoped authorization', () => {
     it('returns exactly the owner\'s own shop (default) and never another tenant\'s', async () => {
-      const a = await login(h.app, h.world.a.ownerEmail);
+      const a = await asAuth(h.world.a.ownerEmail);
       const res = await req(h.app, a, 'GET', '/shops/mine');
       expect(res.statusCode, res.body).toBe(200);
       const d = data(res);
       expect(d.items.map((s: any) => s.id)).toEqual([h.world.a.shopId]);
       expect(d).toMatchObject({ total: 1, defaultShopId: h.world.a.shopId });
       expect(d.items[0]).toMatchObject({ isDefault: true, isActive: true });
-      const b = await login(h.app, h.world.b.ownerEmail);
+      const b = await asAuth(h.world.b.ownerEmail);
       expect(data(await req(h.app, b, 'GET', '/shops/mine')).items.map((s: any) => s.id)).toEqual([h.world.b.shopId]);
     });
 
@@ -242,12 +246,12 @@ describe('schema-v2 phase 1: identity and multi-shop', () => {
       await h.prisma.membership.create({ data: { shopId: extra.id, userId: owner.id, role: 'OWNER' } });
       // B is shared with owner A only as STAFF: not an owned shop.
       await h.prisma.membership.create({ data: { shopId: h.world.b.shopId, userId: owner.id, role: 'STAFF' } });
-      const a = await login(h.app, h.world.a.ownerEmail);
+      const a = await asAuth(h.world.a.ownerEmail);
       const d = data(await req(h.app, a, 'GET', '/shops/mine'));
       expect(d.items.map((s: any) => s.id).sort()).toEqual([h.world.a.shopId, extra.id].sort());
       expect(d.items.find((s: any) => s.id === extra.id).isDefault).toBe(false);
       expect(d.defaultShopId).toBe(h.world.a.shopId);
-      const b = await login(h.app, h.world.b.ownerEmail);
+      const b = await asAuth(h.world.b.ownerEmail);
       expect(data(await req(h.app, b, 'GET', '/shops/mine')).items.map((s: any) => s.id)).toEqual([h.world.b.shopId]);
     });
 
@@ -262,12 +266,12 @@ describe('schema-v2 phase 1: identity and multi-shop', () => {
 
     it('is owner-only and requires authentication', async () => {
       expect((await h.app.inject({ method: 'GET', url: '/api/v1/shops/mine' })).statusCode).toBe(401);
-      const admin = await login(h.app, h.world.adminEmail);
+      const admin = await asAuth(h.world.adminEmail);
       expect((await req(h.app, admin, 'GET', '/shops/mine')).statusCode).toBe(403);
     });
 
     it('new shops created by self-onboarding and by admin get an OWNER membership and role grant', async () => {
-      const admin = await login(h.app, h.world.adminEmail);
+      const admin = await asAuth(h.world.adminEmail);
       const res = await req(h.app, admin, 'POST', '/admin/shops', { slug: 'admin-made', displayName: 'Admin Made', owner: { email: 'newowner@x.test', displayName: 'New Owner', password: 'S0me-long-Password!42' } });
       expect(res.statusCode, res.body).toBe(201);
       const owner = await h.prisma.user.findUniqueOrThrow({ where: { email: 'newowner@x.test' }, include: { memberships: true, roleGrants: true } });
