@@ -82,6 +82,8 @@ const shopView = (s: {
   address: string | null;
   status: ShopStatus;
   acceptsOrders: boolean;
+  isVerified: boolean;
+  verifiedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }) => ({
@@ -91,6 +93,8 @@ const shopView = (s: {
   address: s.address,
   status: s.status,
   acceptsOrders: s.acceptsOrders,
+  isVerified: s.isVerified,
+  verifiedAt: s.verifiedAt,
   createdAt: s.createdAt,
   updatedAt: s.updatedAt
 });
@@ -220,7 +224,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
 
   app.get('/admin/shops', { preHandler: limits.adminRead }, async (request) => {
     const q = pageQuery
-      .extend({ status: z.nativeEnum(ShopStatus).optional(), q: z.string().trim().max(100).optional() })
+      .extend({ status: z.nativeEnum(ShopStatus).optional(), q: z.string().trim().max(100).optional(), isVerified: z.enum(['true', 'false']).optional() })
       .strict()
       .parse(request.query);
     // Search and cursor each use OR; combine under AND so neither overwrites the other.
@@ -229,6 +233,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       : {};
     const where: Prisma.ShopWhereInput = {
       status: q.status,
+      ...(q.isVerified ? { isVerified: q.isVerified === 'true' } : {}),
       AND: [search, cursorWhere(decodeCursor(q.cursor))]
     };
     const rows = await prisma.shop.findMany({
@@ -364,6 +369,62 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       return updated;
     });
     return json({ shop: shopView(shop) });
+  });
+
+  /** Discovery verification (schema-v2). Distinct from suspension and from any subscription; audited with before/after. */
+  app.patch('/admin/shops/:id/verify', { preHandler: limits.adminMutation }, async (request) => {
+    const auth = authOf(request);
+    const { id } = idParam.parse(request.params);
+    const body = z.object({ isVerified: z.boolean() }).strict().parse(request.body);
+    const shop = await prisma.$transaction(async (tx) => {
+      const before = await tx.shop.findUnique({ where: { id } });
+      if (!before) throw notFound('Shop not found');
+      if (before.isVerified === body.isVerified) return before;
+      const updated = await tx.shop.update({
+        where: { id },
+        data: body.isVerified ? { isVerified: true, verifiedAt: new Date(), verifiedBy: auth.userId } : { isVerified: false, verifiedAt: null, verifiedBy: null }
+      });
+      await audit(tx, {
+        shopId: id,
+        actorUserId: auth.userId,
+        actorType: 'PLATFORM_ADMIN',
+        action: body.isVerified ? 'shop.verify' : 'shop.unverify',
+        targetType: 'shop',
+        targetId: id,
+        metadata: { before: { isVerified: before.isVerified }, after: { isVerified: updated.isVerified } }
+      });
+      return updated;
+    });
+    return json({ id: shop.id, isVerified: shop.isVerified, verifiedAt: shop.verifiedAt, verifiedBy: shop.verifiedBy });
+  });
+
+  /** Block / unblock (isActive). Block = SUSPENDED with the same immediate session lock-out as PUT /admin/shops/:id; unblock only lifts SUSPENDED. */
+  app.patch('/admin/shops/:id/block', { preHandler: limits.adminMutation }, async (request) => {
+    const auth = authOf(request);
+    const { id } = idParam.parse(request.params);
+    const body = z.object({ isActive: z.boolean() }).strict().parse(request.body);
+    const shop = await prisma.$transaction(async (tx) => {
+      const before = await tx.shop.findUnique({ where: { id } });
+      if (!before) throw notFound('Shop not found');
+      const target = body.isActive ? (before.status === ShopStatus.SUSPENDED ? ShopStatus.ACTIVE : before.status) : ShopStatus.SUSPENDED;
+      if (target === before.status) return before;
+      const updated = await tx.shop.update({ where: { id }, data: { status: target } });
+      if (target === ShopStatus.SUSPENDED) {
+        await tx.session.updateMany({ where: { user: { shopId: id }, invalidatedAt: null }, data: { invalidatedAt: new Date() } });
+        await tx.refreshToken.updateMany({ where: { user: { shopId: id }, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'shop_suspended' } });
+      }
+      await audit(tx, {
+        shopId: id,
+        actorUserId: auth.userId,
+        actorType: 'PLATFORM_ADMIN',
+        action: body.isActive ? 'shop.unblock' : 'shop.block',
+        targetType: 'shop',
+        targetId: id,
+        metadata: { before: { status: before.status }, after: { status: updated.status } }
+      });
+      return updated;
+    });
+    return json({ id: shop.id, isActive: shop.status === ShopStatus.ACTIVE, status: shop.status });
   });
 
   app.get('/admin/plans', { preHandler: limits.adminRead }, async () => {

@@ -17,7 +17,7 @@ Use this with `printout-buddy` (UI library, branch/CI workflow, as-built status)
 | BLOCKED | Depends on an unresolved decision or permission | no, do not build |
 | SUPERSEDED | Replaced by a later decision | no, ignore |
 
-**As of this skill's creation no decision is APPROVED_TARGET.** D1-D8 in `docs/schema-v2/02-architecture-decisions.md` are PROPOSED (owner preference pending). Re-read that file for the current status before relying on any decision; if the owner has confirmed one, the file says so. Never infer approval.
+**Owner approval (2026-10-28):** D1-D8, AD-3, AD-6, admin-only manual refunds and the 50 MiB upload cap are APPROVED_TARGET and final; see `docs/schema-v2/02-architecture-decisions.md`. APPROVED_TARGET still means *not yet existing*: only what `docs/schema-v2/IMPLEMENTATION_PROGRESS.md` marks MERGED/DEPLOYED (with evidence) is CURRENT_PRODUCTION. The approval does not authorize destructive or irreversible data operations, weakening authorization, retention expansion or platform billing.
 
 Anything in the PDF that is not in code is **not an existing API**. The PDF's endpoints, error shape, token model and sample domain are specifications, not contracts.
 
