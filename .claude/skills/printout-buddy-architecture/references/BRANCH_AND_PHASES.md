@@ -2,7 +2,7 @@
 
 ## Branch policy (verified from `docs/GIT_WORKFLOW.md`)
 
-Permanent: `main` (production code, GitHub default) and `development` (integration). Feature PRs target `development`; release PRs go `development` to `main`; nothing deploys on merge. Verified at skill creation: `development` is **behind and diverged from `main`** (main has 9 commits not in development, development has 26 not in main), so before Phase 1 code the maintainers should merge `main` into `development` through a sync PR (pattern: `chore/sync-hotfix-34-to-development`). Docs-only changes are safe on either base. Do not rewrite or force-push either branch. Re-check with `git rev-list --left-right --count origin/main...origin/development`.
+Permanent: `main` (production code, GitHub default) and `development` (integration). Feature PRs target `development`; release PRs go `development` to `main`; nothing deploys on merge. Verified at skill creation: `development` is **behind and diverged from `main`** (main has 9 commits not in development, development has 26 not in main), so before Phase 1 code the maintainers should merge `main` into `development` through a sync PR (pattern: `chore/sync-hotfix-34-to-development`). Docs-only changes are safe on either base. Audit result (2026-10-28): every `development`-only commit is already in `main` by content (squash releases); the tree of `development` has no unique functionality. Candidate sync branch `sync/main-into-development-candidate` merges `main` into `development` with a tree identical to `main` (reviewed, not yet merged). Do not rewrite or force-push either branch. Re-check with `git rev-list --left-right --count origin/main...origin/development`.
 
 ## Phases (PROPOSED, `docs/schema-v2/11`)
 
