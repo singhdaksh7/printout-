@@ -26,5 +26,10 @@
     "@playwright/test": "^1.63.0",
     "concurrently": "^9.1.0",
     "pdf-lib": "^1.17.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "@grpc/grpc-js": "1.14.6"
+    }
   }
 }

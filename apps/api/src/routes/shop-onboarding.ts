@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { hashPassword, newToken } from '../auth.js';
-import { resolveGrant, type Grant } from '../domain/onboarding-grant.js';
+import { resolveGrant, clearGrantCookie, type Grant } from '../domain/onboarding-grant.js';
 import { AppError } from '../errors.js';
 import { maskEmail, maskPhone } from '../firebase/verifier.js';
 import { clientIpKey } from '../rate-limits.js';
@@ -90,7 +90,7 @@ export async function shopOnboardingRoutes(app: FastifyInstance, ctx: AppContext
         try {
           const userId = await prisma.$transaction(async (tx) => {
             const shop = await tx.shop.create({
-              data: { slug: newSlug(body.shopName), displayName: body.shopName, address: body.address, pincode: body.pincode, status: 'PILOT', acceptsOrders: false, settings: { create: {} } }
+              data: { slug: newSlug(body.shopName), displayName: body.shopName, address: body.address, pincode: body.pincode, status: 'ACTIVE', acceptsOrders: true, settings: { create: {} } }
             });
             const user = await tx.user.create({
               data: { email: accountEmail, displayName: body.ownerName, passwordHash, passwordSet: false, role: 'SHOP_OWNER', shopId: shop.id }
@@ -165,6 +165,7 @@ export async function shopOnboardingRoutes(app: FastifyInstance, ctx: AppContext
         data: { revokedAt: new Date(), revokedReason: 'onboarded' }
       });
     }
+    if (client === 'web') clearGrantCookie(ctx, reply);
     reply.code(status);
     return json(out);
   }

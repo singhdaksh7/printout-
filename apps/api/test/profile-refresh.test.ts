@@ -404,6 +404,6 @@ describe('mobile credentials: access token + rotating refresh token', () => {
     expect((await me(mobileSessionOf(next).accessToken)).statusCode).toBe(200);
     const again = await exchange(h.app, tok(PHONES.NEW, 3), 'mobile', {}, DEVICE_B);
     expect(again.statusCode, again.body).toBe(200);
-    expect(nextStepOf(again)).toBe('generate_qr');
+    expect(nextStepOf(again)).toBe('dashboard');
   });
 });

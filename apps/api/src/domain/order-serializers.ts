@@ -1,4 +1,4 @@
-import { DocumentStatus, OrderStatus, type Document, type Order, type OrderStatusHistory, type Prisma, type PrismaClient } from '@prisma/client';
+import { DevicePrintJobStatus, DocumentStatus, OrderStatus, type Document, type Order, type OrderStatusHistory, type Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../errors.js';
 import { cursorWhere, decodeCursor, encodeCursor } from '../routes/context.js';
@@ -91,8 +91,10 @@ export const orderListQuery = z
     status: z.string().max(200).optional(),
     /** active=1 hides terminal orders (COLLECTED, CANCELLED, EXPIRED). */
     active: z.enum(['1', 'true', '0', 'false']).optional(),
-    /** pending = Print not yet pressed; initiated = Print pressed (or legacy print-confirmed). */
-    print: z.enum(['pending', 'initiated']).optional(),
+    /** pending = Print not yet pressed; initiated = Print pressed (or legacy print-confirmed); attention = latest print job failed / needs a human. */
+    print: z.enum(['pending', 'initiated', 'attention']).optional(),
+    /** newest (default) or oldest first; the cursor follows the same direction. */
+    sort: z.enum(['newest', 'oldest']).default('newest'),
     cursor: z.string().max(300).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50)
   })
@@ -107,6 +109,40 @@ export function parseStatuses(raw: string | undefined): OrderStatus[] | undefine
   return parsed.data;
 }
 
+/** Print-job states that need the shopkeeper (a failed job, or one that may or may not have reached paper). */
+export const ATTENTION_JOB_STATUSES: DevicePrintJobStatus[] = [DevicePrintJobStatus.FAILED, DevicePrintJobStatus.NEEDS_RECONCILIATION];
+
+/** Orders (of one shop) whose LATEST print job needs attention. A later successful/in-flight job clears the flag. */
+export async function attentionOrderIds(prisma: PrismaClient, shopId: string): Promise<string[]> {
+  const bad = await prisma.devicePrintJob.findMany({
+    where: { shopId, status: { in: ATTENTION_JOB_STATUSES } },
+    select: { orderId: true },
+    distinct: ['orderId'],
+    orderBy: { createdAt: 'desc' },
+    take: 200
+  });
+  if (bad.length === 0) return [];
+  const jobs = await prisma.devicePrintJob.findMany({
+    where: { shopId, orderId: { in: bad.map((b) => b.orderId) } },
+    select: { orderId: true, status: true, createdAt: true },
+    orderBy: { createdAt: 'desc' }
+  });
+  const latest = new Map<string, DevicePrintJobStatus>();
+  for (const j of jobs) if (!latest.has(j.orderId)) latest.set(j.orderId, j.status);
+  return [...latest].filter(([, st]) => ATTENTION_JOB_STATUSES.includes(st)).map(([id]) => id);
+}
+
+/** Live-queue counters for the shop header/tabs: requests nobody printed yet, and orders needing attention. */
+export async function queueCounts(prisma: PrismaClient, shopId: string) {
+  const [pending, attention] = await Promise.all([
+    prisma.order.count({
+      where: { shopId, status: { in: [OrderStatus.NEW, OrderStatus.ACCEPTED, OrderStatus.PRINTING] }, document: { printInitiatedAt: null, printedAt: null } }
+    }),
+    attentionOrderIds(prisma, shopId).then((ids) => ids.length)
+  ]);
+  return { pending, attention };
+}
+
 /** Tenant-scoped, keyset-paginated order list (owner and device share it). */
 export async function listOrders(prisma: PrismaClient, shopId: string, q: OrderListQuery) {
   const statuses = parseStatuses(q.status);
@@ -116,15 +152,21 @@ export async function listOrders(prisma: PrismaClient, shopId: string, q: OrderL
     : hideTerminal
       ? { notIn: TERMINAL_STATUSES as OrderStatus[] }
       : undefined;
+  const oldest = q.sort === 'oldest';
+  const attentionIds = q.print === 'attention' ? await attentionOrderIds(prisma, shopId) : undefined;
+  const cursor = decodeCursor(q.cursor);
   const rows = await prisma.order.findMany({
     where: {
       shopId,
       status: statusFilter,
+      ...(attentionIds ? { id: { in: attentionIds } } : {}),
       ...(q.print === 'initiated' ? { document: { OR: [{ printInitiatedAt: { not: null } }, { printedAt: { not: null } }] } } : {}),
       ...(q.print === 'pending' ? { document: { printInitiatedAt: null, printedAt: null } } : {}),
-      ...cursorWhere(decodeCursor(q.cursor))
+      ...(oldest && cursor
+        ? { OR: [{ createdAt: { gt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { gt: cursor.id } }] }
+        : cursorWhere(cursor))
     },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: oldest ? [{ createdAt: 'asc' }, { id: 'asc' }] : [{ createdAt: 'desc' }, { id: 'desc' }],
     take: q.limit + 1,
     include: { document: true }
   });

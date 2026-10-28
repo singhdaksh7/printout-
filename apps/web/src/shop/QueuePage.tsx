@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import { retentionPhrase } from '../lib/retention';
-import { getAnalytics, listOrders, listPrintJobs, describeError, type OrderSummary, type PrintJobView } from '../lib/shop-api';
+import { getAnalytics, getQueueCounts, listOrders, listPrintJobs, describeError, type OrderSummary, type PrintJobView } from '../lib/shop-api';
 import { createContext, useContext } from 'react';
 import { latestByOrder, PrintJobChip } from './PrintJobPanel';
 import { Banner, Button, Card, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Switch, Tabs, buttonClass, cx, type Column } from '../ui';
@@ -14,7 +14,7 @@ import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actio
 import { useRealtimeRefresh } from './realtime';
 import './pb-pages.css';
 
-export interface Tab { key: string; label: string; query: { status?: string; active?: boolean; print?: 'pending' | 'initiated' } }
+export interface Tab { key: string; label: string; query: { status?: string; active?: boolean; print?: 'pending' | 'initiated' | 'attention'; sort?: 'newest' | 'oldest' } }
 export const TABS: Tab[] = [
   // New: customer requests nobody has pressed Print on yet.
   { key: 'new', label: 'New', query: { print: 'pending', status: 'NEW,ACCEPTED,PRINTING' } },
@@ -22,6 +22,9 @@ export const TABS: Tab[] = [
   { key: 'recent', label: 'Recent', query: { print: 'initiated' } },
   { key: 'closed', label: 'Cancelled / expired', query: { status: 'CANCELLED,EXPIRED' } }
 ];
+/** Shown only while a print job needs the shopkeeper (failed, or may-or-may-not have printed) or when it is the open tab. */
+export const ATTENTION_TAB: Tab = { key: 'attention', label: 'Needs attention', query: { print: 'attention' } };
+type Sort = 'newest' | 'oldest';
 const MAX_REFRESH_PAGES = 5;
 
 /** Lists orders for one filter (newest first, API cursor pagination). */
@@ -272,7 +275,11 @@ const OrderCard = memo(function OrderCard({ o, onChanged }: { o: OrderSummary; o
 
 export default function QueuePage() {
   const [tabKey, setTabKey] = useState('new');
-  const tab = TABS.find((t) => t.key === tabKey)!;
+  const [sort, setSort] = useState<Sort>('newest');
+  const [attention, setAttention] = useState(0);
+  const baseTab = [...TABS, ATTENTION_TAB].find((t) => t.key === tabKey)!;
+  // Sort is part of the list identity: changing it resets paging and discards in-flight responses for the old order.
+  const tab = useMemo<Tab>(() => ({ ...baseTab, key: `${baseTab.key}:${sort}`, query: { ...baseTab.query, sort } }), [baseTab, sort]);
   const q = useQueue(tab);
   // The chime itself is played once per live notification by the shop shell (shop/notifications.tsx); the queue only owns the checkbox.
   const sound = useAlertSound();
@@ -291,12 +298,16 @@ export default function QueuePage() {
       .catch(() => setStats(null));
   }, []);
   useEffect(loadStats, [loadStats]);
+  const loadCounts = useCallback(() => {
+    void getQueueCounts().then((c) => setAttention(c.attention)).catch(() => undefined);
+  }, []);
+  useEffect(loadCounts, [loadCounts]);
   const [jobs, setJobs] = useState<Map<string, PrintJobView>>(new Map());
   const loadJobs = useCallback(() => {
     void listPrintJobs().then((r) => setJobs(latestByOrder(r.jobs))).catch(() => undefined);
   }, []);
   useEffect(loadJobs, [loadJobs]);
-  const refreshAll = useCallback(() => { q.refresh(); loadStats(); loadJobs(); }, [q.refresh, loadStats, loadJobs]);
+  const refreshAll = useCallback(() => { q.refresh(); loadStats(); loadJobs(); loadCounts(); }, [q.refresh, loadStats, loadJobs, loadCounts]);
 
   const debounced = useDebounced(refreshAll, 300);
   useRealtimeRefresh(debounced);
@@ -326,7 +337,7 @@ export default function QueuePage() {
       <div className="pb-pagehead">
         <div>
           <h1 id="queue-title" className="pb-h1">Print queue</h1>
-          <p className="pb-muted pb-pagehead__sub">Newest first. Files are deleted automatically {retentionPhrase(retentionMinutes)} after you press Print.</p>
+          <p className="pb-muted pb-pagehead__sub">{sort === 'newest' ? 'Newest first' : 'Oldest first'}. Files are deleted automatically {retentionPhrase(retentionMinutes)} after you press Print.</p>
         </div>
         <Switch label="Sound for new orders" checked={sound.enabled} onChange={() => sound.set(!sound.enabled)} />
       </div>
@@ -338,7 +349,16 @@ export default function QueuePage() {
           <StatTile label="Prints started today" value={String(stats.initiated)} hint="Times Print was pressed." />
         </div>
       )}
-      <Tabs label="Order filters" idPrefix="queue" panelId="queue-panel" tabs={TABS.map((t) => ({ key: t.key, label: t.label }))} value={tabKey} onChange={setTabKey} />
+      <div className="pb-queue-controls">
+        <Tabs label="Order filters" idPrefix="queue" panelId="queue-panel" tabs={(attention > 0 || tabKey === 'attention' ? [...TABS, ATTENTION_TAB] : TABS).map((t) => ({ key: t.key, label: t.label }))} value={tabKey} onChange={setTabKey} />
+        <label className="pb-queue-sort">
+          <span className="pb-muted">Sort</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} data-testid="queue-sort">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+        </label>
+      </div>
       <div id="queue-panel" role="tabpanel" aria-labelledby={`queue-tab-${tabKey}`} className="pb-page">
         {q.error && <Banner tone="err" actions={<Button size="sm" variant="dark" onClick={q.refresh}>Retry</Button>}>{q.error}</Banner>}
         <div aria-live="polite" className="pb-sr-only">{q.fresh.size > 0 ? 'New order received' : ''}</div>
@@ -347,7 +367,7 @@ export default function QueuePage() {
             <EmptyState
               icon="printer"
               titleAs="h2"
-              title={tabKey === 'new' ? 'No new requests' : 'Nothing here yet'}
+              title={tabKey === 'new' ? 'No new requests' : tabKey === 'attention' ? 'Nothing needs attention' : 'Nothing here yet'}
               action={tabKey === 'new' ? <Link className={buttonClass({ variant: 'outline' })} to="/shop/qr">Open counter QR</Link> : undefined}
             >
               {tabKey === 'new' ? 'New orders appear here the moment customers send them. Show your QR code at the counter to get started.' : 'Orders will show up here as they move along.'}

@@ -306,21 +306,21 @@ describe('Google sign-in (loginMethod google) and Google identity linking', () =
       expect(await h.prisma.fcmRegistration.count()).toBe(0);
     });
 
-    it('onboarding with the Google grant uses the verified email (body email absent): creates user + shop + Google link, restricted PILOT shop, no plan', async () => {
+    it('onboarding with the Google grant uses the verified email (body email absent): creates user + shop + Google link, active shop, no plan', async () => {
       const restricted = await google(g(NEWBIE));
       const created = await req(h.app, bearer(restricted), 'POST', '/shops/onboarding', ONBOARD_NO_EMAIL);
       expect([200, 201], created.body).toContain(created.statusCode);
       const user = await h.prisma.user.findUniqueOrThrow({ where: { email: NEWBIE }, include: { shop: true } });
       expect(user.role).toBe('SHOP_OWNER');
-      expect(user.shop).toMatchObject({ displayName: shopName, status: 'PILOT', acceptsOrders: false });
+      expect(user.shop).toMatchObject({ displayName: shopName, status: 'ACTIVE', acceptsOrders: true });
       expect(await h.prisma.subscription.count({ where: { shopId: user.shopId! } })).toBe(0);
       const links = await googleRows(user.id);
       expect(links).toHaveLength(1);
       expect(links[0]!.firebaseUid).toBe(`guid-${NEWBIE}`);
-      // a normal pair now: a fresh Google sign-in goes straight to generate_qr with the new shop
+      // a normal pair now: a fresh Google sign-in goes straight to dashboard with the new shop
       const again = await google(g(NEWBIE));
       expect(again.statusCode, again.body).toBe(200);
-      expect(data(again)).toMatchObject({ nextStep: 'generate_qr', isShopRegisteredAtLeastOne: true, showQr: false });
+      expect(data(again)).toMatchObject({ nextStep: 'dashboard', isShopRegisteredAtLeastOne: true, showQr: true });
       expect(data(again).user.role).toBe('shop');
       expect(data(again).user.emailVerified).toBe(true); // linked Google email == account email
     });
@@ -625,4 +625,141 @@ describe('Google sign-in (loginMethod google) and Google identity linking', () =
       expect((await exchange(h.app, tok(PHONES.A, next()), 'web')).statusCode).toBe(200);
     });
   });
+
+  describe('web Google sign-in (POST /auth/google/session)', () => {
+    const webGoogle = (idToken: string, headers: Record<string, string> = { origin: 'http://localhost:5173' }) =>
+      h.app.inject({ method: 'POST', url: '/api/v1/auth/google/session', payload: { idToken }, headers });
+
+    it('exchanges a linked Google token for a session cookie and csrfToken', async () => {
+      await linkGoogleDirect(await ownerId(), OWNER_G);
+      const res = await webGoogle(g(OWNER_G));
+      expect(res.statusCode, res.body).toBe(200);
+      const cookie = res.cookies.find((c) => c.name === 'printout_session');
+      expect(cookie).toBeTruthy();
+      expect(cookie?.httpOnly).toBe(true);
+      const d = data(res);
+      expect(d.csrfToken).toBeTruthy();
+      expect(d.user.id).toBe(await ownerId());
+      expect(d.user.role).toBe('SHOP_OWNER');
+      expect(d.shop?.id).toBe(h.world.a.shopId);
+    });
+
+    it('creates a restricted onboarding grant cookie for an unlinked Google account (nextStep create_shop)', async () => {
+      const res = await webGoogle(g('unlinked@gmail.test'));
+      expect(res.statusCode, res.body).toBe(200);
+      const cookie = res.cookies.find((c) => c.name === 'printout_onboarding');
+      expect(cookie).toBeTruthy();
+      expect(cookie?.httpOnly).toBe(true);
+      expect(res.cookies.find((c) => c.name === 'printout_session')).toBeUndefined();
+      const d = data(res);
+      expect(d.nextStep).toBe('create_shop');
+      expect(d.user.id).toBeNull();
+      expect(d.user.role).toBeNull();
+      expect(d.user.email).toBe('unlinked@gmail.test');
+      expect(d.user.loginMethods).toContain('google');
+      expect(d.onboarding).toMatchObject({ transport: 'cookie' });
+      expect(d.shops).toEqual([]);
+      expect(d.shop).toBeNull();
+      expect(d.isShopRegisteredAtLeastOne).toBe(false);
+    });
+
+    it('allows web Google onboarding via POST /shops/onboarding: creates shop, user without password, links Google, and returns full session', async () => {
+      const gRes = await webGoogle(g('web_owner@gmail.test'));
+      expect(gRes.statusCode).toBe(200);
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+
+      const onboardRes = await h.app.inject({
+        method: 'POST',
+        url: '/api/v1/shops/onboarding',
+        payload: { ownerName: 'Web Owner', shopName: 'Web Shop Prints', address: '42 MG Road, Bangalore', pincode: '560001', client: 'web' },
+        headers: { origin: 'http://localhost:5173', cookie: `printout_onboarding=${grantCookie.value}` }
+      });
+      expect([200, 201], onboardRes.body).toContain(onboardRes.statusCode);
+
+      const sessionCookie = onboardRes.cookies.find((c) => c.name === 'printout_session');
+      expect(sessionCookie).toBeTruthy();
+      expect(sessionCookie?.httpOnly).toBe(true);
+
+      const d = data(onboardRes);
+      expect(d.csrfToken).toBeTruthy();
+      expect(d.user.role).toBe('shop');
+      expect(d.user.email).toBe('web_owner@gmail.test');
+      expect(d.shop.shopName).toBe('Web Shop Prints');
+
+      const user = await h.prisma.user.findUniqueOrThrow({ where: { email: 'web_owner@gmail.test' }, include: { shop: true } });
+      expect(user.displayName).toBe('Web Owner');
+      expect(user.passwordSet).toBe(false);
+      expect(user.shop?.displayName).toBe('Web Shop Prints');
+      expect(user.shop?.status).toBe('ACTIVE');
+      expect(user.shop?.acceptsOrders).toBe(true);
+      const identity = await h.prisma.userGoogleIdentity.findUnique({ where: { userId: user.id } });
+      expect(identity).toBeTruthy();
+      expect(identity?.firebaseUid).toBe('guid-web_owner@gmail.test');
+
+      // Subsequent Google login for this account logs in directly as the shop owner
+      const nextLogin = await webGoogle(g('web_owner@gmail.test'));
+      expect(nextLogin.statusCode).toBe(200);
+      expect(data(nextLogin).user.id).toBe(user.id);
+      expect(data(nextLogin).shop?.id).toBe(user.shopId);
+    });
+
+    it('refuses web onboarding when Google email collides with an existing account (409 EMAIL_UNAVAILABLE)', async () => {
+      const gRes = await webGoogle(g(h.world.b.ownerEmail));
+      expect(gRes.statusCode).toBe(200);
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+
+      const onboardRes = await h.app.inject({
+        method: 'POST',
+        url: '/api/v1/shops/onboarding',
+        payload: { ownerName: 'Colliding Owner', shopName: 'Colliding Shop', address: '42 MG Road', pincode: '560001', client: 'web' },
+        headers: { origin: 'http://localhost:5173', cookie: `printout_onboarding=${grantCookie.value}` }
+      });
+      expect(onboardRes.statusCode).toBe(409);
+      expect(onboardRes.json().error.code).toBe('EMAIL_UNAVAILABLE');
+    });
+
+    it('restricted onboarding session cannot access protected shop endpoints', async () => {
+      const gRes = await webGoogle(g('restricted_web@gmail.test'));
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+      const headers = { cookie: `printout_onboarding=${grantCookie.value}` };
+
+      const me = await h.app.inject({ method: 'GET', url: '/api/v1/users/me', headers });
+      expect(me.statusCode).toBe(200);
+      expect(data(me).nextStep).toBe('create_shop');
+
+      for (const path of ['/api/v1/shop/orders', '/api/v1/shops/me', '/api/v1/shop/settings', '/api/v1/admin/shops']) {
+        const blocked = await h.app.inject({ method: 'GET', url: path, headers });
+        expect([401, 403, 404], path).toContain(blocked.statusCode);
+      }
+    });
+
+    it('logout with onboarding grant terminates the grant and clears the cookie', async () => {
+      const gRes = await webGoogle(g('logout_web@gmail.test'));
+      const grantCookie = gRes.cookies.find((c) => c.name === 'printout_onboarding')!;
+      const headers = { cookie: `printout_onboarding=${grantCookie.value}` };
+
+      const logoutRes = await h.app.inject({ method: 'POST', url: '/api/v1/auth/logout', headers });
+      expect(logoutRes.statusCode).toBe(204);
+
+      const me = await h.app.inject({ method: 'GET', url: '/api/v1/users/me', headers });
+      expect(me.statusCode).toBe(401);
+    });
+
+    it('refuses replay of the same token with 401 GOOGLE_TOKEN_INVALID', async () => {
+      await linkGoogleDirect(await ownerId(), OWNER_G);
+      const t = g(OWNER_G);
+      expect((await webGoogle(t)).statusCode).toBe(200);
+      const replayed = await webGoogle(t);
+      expect(replayed.statusCode).toBe(401);
+      expect(replayed.json().error.code).toBe('GOOGLE_TOKEN_INVALID');
+    });
+
+    it('refuses cross-origin requests with 403 FORBIDDEN', async () => {
+      await linkGoogleDirect(await ownerId(), OWNER_G);
+      const res = await webGoogle(g(OWNER_G), { origin: 'https://evil.com' });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe('FORBIDDEN');
+    });
+  });
 });
+

@@ -6,6 +6,7 @@ import { quoteSecret } from '../config.js';
 import { normalisePrintOptions, printOptionsSchema, quote, type QuoteResult } from '../domain/pricing.js';
 import { signQuote, verifyQuote } from '../domain/quote-token.js';
 import { subscriptionAllowsIntake } from '../domain/eligibility.js';
+import { ATTENTION_JOB_STATUSES } from '../domain/order-serializers.js';
 import { assertAcceptingByHours, publicAvailability } from '../domain/hours-view.js';
 import { AppError, notFound } from '../errors.js';
 import { notifyShopOwners } from '../notifications/fcm.js';
@@ -230,17 +231,25 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
     const order = parsed.success
       ? await prisma.order.findUnique({
           where: { trackingToken: parsed.data.token },
-          include: { shop: { select: { displayName: true, slug: true } }, document: true, histories: { orderBy: { createdAt: 'asc' } } }
+          include: { shop: { select: { displayName: true, slug: true, address: true, settings: { select: { publicContact: true } } } }, document: true, histories: { orderBy: { createdAt: 'asc' } } }
         })
       : null;
     if (!order) throw notFound('Order not found');
     const price = order.priceSnapshot as { selectedPageCount?: number };
+    // Coarse, customer-safe signal only: the LATEST print job needs the shop's attention. No printer, device or error detail.
+    const lastJob = ['CANCELLED', 'EXPIRED', 'COLLECTED'].includes(order.status)
+      ? null
+      : await prisma.devicePrintJob.findFirst({ where: { orderId: order.id }, orderBy: { createdAt: 'desc' }, select: { status: true } });
+    const printIssue = !!lastJob && ATTENTION_JOB_STATUSES.includes(lastJob.status);
+    const fileGone = order.document.status === DocumentStatus.DELETED;
     return json({
       serverTime: new Date(),
       retentionMinutes: config.PRINT_RETENTION_MINUTES,
       shopSlug: order.shop.slug,
       orderNumber: order.orderNumber,
       shopName: order.shop.displayName,
+      pickup: { address: order.shop.address, contact: order.shop.settings?.publicContact ?? null },
+      printIssue,
       status: order.status,
       totalPaise: order.totalPaise,
       currency: order.currency,
@@ -249,7 +258,7 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
       printOptions: order.printOptionsSnapshot,
       selectedPageCount: price.selectedPageCount ?? null,
       document: {
-        fileName: order.document.originalFilename,
+        fileName: fileGone ? null : order.document.originalFilename,
         pageCount: order.document.pageCount,
         status: order.document.status,
         deleteAfter: order.document.deleteAfter,

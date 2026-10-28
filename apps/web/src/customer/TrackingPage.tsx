@@ -89,6 +89,26 @@ export function TrackingPage() {
         </div>
       )}
 
+      {order.printIssue && !cancelled && !expired && order.status !== 'COLLECTED' && (
+        <div className="cx-card" role="status" data-testid="print-issue">
+          <h2 className="cx-h2">The shop is sorting out a printing issue</h2>
+          <p className="cx-muted">Your order is still with the shop. It may take a little longer{order.pickup?.contact ? <> — you can contact them on {order.pickup.contact}</> : ''}.</p>
+        </div>
+      )}
+
+      {order.status === 'READY' && (
+        <div className="cx-card cx-retention" role="status" data-testid="ready-banner">
+          <h2 className="cx-h2">Your order is ready for pickup</h2>
+          <p className="cx-muted">Show order reference <strong>{order.orderNumber}</strong> at the counter. Payment is made at the shop.</p>
+        </div>
+      )}
+      {order.status === 'COLLECTED' && (
+        <div className="cx-card" role="status" data-testid="collected-banner">
+          <h2 className="cx-h2">Order complete</h2>
+          <p className="cx-muted">Thank you for using {order.shopName}. Nothing more to do here.</p>
+        </div>
+      )}
+
       {!cancelled && !expired && (
         <section className="cx-card" aria-labelledby="cx-status-h">
           <h2 className="cx-h2" id="cx-status-h">Status</h2>
@@ -126,6 +146,8 @@ export function TrackingPage() {
         <dl className="cx-breakdown cx-tnum">
           <div><dt>Reference</dt><dd>{order.orderNumber}</dd></div>
           <div><dt>Shop</dt><dd>{order.shopName}</dd></div>
+          {order.pickup?.address && <div><dt>Pickup</dt><dd data-testid="pickup-address">{order.pickup.address}</dd></div>}
+          {order.pickup?.contact && <div><dt>Shop contact</dt><dd>{order.pickup.contact}</dd></div>}
           {opts && <div><dt>Print</dt><dd>{opts.join(' · ')}</dd></div>}
           {order.selectedPageCount != null && <div><dt>Pages</dt><dd>{order.selectedPageCount}</dd></div>}
           <div><dt>Estimated amount</dt><dd><strong>{formatPaise(order.totalPaise)}</strong></dd></div>
@@ -139,6 +161,7 @@ export function TrackingPage() {
         <span className="cx-small cx-muted" role="status">{copied ? 'Link copied' : ''}</span>
       </div>
       {!TERMINAL.includes(order.status) && <p className="cx-small cx-muted">This page updates automatically.</p>}
+      <p className="cx-small cx-muted cx-privacy" data-testid="tracking-privacy">Privacy: your document is deleted automatically {retentionPhrase(order.retentionMinutes)} after printing starts (unprinted files within 24 hours). This link is your only way to see this order, so keep it private.</p>
     </main>
   );
 }

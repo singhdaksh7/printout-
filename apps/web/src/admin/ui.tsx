@@ -5,7 +5,7 @@ import { Banner, Button, LoadMore as UiLoadMore, Skeleton } from '../ui';
 
 export { ShopStatusChip } from '../ui';
 
-export const MANUAL_NOTE = 'Commercial details are recorded manually. There is no billing automation: nothing is charged or renewed automatically.';
+export const MANUAL_NOTE = 'Printout Buddy is currently free to use. There is no billing automation: nothing is charged or renewed automatically. All shops have full free access.';
 
 export function adminError(e: unknown): string {
   if (e instanceof ApiError && e.status === 403 && e.code !== 'CSRF_INVALID') return 'Access denied: your account is not allowed to do this (platform admin only).';
