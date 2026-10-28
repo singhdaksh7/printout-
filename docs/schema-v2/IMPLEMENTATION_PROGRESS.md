@@ -8,6 +8,12 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 |---|---|
 | Phases 1-4 DEPLOYED 2026-10-28 ~09:45 UTC to the production VPS (api + worker; web unchanged) | main merge `52b6a0b` (PR #54), tag `release-20261028-schemav2-p1-4`; 6 additive migrations `20261028100000`..`20261028130100` applied (18 total, 0 failed); `/health` 200, `/ready` ready, read-only smoke 10/10 (`retentionMinutes=30` confirmed); new routes answer 401 unauthenticated; row counts unchanged (16 shops, 12 users, 27 orders, 44 documents); no error logs. Flags OFF: `CUSTOMER_SIGNUP_ENABLED`, `ORDER_REJECT_ENABLED`; `GEO_BACKEND=haversine`. Rollback images `printout-{api,web}:rollback-pre-schemav2-20261028`. Backups before deploy (age-encrypted, copied off-server to the operator laptop with matching sha256): `printout-20261028T092927Z`, `printout-20261028T093929Z`; restore rehearsal and migration rehearsal passed on a restored copy before deploying. NOTE: the scheduled backup job still has no off-server remote (`BACKUP_RCLONE_REMOTE` unset); off-server copies are manual until a remote is configured. |
 
+## Production deployment record 2
+
+| Release | Evidence |
+|---|---|
+| Phase 5 + customer web app (flag OFF) DEPLOYED 2026-10-28 ~11:55 UTC (api, worker, web) | main merge `46f2322` (PR #58), tag `release-20261028-schemav2-p5-web`; migration `20261028140000_reviews_customer_notifications` applied (0 failed); health/ready OK, read-only smoke 10/10; `/customer/notifications` answers 401 (live); `/app` not served (VITE_MARKETPLACE unset, default bundle has no marketplace code); row counts unchanged (16 shops, 12 users, 27 orders); rollback images `printout-{api,web}:rollback-pre-p5-20261028`; pre-deploy backup `printout-20261028T115103Z` copied off-server (laptop) with matching sha256. |
+
 ## Repository state
 
 | Step | Status | Evidence |
@@ -52,7 +58,7 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 | Shop order list `/shops/{shopId}/orders`, status adapter | TESTED | 17 tests |
 | Contract | IMPLEMENTED | `PHASE4_CONTRACT.md`; full suite 62 files green |
 
-## Phase 5 - Reviews and notifications (PR open into development, not deployed)
+## Phase 5 - Reviews and notifications (DEPLOYED; PR #53 squash `fe72655`)
 
 | Requirement | Status | Evidence |
 |---|---|---|
@@ -62,9 +68,20 @@ Status values: NOT_STARTED, IN_PROGRESS, IMPLEMENTED, TESTED, MERGED, DEPLOYED (
 | Shop-owner in-app inbox rows for payment submission / verification | NOT_STARTED (deferred to phase 6 with the web bell) | `PHASE5_CONTRACT.md` |
 | Contract | IMPLEMENTED | `PHASE5_CONTRACT.md`; full suite 63 files green |
 
-## Phase 6
+## Phase 6 - Integration
 
-Web and admin UI, OpenAPI, ER and sequence diagrams, architecture PDF, skill update, production pre-flight and rollout are NOT_STARTED. No production access, migration, PostGIS enablement or deployment has been performed.
+| Requirement | Status | Evidence |
+|---|---|---|
+| Web customer Google sign-in (cookie + CSRF) | DEPLOYED | `POST /auth/customer/google/session`, 5 tests |
+| Customer web screens (sign-in, nearby, shop, order, orders, UPI ref, cancel, review, notifications) | DEPLOYED but OFF | built only with `VITE_MARKETPLACE=1`; 14 tests; PR #57 |
+| OpenAPI for all new routes | MERGED when this PR lands | `openapi-schema-v2.yaml` validated (32 paths, 37 operations) |
+| ER + sequence diagrams, architecture PDF, updated skill | MERGED when this PR lands | `13-final-er-and-sequence-diagrams.md`, `schema-v2-architecture.pdf` |
+| Shop-owner / admin web screens for payments, verification, refunds, reviews | NOT_STARTED (API is complete and tested) | contracts in PHASE2/4/5 docs |
+| Shop-owner in-app inbox rows for payment submission/verification | NOT_STARTED | deferred with the web bell |
+| Android customer app | BLOCKED: source not in this repository; contract in OpenAPI + `10-android-integration-plan.md` | |
+| PostGIS on production | BLOCKED/PENDING: pre-flight not run; haversine in use | `POSTGIS_RUNBOOK.md` |
+| Off-server backup remote for the nightly job | BLOCKED: needs an owner-chosen destination and credentials | |
+| Turning on customer sign-up / reject / marketplace flag | NOT_STARTED (owner decision) | |
 
 ## Blockers and notes
 

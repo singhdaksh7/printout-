@@ -1,0 +1,480 @@
+openapi: 3.0.3
+info:
+  title: Printout Buddy - Schema V2 API (marketplace additions)
+  version: '2026-10-28'
+  description: |
+    Additive routes introduced by Schema V2 (phases 1-6), implemented in `apps/api/src/routes`. Existing routes (owner `/shop/*`, guest `/public/*`, `/device/*`, admin, `POST /auth`) keep their current contracts, documented in `docs/openapi/current.yaml`.
+
+    Conventions: base URL `https://printoutbuddy.tech/api/v1`; success envelope `{ "data": ... }`; error envelope `{ "error": { code, message, requestId, details } }`; money is integer paise; prices are **per sheet**; dates are ISO 8601 UTC.
+    Authentication: Android uses `Authorization: Bearer <accessToken>` from `POST /auth`; web uses the `printout_session` cookie and the `X-CSRF-Token` header on POST/PUT/PATCH/DELETE. Firebase ID tokens are exchanged once at sign-in and are never accepted by these routes.
+
+    Status labels: every path below is NEW_PROPOSED until `IMPLEMENTATION_PROGRESS.md` marks it DEPLOYED. Feature flags (default off): `CUSTOMER_SIGNUP_ENABLED`, `ORDER_REJECT_ENABLED`.
+servers:
+  - url: https://printoutbuddy.tech/api/v1
+security:
+  - bearer: []
+  - cookie: []
+tags:
+  - { name: Auth }
+  - { name: Customer }
+  - { name: Discovery }
+  - { name: Orders }
+  - { name: Payments }
+  - { name: Reviews }
+  - { name: Notifications }
+  - { name: Owner }
+  - { name: Admin }
+paths:
+  /auth:
+    post:
+      tags: [Auth]
+      summary: Mobile sign-in (existing route; optional audience added)
+      description: Adds the optional `audience` ("shop" default, or "customer"). Unlinked verified identities get a restricted token and `nextStep` = `create_customer` (audience customer) or `create_shop`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [loginMethod, installationId, platform]
+              properties:
+                loginMethod: { type: string, enum: [otp, email, google] }
+                firebaseIdToken: { type: string }
+                phoneNumber: { type: string }
+                email: { type: string }
+                password: { type: string }
+                fcmToken: { type: string }
+                installationId: { type: string }
+                platform: { type: string, enum: [android, ios, web] }
+                audience: { type: string, enum: [shop, customer] }
+      responses:
+        '200': { description: 'Access and refresh tokens, profile and nextStep' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /auth/customer/google/session:
+    post:
+      tags: [Auth]
+      summary: Web customer Google sign-in (cookie session)
+      security: []
+      description: Strict Origin check, resolves identity only by Firebase uid, replay-protected. Unlinked identity receives the restricted onboarding cookie.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [idToken], properties: { idToken: { type: string } } } } }
+      responses:
+        '200': { description: 'Session cookie + csrfToken, or onboarding cookie (nextStep create_customer)' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /customers/onboarding:
+    post:
+      tags: [Customer]
+      summary: Create the customer account for a verified identity
+      description: Needs the restricted onboarding principal. Off unless CUSTOMER_SIGNUP_ENABLED (403 CUSTOMER_SIGNUP_DISABLED). Idempotent retry returns 200.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, client]
+              properties:
+                name: { type: string, maxLength: 100 }
+                client: { type: string, enum: [web, mobile] }
+                deviceId: { type: string }
+      responses:
+        '201': { description: Created; session issued }
+        '200': { description: Idempotent repeat }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /customers/me:
+    get:
+      tags: [Customer]
+      summary: Customer profile
+      responses: { '200': { description: Profile plus customer address fields } }
+    patch:
+      tags: [Customer]
+      summary: Update name, address and location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: { type: string }
+                addressLine1: { type: string }
+                addressLine2: { type: string, nullable: true }
+                city: { type: string }
+                state: { type: string }
+                pincode: { type: string, pattern: '^[1-9][0-9]{5}$' }
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+      responses: { '200': { description: Updated profile }, '400': { $ref: '#/components/responses/Validation' } }
+  /customer/shops/nearby:
+    get:
+      tags: [Discovery]
+      summary: Verified, active shops near a point, ordered by distance
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lng, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
+        - { name: radiusKm, in: query, schema: { type: number, default: 5, maximum: 20 } }
+        - { name: printingType, in: query, schema: { type: string, enum: [colored, blackWhite] } }
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+      responses:
+        '200': { description: Page of shop cards with distanceKm, content: { application/json: { schema: { $ref: '#/components/schemas/ShopPage' } } } }
+        '400': { $ref: '#/components/responses/Validation' }
+  /customer/shops/{shopId}:
+    get:
+      tags: [Discovery]
+      summary: Shop card with location
+      parameters: [{ $ref: '#/components/parameters/shopId' }]
+      responses: { '200': { description: Shop card, content: { application/json: { schema: { $ref: '#/components/schemas/ShopCard' } } } }, '404': { $ref: '#/components/responses/NotFound' } }
+  /customer/shops/{shopId}/images/{imageId}:
+    get:
+      tags: [Discovery]
+      summary: A private shop photo streamed through the API
+      parameters: [{ $ref: '#/components/parameters/shopId' }, { name: imageId, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'image/jpeg or image/png', content: { 'image/jpeg': {}, 'image/png': {} } }, '404': { $ref: '#/components/responses/NotFound' } }
+  /customer/shops/{shopId}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Reviews of a verified shop, newest first
+      parameters: [{ $ref: '#/components/parameters/shopId' }, { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/limit' }]
+      responses: { '200': { description: Reviews with aggregate } }
+  /customer/uploads:
+    post:
+      tags: [Orders]
+      summary: Start an upload (existing token-protected pipeline)
+      description: PUT the raw file to `uploadUrl`, then POST (no body) to `completePath` to validate type and count pages. 50 MiB limit, 50 uploads per customer per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [shopId, fileName, byteSize, declaredMimeType]
+              properties:
+                shopId: { type: string }
+                fileName: { type: string }
+                byteSize: { type: integer, minimum: 1, maximum: 52428800 }
+                declaredMimeType: { type: string, enum: [application/pdf, image/jpeg, image/png] }
+      responses:
+        '200': { description: Upload instructions }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { description: FILE_TOO_LARGE }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /customer/quotes:
+    post:
+      tags: [Orders]
+      summary: Server-authoritative quote (per-sheet pricing)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [shopId, documentId, printOptions]
+              properties:
+                shopId: { type: string }
+                documentId: { type: string }
+                printOptions: { $ref: '#/components/schemas/PrintOptions' }
+      responses: { '200': { description: 'Quote token and total (client amounts are rejected)' }, '400': { $ref: '#/components/responses/Validation' }, '422': { description: DOCUMENT_UNAVAILABLE } }
+  /customer/orders:
+    post:
+      tags: [Orders]
+      summary: Place an order from a quote
+      parameters: [{ name: Idempotency-Key, in: header, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [quoteId, paymentMethod]
+              properties:
+                quoteId: { type: string }
+                clientRequestId: { type: string, format: uuid }
+                paymentMethod: { type: string, enum: [cash, upi] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '201': { description: Order, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+        '400': { $ref: '#/components/responses/Validation' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { description: 'DOCUMENT_UNAVAILABLE / INVALID_QUOTE' }
+    get:
+      tags: [Orders]
+      summary: My orders
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/OrderStatus' } }
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+      responses: { '200': { description: Page of orders } }
+  /customer/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: One of my orders with status history
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: Order with statusHistory }, '404': { $ref: '#/components/responses/NotFound' } }
+  /customer/orders/{id}/cancel:
+    post:
+      tags: [Orders]
+      summary: Cancel while NEW or ACCEPTED and before printing started
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { type: object, additionalProperties: false, properties: { cancelReason: { type: string, maxLength: 200 } } } } } }
+      responses: { '200': { description: Cancelled order }, '409': { description: 'INVALID_STATUS_TRANSITION or PAYMENT_RECORDED' } }
+  /customer/orders/{id}/payment:
+    post:
+      tags: [Payments]
+      summary: Submit a UPI transaction reference (a claim, verified by the shop)
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [upiTxnRef], properties: { upiTxnRef: { type: string, pattern: '^[A-Za-z0-9]{8,22}$' } } } } }
+      responses: { '200': { description: Order with payment pendingVerification }, '409': { description: 'DUPLICATE_UTR, NOT_UPI_ORDER or INVALID_PAYMENT_TRANSITION' } }
+  /customer/reviews:
+    post:
+      tags: [Reviews]
+      summary: Review an order once printing has started (one per order)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [orderId, rating]
+              properties:
+                orderId: { type: string }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 1000, description: Plain text; clients must escape on display }
+      responses: { '201': { description: Review }, '409': { description: REVIEW_EXISTS }, '422': { description: ORDER_NOT_COMPLETED } }
+  /customer/notifications:
+    get:
+      tags: [Notifications]
+      summary: Notification inbox
+      parameters: [{ name: unread, in: query, schema: { type: string, enum: ['true', 'false'] } }, { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/limit' }]
+      responses: { '200': { description: 'Items, total and unreadCount' } }
+  /customer/notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark one notification read (idempotent)
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '204': { description: Read }, '404': { $ref: '#/components/responses/NotFound' } }
+  /customer/notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all read
+      responses: { '200': { description: 'updated count' } }
+  /users/me/fcm-token:
+    put:
+      tags: [Notifications]
+      summary: Register a push token (now also for customers)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [installationId, token, platform], properties: { installationId: { type: string }, token: { type: string }, platform: { type: string, enum: [android, ios, web] } } } } }
+      responses: { '200': { description: Registered }, '403': { $ref: '#/components/responses/Forbidden' } }
+    delete:
+      tags: [Notifications]
+      summary: Remove this device's token (sign-out)
+      responses: { '204': { description: Removed } }
+  /shops/mine:
+    get:
+      tags: [Owner]
+      summary: Shops the owner may act on (default shop + OWNER memberships)
+      responses: { '200': { description: 'items, defaultShopId' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /shops/{shopId}:
+    parameters: [{ $ref: '#/components/parameters/shopId' }]
+    get:
+      tags: [Owner]
+      summary: Owner view of a shop
+      responses: { '200': { description: Shop }, '404': { $ref: '#/components/responses/NotFound' } }
+    patch:
+      tags: [Owner]
+      summary: Update profile, location, open switch and payment settings
+      description: isVerified, status and isActive are admin-only and rejected (400). isOpen:true needs an ACTIVE shop and at least one rate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                shopName: { type: string }
+                phoneNumber: { type: string, nullable: true, pattern: '^\+[1-9][0-9]{6,14}$' }
+                addressLine1: { type: string }
+                addressLine2: { type: string, nullable: true }
+                city: { type: string }
+                state: { type: string }
+                pincode: { type: string }
+                latitude: { type: number }
+                longitude: { type: number }
+                isOpen: { type: boolean }
+                upiId: { type: string, nullable: true }
+                acceptedPaymentMethods: { type: array, minItems: 1, items: { type: string, enum: [cash, upi] } }
+      responses: { '200': { description: Shop }, '400': { $ref: '#/components/responses/Validation' }, '422': { description: 'RATE_NOT_SET or SHOP_NOT_ACTIVE' } }
+  /shops/{shopId}/paper-options:
+    put:
+      tags: [Owner]
+      summary: Replace advertised paper options (sizes must be priced; only plain paper)
+      parameters: [{ $ref: '#/components/parameters/shopId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [paperSizes, paperTypes], properties: { paperSizes: { type: array, items: { type: string } }, paperTypes: { type: array, items: { type: string, enum: [normal] } } } } } }
+      responses: { '200': { description: Options }, '400': { description: UNSUPPORTED_PAPER } }
+  /shops/{shopId}/images:
+    post:
+      tags: [Owner]
+      summary: Add a shop photo (raw JPEG or PNG body, max 2 MiB, max 8 photos)
+      parameters: [{ $ref: '#/components/parameters/shopId' }]
+      requestBody: { required: true, content: { image/jpeg: { schema: { type: string, format: binary } }, image/png: { schema: { type: string, format: binary } } } }
+      responses: { '201': { description: Image }, '400': { description: INVALID_FILE_TYPE }, '409': { $ref: '#/components/responses/Conflict' }, '413': { description: Too large } }
+  /shops/{shopId}/images/{imageId}:
+    parameters: [{ $ref: '#/components/parameters/shopId' }, { name: imageId, in: path, required: true, schema: { type: string } }]
+    get: { tags: [Owner], summary: Owner view of a photo, responses: { '200': { description: Image bytes } } }
+    delete: { tags: [Owner], summary: Remove a photo, responses: { '204': { description: Removed } } }
+  /shops/{shopId}/orders:
+    get:
+      tags: [Owner]
+      summary: Orders of this shop with payment state (customer display name only)
+      parameters: [{ $ref: '#/components/parameters/shopId' }, { name: status, in: query, schema: { $ref: '#/components/schemas/OrderStatus' } }, { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/limit' }]
+      responses: { '200': { description: Page of orders } }
+  /shops/{shopId}/orders/{orderId}/status:
+    patch:
+      tags: [Owner]
+      summary: Reject or cancel an order (accept/print/ready/completed are set by the Print action)
+      parameters: [{ $ref: '#/components/parameters/shopId' }, { name: orderId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [status], properties: { status: { type: string, enum: [accepted, printing, ready, completed, rejected, cancelled] }, rejectReason: { type: string, maxLength: 250 } } } } }
+      responses: { '200': { description: Updated }, '409': { description: 'FEATURE_DISABLED, INVALID_STATUS_TRANSITION or PAYMENT_RECORDED' } }
+  /shops/{shopId}/orders/{orderId}/payment:
+    patch:
+      tags: [Payments]
+      summary: Shop decision on a payment (cash received / UPI verified or rejected)
+      parameters: [{ $ref: '#/components/parameters/shopId' }, { name: orderId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [paymentStatus], properties: { paymentStatus: { type: string, enum: [paid, unpaid] } } } } }
+      responses: { '200': { description: Payment state }, '409': { description: INVALID_PAYMENT_TRANSITION } }
+  /shops/{shopId}/reviews:
+    get:
+      tags: [Owner]
+      summary: Reviews of this shop
+      parameters: [{ $ref: '#/components/parameters/shopId' }, { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/limit' }]
+      responses: { '200': { description: Reviews with aggregate } }
+  /admin/shops:
+    get:
+      tags: [Admin]
+      summary: Shops (existing route; isVerified filter added)
+      parameters: [{ name: isVerified, in: query, schema: { type: string, enum: ['true', 'false'] } }]
+      responses: { '200': { description: Shops } }
+  /admin/shops/{id}/verify:
+    patch:
+      tags: [Admin]
+      summary: Verify or unverify (discovery visibility), audited with before/after
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, required: [isVerified], properties: { isVerified: { type: boolean } } } } } }
+      responses: { '200': { description: Verification state } }
+  /admin/shops/{id}/block:
+    patch:
+      tags: [Admin]
+      summary: Block (SUSPENDED, sessions revoked) or unblock
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, required: [isActive], properties: { isActive: { type: boolean } } } } } }
+      responses: { '200': { description: Status } }
+  /admin/orders/{id}/refund:
+    post:
+      tags: [Admin]
+      summary: Record a manual refund (PAID to REFUNDED). Admin only; no money moves
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 300 }, amountPaise: { type: integer, minimum: 1 } } } } }
+      responses: { '200': { description: Refund recorded }, '409': { description: INVALID_PAYMENT_TRANSITION } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+    cookie: { type: apiKey, in: cookie, name: printout_session }
+  parameters:
+    shopId: { name: shopId, in: path, required: true, schema: { type: string } }
+    id: { name: id, in: path, required: true, schema: { type: string } }
+    page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+  responses:
+    Validation: { description: VALIDATION_ERROR, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: UNAUTHORIZED, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: 'FORBIDDEN, ACCOUNT_BLOCKED or CSRF_INVALID', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: NOT_FOUND (also used for other tenants' ids), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Conflict: { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    RateLimited: { description: RATE_LIMITED, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: object, properties: { code: { type: string }, message: { type: string }, requestId: { type: string }, details: {} } }
+    OrderStatus: { type: string, enum: [NEW, ACCEPTED, PRINTING, PRINTED, READY, COLLECTED, CANCELLED, EXPIRED, REJECTED] }
+    PrintOptions:
+      type: object
+      additionalProperties: false
+      required: [paperSize, colourMode, sides, copies, pageSelection]
+      properties:
+        paperSize: { type: string, enum: [A4] }
+        paperType: { type: string, enum: [normal] }
+        colourMode: { type: string, enum: [bw, colour] }
+        sides: { type: string, enum: [single, duplex] }
+        copies: { type: integer, minimum: 1, maximum: 50 }
+        pageSelection: { type: object, description: 'mode all, or mode ranges with from/to pairs' }
+    Rate:
+      type: object
+      properties: { paperSize: { type: string }, colourMode: { type: string, enum: [bw, colour] }, sides: { type: string, enum: [single, duplex] }, pricePerSheetPaise: { type: integer } }
+    ShopCard:
+      type: object
+      properties:
+        id: { type: string }
+        shopName: { type: string }
+        addressLine1: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        isOpen: { type: boolean }
+        availability: { type: object }
+        rates: { type: array, items: { $ref: '#/components/schemas/Rate' } }
+        paperSizes: { type: array, items: { type: string } }
+        paperTypes: { type: array, items: { type: string } }
+        images: { type: array, items: { type: object } }
+        acceptedPaymentMethods: { type: array, items: { type: string, enum: [cash, upi] } }
+        upiId: { type: string, nullable: true }
+        ratingAvg: { type: number, nullable: true }
+        ratingCount: { type: integer }
+        distanceKm: { type: number }
+    ShopPage:
+      type: object
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/ShopCard' } }, page: { type: integer }, limit: { type: integer }, total: { type: integer } }
+    Order:
+      type: object
+      properties:
+        id: { type: string }
+        orderNumber: { type: string }
+        shopId: { type: string }
+        shopName: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        totalPaise: { type: integer }
+        currency: { type: string }
+        printOptions: { type: object }
+        note: { type: string, nullable: true }
+        isReviewed: { type: boolean }
+        payment:
+          type: object
+          properties:
+            method: { type: string, enum: [cash, upi], nullable: true }
+            status: { type: string, enum: [unpaid, pendingVerification, paid, refunded] }
+            upiTxnRef: { type: string, nullable: true }
+            upiId: { type: string, nullable: true }
