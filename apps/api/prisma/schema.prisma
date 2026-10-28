@@ -94,6 +94,11 @@ model Shop {
   /// Admin discovery verification. Separate from `status` (suspension) and from any subscription: an unverified ACTIVE shop works
   /// for QR/guest ordering but is hidden from customer discovery. Existing ACTIVE shops were backfilled to true.
   /// Customer payment settings (schema-v2 phase 4). Cash is always available by default; UPI needs upiId.
+  /// Rating aggregate maintained in the review transaction: avg = round(sum / count, 1). 0 until the first review.
+  ratingSum          Int                 @default(0)
+  ratingCount        Int                 @default(0)
+  ratingAvg          Float               @default(0)
+  reviews            Review[]
   upiId              String?
   acceptedPaymentMethods PaymentMethod[] @default([CASH])
   isVerified         Boolean             @default(false)
@@ -141,6 +146,8 @@ model User {
   roleGrants      UserRoleGrant[]
   /// Orders placed by this customer and documents uploaded by this customer (schema-v2 phase 3).
   customerOrders  Order[]               @relation("CustomerOrders")
+  reviews         Review[]
+  notificationsInbox UserNotification[]
   uploadedDocuments Document[]          @relation("DocumentUploader")
   /// Customer profile (schema-v2). Null for accounts that never set them. Not used by owner or admin flows.
   addressLine1    String?
@@ -394,6 +401,8 @@ model Order {
   document                       Document             @relation(fields: [documentId], references: [id])
   orderNumber                    String
   /// Authenticated marketplace customer (null for guest QR orders). Never changes after creation.
+  isReviewed                     Boolean              @default(false)
+  review                         Review?
   paymentMethod                  PaymentMethod?
   paymentStatus                  PaymentStatus        @default(UNPAID)
   /// Customer-submitted UPI transaction reference (an unverified claim). Unique per shop.
@@ -445,6 +454,42 @@ model OrderPaymentEvent {
 
   @@index([orderId, createdAt])
   @@index([shopId, createdAt])
+}
+
+/// One review per order (unique orderId); rating 1-5 and comment length are database CHECKs. Never edited or deleted in v1.
+model Review {
+  id             String   @id @default(cuid())
+  orderId        String   @unique
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  customerUserId String
+  customer       User     @relation(fields: [customerUserId], references: [id], onDelete: Restrict)
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  rating         Int      @db.SmallInt
+  comment        String?
+  createdAt      DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([customerUserId])
+}
+
+/// In-app notification inbox for marketplace customers (shop owners keep ShopNotification). Payloads carry no file names or contact data.
+model UserNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// orderStatus | payment (database CHECK)
+  type      String
+  title     String
+  body      String
+  orderId   String?
+  dedupeKey String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
 
 model OrderStatusHistory {

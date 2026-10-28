@@ -52,6 +52,7 @@ import { selectGeoRepository } from './domain/geo.js';
 import { shopProfileRoutes } from './routes/shop-profile.js';
 import { customerOrderRoutes } from './routes/customer-orders.js';
 import { orderPaymentRoutes } from './routes/order-payments.js';
+import { customerReviewRoutes } from './routes/customer-reviews.js';
 
 export interface AppDeps {
   config?: Config;
@@ -204,6 +205,7 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopProfileRoutes(i, ctx));
       await api.register((i) => customerOrderRoutes(i, ctx));
       await api.register((i) => orderPaymentRoutes(i, ctx));
+      await api.register((i) => customerReviewRoutes(i, ctx));
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));

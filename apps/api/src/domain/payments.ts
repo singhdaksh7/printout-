@@ -1,6 +1,7 @@
 import { OrderStatus, PaymentMethod, PaymentStatus, type Prisma, type PrismaClient } from '@prisma/client';
 import { AppError } from '../errors.js';
 import { audit, isUniqueViolation } from '../routes/context.js';
+import { recordCustomerNotification } from './customer-notifications.js';
 
 /** UPI transaction references (UTR / RRN) are 12 digits; some apps show longer alphanumeric ids. Normalised to upper case. */
 export const UPI_REF = /^[A-Za-z0-9]{8,22}$/;
@@ -73,11 +74,12 @@ export async function setPaymentByShop(prisma: PrismaClient, input: { shopId: st
       data = { paymentStatus: PaymentStatus.UNPAID, upiTxnRef: null };
     }
     const updated = await tx.order.update({ where: { id: order.id }, data });
-    await tx.orderPaymentEvent.create({
+    const logged = await tx.orderPaymentEvent.create({
       data: { orderId: order.id, shopId: order.shopId, event, fromStatus: from, toStatus: updated.paymentStatus, upiTxnRef: order.upiTxnRef, actorUserId: input.actor.userId, actorRole: 'SHOP_OWNER' }
     });
     await audit(tx, { shopId: order.shopId, actorUserId: input.actor.userId, actorType: 'SHOP_OWNER', action: `order.payment.${event.toLowerCase()}`, targetType: 'order', targetId: order.id, metadata: { from, to: updated.paymentStatus } });
-    return updated;
+    const notification = await recordCustomerNotification(tx, { customerUserId: updated.customerUserId, event: input.to === 'PAID' ? 'payment.paid' : 'payment.rejected', orderId: updated.id, orderNumber: updated.orderNumber, occurrence: logged.id });
+    return { order: updated, notification };
   });
 }
 
@@ -97,7 +99,8 @@ export async function recordRefundByAdmin(prisma: PrismaClient, input: { orderId
       data: { orderId: order.id, shopId: order.shopId, event: 'REFUND_RECORDED', fromStatus: PaymentStatus.PAID, toStatus: PaymentStatus.REFUNDED, upiTxnRef: order.upiTxnRef, amountPaise: amount, reason: input.reason, actorUserId: input.adminUserId, actorRole: 'PLATFORM_ADMIN' }
     });
     await audit(tx, { shopId: order.shopId, actorUserId: input.adminUserId, actorType: 'PLATFORM_ADMIN', action: 'order.payment.refund_recorded', targetType: 'order', targetId: order.id, metadata: { amountPaise: amount } });
-    return updated;
+    const notification = await recordCustomerNotification(tx, { customerUserId: updated.customerUserId, event: 'payment.refunded', orderId: updated.id, orderNumber: updated.orderNumber });
+    return { order: updated, notification };
   });
 }
 

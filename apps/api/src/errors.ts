@@ -52,6 +52,8 @@ export type ErrorCode =
   // Shared profile API / onboarding
   | 'SELF_ONBOARDING_DISABLED'
   | 'CUSTOMER_SIGNUP_DISABLED'
+  | 'REVIEW_EXISTS'
+  | 'ORDER_NOT_COMPLETED'
   | 'FEATURE_DISABLED'
   | 'INVALID_PAYMENT_TRANSITION'
   | 'NOT_UPI_ORDER'

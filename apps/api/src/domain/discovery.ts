@@ -63,8 +63,8 @@ function toCard(s: CardShop, opts: { includeLocation?: boolean; now?: Date }) {
     /** cash is always possible unless the owner removed it; upiId is shown only when UPI is accepted. */
     acceptedPaymentMethods: s.acceptedPaymentMethods.map((m) => (m === 'CASH' ? 'cash' : 'upi')),
     upiId: s.acceptedPaymentMethods.includes('UPI') ? s.upiId : null,
-    ratingAvg: null as number | null,
-    ratingCount: 0
+    ratingAvg: (s.ratingCount > 0 ? s.ratingAvg : null) as number | null,
+    ratingCount: s.ratingCount
   };
 }
 

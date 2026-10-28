@@ -78,6 +78,13 @@ export async function cleanupNotifications(
     deleted += res.count;
     if (rows.length < batch) break;
   }
+  // The customer inbox follows the same retention window.
+  for (;;) {
+    const rows = await prisma.userNotification.findMany({ where: { createdAt: { lt: cutoff } }, select: { id: true }, take: batch });
+    if (rows.length === 0) break;
+    deleted += (await prisma.userNotification.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } })).count;
+    if (rows.length < batch) break;
+  }
   return { deleted };
 }
 
