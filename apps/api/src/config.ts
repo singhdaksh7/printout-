@@ -146,6 +146,8 @@ const schema = z
     /** Continue with Google (Firebase Auth, provider google.com) on POST /auth. OFF by default; needs FIREBASE_PROJECT_ID and the Google provider enabled in the Firebase console. */
     GOOGLE_LOGIN_ENABLED: bool.default('false'),
     SHOP_SELF_ONBOARDING_ENABLED: bool.default('false'),
+    /** Marketplace customer sign-up (schema-v2). Off by default: POST /customers/onboarding answers 403 CUSTOMER_SIGNUP_DISABLED. */
+    CUSTOMER_SIGNUP_ENABLED: bool.default('false'),
     /** Lifetime of the restricted onboarding grant issued to a verified phone that has no linked account. */
     ONBOARDING_GRANT_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(30),
 

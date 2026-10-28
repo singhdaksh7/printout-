@@ -3,7 +3,7 @@
  * factor: the QR is virtual (`<WEB_ORIGIN>/p/<slug>`, the same URL GET /shop/qr returns) and is never persisted, so there is
  * nothing to "generate" beyond the shop being live. Pure functions: no I/O.
  */
-export type NextStep = 'dashboard' | 'complete_profile' | 'create_shop' | 'generate_qr' | 'account_blocked';
+export type NextStep = 'dashboard' | 'complete_profile' | 'create_shop' | 'generate_qr' | 'account_blocked' | 'create_customer' | 'customer_home';
 
 export const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -41,13 +41,14 @@ export function qrReadiness(shop: { slug: string; status: ShopStatusName }, webO
 
 export interface NextStepInput {
   /** null = a verified phone identity that has no local account yet. */
-  role: 'SHOP_OWNER' | 'PLATFORM_ADMIN' | null;
+  role: 'SHOP_OWNER' | 'PLATFORM_ADMIN' | 'CUSTOMER' | null;
   displayName: string | null;
   shop: { status: ShopStatusName; slug: string; address: string | null } | null;
 }
 
 export function deriveNextStep(input: NextStepInput, webOrigin: string): NextStep {
   if (input.role === 'PLATFORM_ADMIN') return 'dashboard';
+  if (input.role === 'CUSTOMER') return 'customer_home';
   if (!input.shop) return 'create_shop';
   if (input.shop.status === 'SUSPENDED') return 'account_blocked';
   if (!input.displayName?.trim() || !input.shop.address?.trim()) return 'complete_profile';

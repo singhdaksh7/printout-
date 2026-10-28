@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import { verifyPassword } from '../auth.js';
 import { AppError } from '../errors.js';
-import { audit, authOf, type AppContext } from './context.js';
+import { audit, authOf, staffEmail, type AppContext } from './context.js';
 
 export type ReauthOperation = 'email' | 'password' | '2fa_enroll' | '2fa_disable' | '2fa_regenerate';
 
@@ -28,5 +28,5 @@ export async function reauthenticateAdmin(ctx: AppContext, request: FastifyReque
     throw new AppError(403, 'INVALID_CURRENT_PASSWORD', 'Current password is incorrect.');
   }
   ctx.loginThrottle.reset(key);
-  return user;
+  return { ...user, email: staffEmail(user) };
 }

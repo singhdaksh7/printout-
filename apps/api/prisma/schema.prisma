@@ -10,6 +10,8 @@ datasource db {
 enum Role {
   SHOP_OWNER
   PLATFORM_ADMIN
+  /// Marketplace customer (schema-v2 phase 1). Signs in only with a verified Firebase identity; never has a shop, password or admin access.
+  CUSTOMER
 }
 
 enum ShopStatus {
@@ -94,10 +96,23 @@ model User {
   id              String                @id @default(cuid())
   shopId          String?
   shop            Shop?                 @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  email           String                @unique
+  /// Required for SHOP_OWNER and PLATFORM_ADMIN (database CHECK User_email_required_for_staff); optional for CUSTOMER. Identity is never resolved by email.
+  email           String?               @unique
   displayName     String
   passwordHash    String
   role            Role
+  /// Extra roles beyond the primary `role`. Authorization still keys on `role`; grants are additive facts (never ADMIN via any API).
+  roleGrants      UserRoleGrant[]
+  /// Customer profile (schema-v2). Null for accounts that never set them. Not used by owner or admin flows.
+  addressLine1    String?
+  addressLine2    String?
+  city            String?
+  state           String?
+  pincode         String?
+  latitude        Float?
+  longitude       Float?
+  /// Account block switch for customers (owners are blocked through Shop.status). Existing rows default to true.
+  isActive        Boolean               @default(true)
   sessions        Session[]
   memberships     Membership[]
   twoFactor       AdminTwoFactor?
@@ -113,6 +128,18 @@ model User {
   lastLoginAt     DateTime?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
+}
+
+/// One row per (user, role). Backfilled from User.role; written only by server code, never from a client body.
+model UserRoleGrant {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role
+  createdAt DateTime @default(now())
+
+  @@unique([userId, role])
+  @@index([role])
 }
 
 /// Verified Firebase phone identity linked to ONE shop-owner account (an optional extra sign-in method; the password always
