@@ -69,6 +69,21 @@ model Shop {
   /// Reference to the shop's data key in a managed KMS (target). Unset until KMS is chosen.
   kmsKeyRef          String?
   acceptsOrders      Boolean             @default(true)
+  /// Discovery profile (schema-v2 phase 2). All nullable/defaulted: existing shops and clients are unaffected.
+  addressLine2       String?
+  city               String?
+  state              String?
+  country            String              @default("IN")
+  latitude           Float?
+  longitude          Float?
+  /// Admin discovery verification. Separate from `status` (suspension) and from any subscription: an unverified ACTIVE shop works
+  /// for QR/guest ordering but is hidden from customer discovery. Existing ACTIVE shops were backfilled to true.
+  isVerified         Boolean             @default(false)
+  verifiedAt         DateTime?
+  /// Admin user id that last verified the shop (plain id, no FK: the audit trail is AuditLog).
+  verifiedBy         String?
+  paperOptions       ShopPaperOption[]
+  images             ShopImage[]
   orderCounter       Int                 @default(0)
   users              User[]
   settings           ShopSettings?
@@ -90,6 +105,9 @@ model Shop {
   notifications      ShopNotification[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+
+  @@index([isVerified, status])
+  @@index([latitude, longitude])
 }
 
 model User {
@@ -265,6 +283,31 @@ model ShopSettings {
 enum AfterHoursPolicy {
   ACCEPT
   BLOCK
+}
+
+/// Paper sizes and types a shop advertises to customers. kind = paperSize | paperType (database CHECK). Absence of paperType rows means plain paper only.
+model ShopPaperOption {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  kind   String
+  value  String
+
+  @@unique([shopId, kind, value])
+}
+
+/// Shop photos in PRIVATE object storage: only the key is stored; bytes are served through an authenticated API route.
+model ShopImage {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  imageKey    String   @unique
+  contentType String
+  sizeBytes   Int
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([shopId, sortOrder])
 }
 
 model PricingRule {

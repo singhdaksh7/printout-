@@ -47,6 +47,9 @@ import { profileRoutes } from './routes/profile.js';
 import { shopOnboardingRoutes } from './routes/shop-onboarding.js';
 import { customerRoutes } from './routes/customers.js';
 import { shopsMineRoutes } from './routes/shops-mine.js';
+import { customerShopRoutes } from './routes/customer-shops.js';
+import { selectGeoRepository } from './domain/geo.js';
+import { shopProfileRoutes } from './routes/shop-profile.js';
 
 export interface AppDeps {
   config?: Config;
@@ -195,6 +198,8 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => shopOnboardingRoutes(i, ctx));
       await api.register((i) => customerRoutes(i, ctx));
       await api.register((i) => shopsMineRoutes(i, ctx));
+      await api.register((i) => customerShopRoutes(i, ctx, selectGeoRepository(ctx.prisma, ctx.config.GEO_BACKEND, () => app.log.warn('GEO_BACKEND=postgis but the extension is not installed; using the haversine fallback'))));
+      await api.register((i) => shopProfileRoutes(i, ctx));
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));
