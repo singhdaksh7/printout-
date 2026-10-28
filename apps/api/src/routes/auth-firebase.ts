@@ -9,7 +9,8 @@ import { AppError } from '../errors.js';
 import { PhoneTokenInvalidError, PhoneVerifierUnavailableError, maskPhone, type VerifiedPhone } from '../firebase/verifier.js';
 import { clientIpKey } from '../rate-limits.js';
 import { assertSameOrigin, PHONE_TOKEN_INVALID_ERROR, PHONE_UNAVAILABLE_ERROR } from './auth-phone.js';
-import { audit, bearerOf, json, openCookieSession, type AppContext } from './context.js';
+import { actorTypeOf, audit, bearerOf, json, openCookieSession, type AppContext } from './context.js';
+import type { Role } from '@prisma/client';
 
 export const clientParam = z.enum(['web', 'mobile']).default('web');
 /** Installation id chosen by the app (random, stable per install); binds refresh tokens and the device's push registration. */
@@ -64,7 +65,12 @@ export async function authResponseFor(
   return webAuthResponse(ctx, await loadProfile(ctx.prisma, ctx.config.WEB_ORIGIN, userId), { session: { expiresAt }, csrfToken: csrf });
 }
 
+/** Which app is signing in. Default 'shop' keeps every existing client byte-for-byte compatible; only an explicit 'customer' lets CUSTOMER accounts in (and then only they). */
+export type Audience = 'shop' | 'customer';
+export const roleForAudience = (audience: Audience): Role => (audience === 'customer' ? 'CUSTOMER' : 'SHOP_OWNER');
+
 export interface FirebaseSignInInput {
+  audience?: Audience | undefined;
   idToken: string;
   client: 'web' | 'mobile';
   deviceId?: string | undefined;
@@ -97,6 +103,7 @@ export async function firebaseSignIn(ctx: AppContext, request: FastifyRequest, r
   }
   const masked = maskPhone(verified.phoneE164);
   const mobile = input.client === 'mobile';
+  const audience: Audience = input.audience ?? 'shop';
 
   const byPhone = await prisma.userPhoneIdentity.findUnique({ where: { phoneE164: verified.phoneE164 }, include: { user: { include: { shop: true } } } });
   const identity = byPhone ?? (await prisma.userPhoneIdentity.findUnique({ where: { firebaseUid: verified.uid }, include: { user: { include: { shop: true } } } }));
@@ -109,7 +116,7 @@ export async function firebaseSignIn(ctx: AppContext, request: FastifyRequest, r
       if (!input.deviceId) throw new AppError(400, 'VALIDATION_ERROR', 'deviceId is required for mobile clients', { field: 'deviceId' });
       await revokeOnboardingFamilies(prisma, verified.uid, input.deviceId);
       const creds = await issueRestrictedCredentials(ctx, { provider: 'phone', uid: verified.uid, phone: verified.phoneE164, authTime: verified.authTime }, input.deviceId);
-      return { response: mobileAuthResponse(ctx, restrictedProfile(verified.phoneE164), creds), principal: null };
+      return { response: mobileAuthResponse(ctx, restrictedProfile(verified.phoneE164, audience), creds), principal: null };
     }
     const grant = await issueGrant(ctx, { provider: 'phone', firebaseUid: verified.uid, phoneE164: verified.phoneE164, authTime: verified.authTime });
     setGrantCookie(ctx, reply, grant.raw, grant.expiresAt);
@@ -118,9 +125,10 @@ export async function firebaseSignIn(ctx: AppContext, request: FastifyRequest, r
 
   const user = identity.user;
   const refuse = (reason: string) =>
-    audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: 'SHOP_OWNER', action: 'auth.phone.login_refused', targetType: 'user', targetId: user.id, metadata: { reason, phone: maskPhone(identity.phoneE164) } });
+    audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: actorTypeOf(user.role), action: 'auth.phone.login_refused', targetType: 'user', targetId: user.id, metadata: { reason, phone: maskPhone(identity.phoneE164) } });
   // Admins (or any non-owner) are never signed in by SMS alone.
-  if (user.role !== 'SHOP_OWNER') throw new AppError(403, 'FORBIDDEN', 'Phone sign-in is not available for this account.');
+  if (user.role !== roleForAudience(audience)) throw new AppError(403, 'FORBIDDEN', 'Phone sign-in is not available for this account.');
+  if (!user.isActive) throw accountBlocked();
   if (user.shop?.status === 'SUSPENDED') throw mobile ? accountBlocked() : new AppError(403, 'SHOP_SUSPENDED', 'This shop is suspended');
   const reverify = async (reason: string) => {
     await refuse(reason);
@@ -142,7 +150,7 @@ export async function firebaseSignIn(ctx: AppContext, request: FastifyRequest, r
   ctx.loginThrottle.reset(ipKey);
 
   const response = await authResponseFor(ctx, request, reply, user.id, input.client, input.deviceId);
-  await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: 'SHOP_OWNER', action: input.auditAction, targetType: 'user', targetId: user.id, metadata: { method: 'otp', client: input.client, outcome: 'session', phone: masked } });
+  await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: actorTypeOf(user.role), action: input.auditAction, targetType: 'user', targetId: user.id, metadata: { method: 'otp', client: input.client, outcome: 'session', phone: masked } });
   return { response, principal: { userId: user.id, shopId: user.shopId } };
 }
 

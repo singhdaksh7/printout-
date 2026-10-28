@@ -95,6 +95,8 @@ export async function shopOnboardingRoutes(app: FastifyInstance, ctx: AppContext
             const user = await tx.user.create({
               data: { email: accountEmail, displayName: body.ownerName, passwordHash, passwordSet: false, role: 'SHOP_OWNER', shopId: shop.id }
             });
+            await tx.membership.create({ data: { shopId: shop.id, userId: user.id, role: 'OWNER' } });
+            await tx.userRoleGrant.create({ data: { userId: user.id, role: 'SHOP_OWNER' } });
             if (google) {
               await tx.userGoogleIdentity.create({ data: { userId: user.id, firebaseUid: grant.firebaseUid, email: accountEmail, lastAuthTime: grant.authTime, lastSignInAt: new Date() } });
             } else {

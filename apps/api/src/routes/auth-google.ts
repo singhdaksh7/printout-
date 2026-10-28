@@ -10,7 +10,8 @@ import { clientIpKey } from '../rate-limits.js';
 import { authResponseFor, type FirebaseSignInResult } from './auth-firebase.js';
 import { assertSameOrigin } from './auth-phone.js';
 import { sessionPayload } from './auth.js';
-import { audit, json, openSession, type AppContext } from './context.js';
+import { actorTypeOf, audit, json, openSession, type AppContext } from './context.js';
+import { roleForAudience, type Audience } from './auth-firebase.js';
 
 export const GOOGLE_UNAVAILABLE_ERROR = () => new AppError(503, 'GOOGLE_LOGIN_UNAVAILABLE', 'Google sign-in is unavailable right now. Use another sign-in method.');
 export const GOOGLE_TOKEN_INVALID_ERROR = () => new AppError(401, 'GOOGLE_TOKEN_INVALID', 'That Google sign-in could not be confirmed. Try again.');
@@ -110,9 +111,10 @@ export async function googleSignIn(
   ctx: AppContext,
   request: FastifyRequest,
   reply: FastifyReply,
-  input: { idToken: string; deviceId: string; auditAction: 'auth.login' | 'auth.firebase.exchange' }
+  input: { idToken: string; deviceId: string; auditAction: 'auth.login' | 'auth.firebase.exchange'; audience?: Audience | undefined }
 ): Promise<FirebaseSignInResult> {
   const { prisma } = ctx;
+  const audience: Audience = input.audience ?? 'shop';
   const { verified, ipKey } = await verifyGoogleToken(ctx, request, input.idToken);
   const masked = maskEmail(verified.email);
 
@@ -122,24 +124,24 @@ export async function googleSignIn(
     await audit(prisma, { shopId: null, actorUserId: null, actorType: 'SYSTEM', action: input.auditAction, targetType: 'google', metadata: { method: 'google', client: 'mobile', outcome: 'onboarding', email: masked } });
     await revokeOnboardingFamilies(prisma, verified.uid, input.deviceId);
     const creds = await issueRestrictedCredentials(ctx, { provider: 'google', uid: verified.uid, email: verified.email, authTime: verified.authTime }, input.deviceId);
-    return { response: mobileAuthResponse(ctx, restrictedProfile({ provider: 'google', email: verified.email }), creds), principal: null };
+    return { response: mobileAuthResponse(ctx, restrictedProfile({ provider: 'google', email: verified.email }, audience), creds), principal: null };
   }
 
   const user = identity.user;
-  // Admins are never signed in through Google (no Admin 2FA bypass, no admin auto-creation); neither is any non-owner.
-  if (user.role !== 'SHOP_OWNER') throw new AppError(403, 'FORBIDDEN', 'Google sign-in is not available for this account.');
-  if (user.shop?.status === 'SUSPENDED') throw accountBlocked();
+  // Admins are never signed in through Google (no Admin 2FA bypass, no admin auto-creation); only the role of the requesting app is accepted.
+  if (user.role !== roleForAudience(audience)) throw new AppError(403, 'FORBIDDEN', 'Google sign-in is not available for this account.');
+  if (user.shop?.status === 'SUSPENDED' || !user.isActive) throw accountBlocked();
   // Replay protection: each Google sign-in has a strictly later auth_time; a token can be exchanged once.
   const claimed = await prisma.userGoogleIdentity.updateMany({
     where: { id: identity.id, OR: [{ lastAuthTime: null }, { lastAuthTime: { lt: verified.authTime } }] },
     data: { lastAuthTime: verified.authTime, lastSignInAt: new Date(), email: verified.email }
   });
   if (claimed.count !== 1) {
-    await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: 'SHOP_OWNER', action: 'auth.google.login_refused', targetType: 'user', targetId: user.id, metadata: { reason: 'replay', email: masked } });
+    await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: actorTypeOf(user.role), action: 'auth.google.login_refused', targetType: 'user', targetId: user.id, metadata: { reason: 'replay', email: masked } });
     throw GOOGLE_TOKEN_INVALID_ERROR();
   }
   ctx.loginThrottle.reset(ipKey);
   const response = await authResponseFor(ctx, request, reply, user.id, 'mobile', input.deviceId);
-  await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: 'SHOP_OWNER', action: input.auditAction, targetType: 'user', targetId: user.id, metadata: { method: 'google', client: 'mobile', outcome: 'session', email: masked } });
+  await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: actorTypeOf(user.role), action: input.auditAction, targetType: 'user', targetId: user.id, metadata: { method: 'google', client: 'mobile', outcome: 'session', email: masked } });
   return { response, principal: { userId: user.id, shopId: user.shopId } };
 }

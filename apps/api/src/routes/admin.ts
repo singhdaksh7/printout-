@@ -273,6 +273,8 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
         const owner = await tx.user.create({
           data: { email: body.owner.email, displayName: body.owner.displayName, passwordHash, role: Role.SHOP_OWNER, shopId: shop.id }
         });
+        await tx.membership.create({ data: { shopId: shop.id, userId: owner.id, role: 'OWNER' } });
+        await tx.userRoleGrant.create({ data: { userId: owner.id, role: Role.SHOP_OWNER } });
         if (body.planId) await tx.subscription.create({ data: { shopId: shop.id, planId: body.planId } });
         await audit(tx, {
           shopId: shop.id,

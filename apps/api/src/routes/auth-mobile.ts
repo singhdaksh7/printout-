@@ -19,11 +19,14 @@ const authBody = z
     /** Registered ONLY after authentication succeeds; a push failure never fails the sign-in. */
     fcmToken: z.string().min(20).max(4096).regex(/^\S+$/).optional().catch(undefined),
     installationId: deviceIdSchema,
-    platform: z.enum(['android', 'ios', 'web'])
+    platform: z.enum(['android', 'ios', 'web']),
+    /** Which app is signing in. Omitted = 'shop' (existing clients). 'customer' = the marketplace customer app; never accepted for email/password. */
+    audience: z.enum(['shop', 'customer']).optional()
   })
   .strict()
   .superRefine((b, c) => {
     if ((b.loginMethod === 'otp' || b.loginMethod === 'google') && !b.firebaseIdToken) c.addIssue({ code: 'custom', path: ['firebaseIdToken'], message: `firebaseIdToken is required for loginMethod ${b.loginMethod}` });
+    if (b.loginMethod === 'email' && b.audience === 'customer') c.addIssue({ code: 'custom', path: ['audience'], message: 'customers sign in with Google or phone, not a password' });
     if (b.loginMethod === 'email' && (!b.email || !b.password)) c.addIssue({ code: 'custom', path: [b.email ? 'password' : 'email'], message: 'email and password are required for loginMethod email' });
   });
 
@@ -67,9 +70,9 @@ export async function authMobileRoutes(app: FastifyInstance, ctx: AppContext): P
     const body = authBody.parse(request.body);
     let result: FirebaseSignInResult;
     if (body.loginMethod === 'otp') {
-      result = await firebaseSignIn(ctx, request, reply, { idToken: body.firebaseIdToken!, client: 'mobile', deviceId: body.installationId, phoneNumber: body.phoneNumber, auditAction: 'auth.login' });
+      result = await firebaseSignIn(ctx, request, reply, { idToken: body.firebaseIdToken!, client: 'mobile', deviceId: body.installationId, phoneNumber: body.phoneNumber, auditAction: 'auth.login', audience: body.audience });
     } else if (body.loginMethod === 'google') {
-      result = await googleSignIn(ctx, request, reply, { idToken: body.firebaseIdToken!, deviceId: body.installationId, auditAction: 'auth.login' });
+      result = await googleSignIn(ctx, request, reply, { idToken: body.firebaseIdToken!, deviceId: body.installationId, auditAction: 'auth.login', audience: body.audience });
     } else {
       result = await emailSignIn(request, reply, body.email!, body.password!, body.installationId);
     }
@@ -77,7 +80,7 @@ export async function authMobileRoutes(app: FastifyInstance, ctx: AppContext): P
     if (body.fcmToken && result.principal) {
       try {
         await registerToken(prisma, fcmKey(config), { userId: result.principal.userId, shopId: result.principal.shopId, installationId: body.installationId, platform: body.platform, token: body.fcmToken });
-        await audit(prisma, { shopId: result.principal.shopId, actorUserId: result.principal.userId, actorType: 'SHOP_OWNER', action: 'user.fcm_token.registered', targetType: 'user', targetId: result.principal.userId, metadata: { platform: body.platform, via: 'auth' } });
+        await audit(prisma, { shopId: result.principal.shopId, actorUserId: result.principal.userId, actorType: body.audience === 'customer' ? 'CUSTOMER' : 'SHOP_OWNER', action: 'user.fcm_token.registered', targetType: 'user', targetId: result.principal.userId, metadata: { platform: body.platform, via: 'auth' } });
       } catch {
         /* a push failure must never fail the sign-in */
       }

@@ -45,6 +45,8 @@ import { userIdentityRoutes } from './routes/user-identities.js';
 import { createPushSender, type PushSender } from './notifications/fcm.js';
 import { profileRoutes } from './routes/profile.js';
 import { shopOnboardingRoutes } from './routes/shop-onboarding.js';
+import { customerRoutes } from './routes/customers.js';
+import { shopsMineRoutes } from './routes/shops-mine.js';
 
 export interface AppDeps {
   config?: Config;
@@ -191,6 +193,8 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => userIdentityRoutes(i, ctx));
       await api.register((i) => profileRoutes(i, ctx));
       await api.register((i) => shopOnboardingRoutes(i, ctx));
+      await api.register((i) => customerRoutes(i, ctx));
+      await api.register((i) => shopsMineRoutes(i, ctx));
       await api.register((i) => publicRoutes(i, ctx));
       await api.register((i) => shopOrderRoutes(i, ctx));
       await api.register((i) => shopConfigRoutes(i, ctx));

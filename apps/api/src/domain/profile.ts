@@ -10,7 +10,7 @@ import { deriveNextStep, qrReadiness, type NextStep, type ShopStatusName } from 
  * Data model note: a user belongs to exactly ONE shop (User.shopId). The Membership table exists but no business logic uses it, so it
  * is NOT treated as authorization: `shops` always has zero or one element (the default shop).
  */
-export type ApiRole = 'shop' | 'admin' | null;
+export type ApiRole = 'shop' | 'admin' | 'customer' | null;
 
 export interface UserProfile {
   /** null only for a verified phone that has no account yet (restricted onboarding identity). */
@@ -143,7 +143,7 @@ export interface WebAuthResponse extends ProfileView {
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
 /** The profile of a verified identity that has no account yet (restricted onboarding principal). */
-export function restrictedProfile(subject: { provider: 'phone' | 'google'; phone?: string | null; email?: string | null } | string): ProfileView {
+export function restrictedProfile(subject: { provider: 'phone' | 'google'; phone?: string | null; email?: string | null } | string, audience: 'shop' | 'customer' = 'shop'): ProfileView {
   const s = typeof subject === 'string' ? { provider: 'phone' as const, phone: subject, email: null } : subject;
   const google = s.provider === 'google';
   return {
@@ -162,7 +162,7 @@ export function restrictedProfile(subject: { provider: 'phone' | 'google'; phone
     },
     shops: [],
     shop: null,
-    nextStep: 'create_shop',
+    nextStep: audience === 'customer' ? 'create_customer' : 'create_shop',
     isShopRegisteredAtLeastOne: false,
     showQr: false
   };
@@ -189,12 +189,12 @@ export async function loadProfile(prisma: PrismaClient, webOrigin: string, userI
   );
   const profile: UserProfile = {
     id: user.id,
-    role: user.role === 'PLATFORM_ADMIN' ? 'admin' : 'shop',
+    role: user.role === 'PLATFORM_ADMIN' ? 'admin' : user.role === 'CUSTOMER' ? 'customer' : 'shop',
     name: user.displayName,
     email: user.email,
     phoneNumber: user.phoneIdentity?.phoneE164 ?? null,
     loginMethods: [...(user.passwordSet ? (['email'] as const) : []), ...(user.phoneIdentity ? (['otp'] as const) : []), ...(user.googleIdentity ? (['google'] as const) : [])],
-    emailVerified: !!user.googleIdentity && user.googleIdentity.email.toLowerCase() === user.email.toLowerCase(),
+    emailVerified: !!user.googleIdentity && !!user.email && user.googleIdentity.email.toLowerCase() === user.email.toLowerCase(),
     phoneVerified: !!user.phoneIdentity,
     createdAt: iso(user.createdAt),
     updatedAt: iso(user.updatedAt),
