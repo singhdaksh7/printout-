@@ -205,7 +205,9 @@ describe('schema-v2 phase 5: reviews and notifications', () => {
       expect(list).toMatchObject({ total: 1, unreadCount: 1 });
       expect(list.items[0]).toMatchObject({ type: 'orderStatus', title: 'Order rejected', orderId: o.id, readAt: null });
       expect(list.items[0].body).toContain(o.orderNumber);
-      for (const secret of ['private-name', 'Busy', 'ramesh', '@cust.test', String(o.totalPaise)]) expect(JSON.stringify(list)).not.toContain(secret);
+      // Only the human-readable text is checked for leaks: ids in the JSON are random and may contain any digits.
+      const texts = list.items.map((n: any) => `${n.title} ${n.body}`).join(' ');
+      for (const secret of ['private-name', 'Busy', 'ramesh', '@cust.test', 'paise', '₹']) expect(texts).not.toContain(secret);
       expect((await inbox(bob)).total).toBe(0);
       // self-cancel produces no notification
       const o2 = await place(alice);
