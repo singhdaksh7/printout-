@@ -3,7 +3,8 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { ApiError, setCsrfToken } from '../lib/api';
 import {
   cancelSecondFactor as apiCancelSecondFactor, fetchSession, isTwoFactorRequired, login as apiLogin, logout as apiLogout, setUnauthorizedHandler,
-  phoneSession as apiPhoneSession, verifySecondFactor as apiVerifySecondFactor, type LoginResult, type SecondFactorMethod, type SessionData
+  phoneSession as apiPhoneSession, googleSession as apiGoogleSession, verifySecondFactor as apiVerifySecondFactor,
+  onboardShop as apiOnboardShop, type GoogleSessionResponse, type LoginResult, type OnboardShopInput, type SecondFactorMethod, type SessionData
 } from '../lib/shop-api';
 import { Button } from '../ui';
 
@@ -19,6 +20,10 @@ interface AuthApi {
   login(email: string, password: string): Promise<LoginResult>;
   /** Signs in with a Firebase phone ID token (server verifies it and resolves the linked shop account). */
   phoneLogin(idToken: string): Promise<SessionData>;
+  /** Signs in with a Firebase Google ID token (returns normal shop session or restricted onboarding session). */
+  googleLogin(idToken: string): Promise<GoogleSessionResponse>;
+  /** Completes registration of a new shop for a restricted onboarding session. */
+  onboard(input: OnboardShopInput): Promise<SessionData>;
   /** Completes a pending admin sign-in with an authenticator or recovery code. */
   completeSecondFactor(method: SecondFactorMethod, code: string): Promise<SessionData & { recoveryCodesRemaining?: number }>;
   /** Abandons the pending second-factor step. */
@@ -73,6 +78,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: 'authed', session: s });
     return s;
   }, []);
+  const googleLogin = useCallback(async (idToken: string) => {
+    const s = await apiGoogleSession(idToken);
+    if ('csrfToken' in s && s.csrfToken && s.user?.id) {
+      setCsrfToken(s.csrfToken);
+      const session: SessionData = {
+        user: {
+          id: s.user.id,
+          displayName: 'displayName' in s.user ? (s.user.displayName as string) : (s.user.name ?? ''),
+          role: s.user.role === 'PLATFORM_ADMIN' ? 'PLATFORM_ADMIN' : 'SHOP_OWNER'
+        },
+        shop: s.shop
+          ? {
+              id: s.shop.id,
+              slug: s.shop.slug,
+              displayName: 'displayName' in s.shop ? (s.shop.displayName as string) : s.shop.shopName
+            }
+          : null,
+        csrfToken: s.csrfToken,
+        retentionMinutes: s.retentionMinutes
+      };
+      setState({ status: 'authed', session });
+    }
+    return s;
+  }, []);
+  const onboard = useCallback(async (input: OnboardShopInput) => {
+    const res = await apiOnboardShop(input);
+    const session: SessionData = {
+      user: {
+        id: res.user.id,
+        displayName: res.user.name ?? '',
+        role: 'SHOP_OWNER'
+      },
+      shop: res.shop
+        ? {
+            id: res.shop.id,
+            slug: res.shop.slug,
+            displayName: res.shop.shopName
+          }
+        : null,
+      csrfToken: res.csrfToken,
+      retentionMinutes: res.retentionMinutes
+    };
+    setCsrfToken(res.csrfToken);
+    setState({ status: 'authed', session });
+    return session;
+  }, []);
   const completeSecondFactor = useCallback(async (method: SecondFactorMethod, code: string) => {
     const s = await apiVerifySecondFactor(method, code);
     setCsrfToken(s.csrfToken);
@@ -90,7 +141,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const endSession = useCallback(() => { setCsrfToken(null); setState({ status: 'anon' }); }, []);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  const value = useMemo(() => ({ state, login, phoneLogin, completeSecondFactor, cancelSecondFactor, logout, endSession, retry }), [state, login, phoneLogin, completeSecondFactor, cancelSecondFactor, logout, endSession, retry]);
+  const value = useMemo(
+    () => ({ state, login, phoneLogin, googleLogin, onboard, completeSecondFactor, cancelSecondFactor, logout, endSession, retry }),
+    [state, login, phoneLogin, googleLogin, onboard, completeSecondFactor, cancelSecondFactor, logout, endSession, retry]
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

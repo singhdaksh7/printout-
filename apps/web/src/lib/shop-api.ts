@@ -118,17 +118,21 @@ export const verifySecondFactor = (method: SecondFactorMethod, code: string) =>
 export const cancelSecondFactor = () => api<void>('/auth/login/2fa/cancel', { method: 'POST', body: {} });
 export const logout = () => api<void>('/auth/logout', { method: 'POST', body: {} });
 
-export interface OrderQuery { status?: string; active?: boolean; print?: 'pending' | 'initiated'; cursor?: string | undefined }
+export interface OrderQuery { status?: string; active?: boolean; print?: 'pending' | 'initiated' | 'attention'; sort?: 'newest' | 'oldest'; cursor?: string | undefined }
 /** `status` may be one status or a comma-separated list; `active` hides terminal orders (both documented by the API). */
 export function listOrders(params: OrderQuery = {}, signal?: AbortSignal) {
   const q = new URLSearchParams();
   if (params.status) q.set('status', params.status);
   if (params.active) q.set('active', '1');
   if (params.print) q.set('print', params.print);
+  if (params.sort && params.sort !== 'newest') q.set('sort', params.sort);
   if (params.cursor) q.set('cursor', params.cursor);
   const qs = q.toString();
   return shopRequest<OrderListPage>(`/shop/orders${qs ? `?${qs}` : ''}`, signal ? { signal } : {});
 }
+/** Live counters: requests nobody printed yet, and orders whose latest print job needs the shopkeeper. */
+export const getQueueCounts = (signal?: AbortSignal) =>
+  shopRequest<{ pending: number; attention: number }>('/shop/orders/counts', signal ? { signal } : {});
 export const getOrder = (id: string, signal?: AbortSignal) =>
   shopRequest<OrderDetail>(`/shop/orders/${encodeURIComponent(id)}`, signal ? { signal } : {});
 /** Shop owners can only cancel; every other lifecycle step is retired (Print does the internal steps itself). */
@@ -344,8 +348,63 @@ export const reconcilePrintJob = (id: string, resolution: Reconciliation) =>
 // ---- phone (SMS OTP) sign-in ---------------------------------------------------------------------------
 export interface PhoneLoginConfig { enabled: boolean; allowedCallingCodes: string[]; defaultCallingCode: string; resendCooldownSeconds: number }
 export const getPhoneLoginConfig = () => api<PhoneLoginConfig>('/auth/phone/config');
+export interface UserProfileView {
+  id: string | null;
+  role: 'shop' | 'admin' | null;
+  name: string | null;
+  email: string | null;
+  phoneNumber: string | null;
+  loginMethods: Array<'email' | 'otp' | 'google'>;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  lastLoginAt: string | null;
+}
+
+export interface WebAuthProfileResponse {
+  user: UserProfileView;
+  shops: Array<{ id: string; shopName: string; slug: string; status: string }>;
+  shop: { id: string; shopName: string; slug: string; status: string } | null;
+  nextStep: string;
+  isShopRegisteredAtLeastOne: boolean;
+  showQr: boolean;
+  session?: { transport: 'cookie'; expiresAt: string } | null;
+  onboarding?: { transport: 'cookie'; expiresAt: string } | null;
+  csrfToken?: string;
+  retentionMinutes?: number;
+  onboardingAvailable?: boolean;
+}
+
+export type GoogleSessionResponse = SessionData | WebAuthProfileResponse;
+
 /** Exchanges a Firebase ID token for a normal shop session. The token is the only proof sent; no phone, role or shop id. */
 export const phoneSession = (idToken: string) => api<SessionData>('/auth/phone/session', { method: 'POST', body: { idToken } });
+/** Exchanges a Firebase Google ID token for a normal shop session or a restricted onboarding grant. */
+export const googleSession = (idToken: string) => api<GoogleSessionResponse>('/auth/google/session', { method: 'POST', body: { idToken } });
+
+export interface OnboardShopInput {
+  ownerName: string;
+  shopName: string;
+  address: string;
+  pincode: string;
+  email?: string;
+}
+
+export interface OnboardShopResponse {
+  user: { id: string; role: 'shop'; name: string | null; email: string | null };
+  shop: { id: string; shopName: string; slug: string; status: string } | null;
+  csrfToken: string;
+  retentionMinutes?: number;
+}
+
+export const onboardShop = (input: OnboardShopInput) =>
+  api<OnboardShopResponse>('/shops/onboarding', {
+    method: 'POST',
+    body: { ...input, client: 'web' }
+  });
+
+export const getMyProfile = () => api<WebAuthProfileResponse>('/users/me');
 
 export interface PhoneStatus { linked: boolean; phoneMasked?: string; linkedAt?: string; lastSignInAt?: string | null; available: boolean }
 export interface PhoneLinkResult { linked: boolean; phoneMasked: string; replaced: boolean; otherSessionsEnded: number }
@@ -354,3 +413,28 @@ export const linkPhone = (idToken: string, currentPassword: string) =>
   shopRequest<PhoneLinkResult>('/shop/account/phone', { method: 'POST', body: { idToken, currentPassword } });
 export const unlinkPhone = (currentPassword: string) =>
   shopRequest<{ linked: false; otherSessionsEnded?: number }>('/shop/account/phone/unlink', { method: 'POST', body: { currentPassword } });
+
+// ---- Google account identity linking -------------------------------------------------------------------
+export interface UserIdentities {
+  password: { set: boolean };
+  phone: { linked: boolean; phoneMasked?: string };
+  google: { linked: boolean; emailMasked?: string };
+  googleAvailable: boolean;
+}
+export interface GoogleLinkResult {
+  linked: true;
+  emailMasked: string;
+  replaced: boolean;
+  otherSessionsEnded: number;
+}
+export const getUserIdentities = () => shopRequest<UserIdentities>('/users/me/identities');
+export const linkGoogleIdentity = (firebaseIdToken: string, currentPassword?: string) =>
+  shopRequest<GoogleLinkResult>('/users/me/identities/google', {
+    method: 'POST',
+    body: { firebaseIdToken, reauth: { ...(currentPassword ? { currentPassword } : {}) } }
+  });
+export const unlinkGoogleIdentity = (currentPassword?: string) =>
+  shopRequest<{ linked: false; otherSessionsEnded: number }>('/users/me/identities/google/unlink', {
+    method: 'POST',
+    body: { reauth: { ...(currentPassword ? { currentPassword } : {}) } }
+  });

@@ -106,4 +106,46 @@ describe('createPhoneAuth', () => {
     await expect(provider.confirm('111111')).rejects.toMatchObject({ kind: 'code-invalid' });
     await expect(provider.confirm('111111')).rejects.toMatchObject({ kind: 'code-expired' });
   });
+
+  it('is created with the popup/redirect resolver for both phone and Google sign-in', async () => {
+    const signInWithPhoneNumber = vi.fn(async () => ({ confirm: vi.fn() }));
+    const { mod } = await withFirebase({ signInWithPhoneNumber, browserPopupRedirectResolver: { marker: 'resolver' } });
+    const A = await import('firebase/auth');
+    const init = vi.mocked(A.initializeAuth);
+    expect(init.mock.calls[0]![1]).toMatchObject({ popupRedirectResolver: { marker: 'resolver' } });
+    const signInWithPopup = vi.fn(async () => ({ user: { getIdToken: async () => 'g-token' } }));
+    vi.mocked(A).signInWithPopup = signInWithPopup as never;
+    (A as unknown as { GoogleAuthProvider: unknown }).GoogleAuthProvider = class { setCustomParameters() {} };
+    await expect(mod.signInWithGoogleWeb()).resolves.toBe('g-token');
+    expect(init.mock.calls.at(-1)![1]).toMatchObject({ popupRedirectResolver: { marker: 'resolver' } });
+  });
+});
+
+describe('error classification for wiring errors', () => {
+  it('maps auth/argument-error to a config kind, logs only the code, and never shows the code to the user', async () => {
+    const { mapFirebaseError, phoneErrorMessage, googleAuthErrorMessage } = await import('./phone-auth');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const err = mapFirebaseError({ code: 'auth/argument-error', message: 'secret AIzaSyXXXX +919999999999' });
+    expect(err.kind).toBe('config');
+    expect(warn).toHaveBeenCalledWith('[phone-auth] Firebase error', 'auth/argument-error');
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/AIza|9999999999/);
+    expect(phoneErrorMessage(err)).not.toMatch(/auth\//);
+    expect(googleAuthErrorMessage(err)).toBe('Google sign-in is unavailable right now. Use another sign-in method.');
+    expect(googleAuthErrorMessage(err)).not.toMatch(/phone|auth\//i);
+    expect(googleAuthErrorMessage(mapFirebaseError({ code: 'auth/network-request-failed' }))).toMatch(/connection/);
+    warn.mockRestore();
+  });
+
+  it('maps auth/popup-blocked to popup-blocked with clear user guidance to allow popups', async () => {
+    const { mapFirebaseError, googleAuthErrorMessage } = await import('./phone-auth');
+    const err = mapFirebaseError({ code: 'auth/popup-blocked' });
+    expect(err.kind).toBe('popup-blocked');
+    expect(googleAuthErrorMessage(err)).toBe('The Google sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
+  });
+
+  it('maps cancelled popup to cancelled with clear message', async () => {
+    const { PhoneAuthError, googleAuthErrorMessage } = await import('./phone-auth');
+    const err = new PhoneAuthError('cancelled', 'cancelled');
+    expect(googleAuthErrorMessage(err)).toBe('Google sign-in was cancelled.');
+  });
 });

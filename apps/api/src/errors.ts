@@ -60,6 +60,7 @@ export type ErrorCode =
   | 'GOOGLE_TOKEN_INVALID'
   | 'GOOGLE_LOGIN_UNAVAILABLE'
   | 'GOOGLE_IDENTITY_UNAVAILABLE'
+  | 'GOOGLE_NOT_LINKED'
   | 'LAST_SIGNIN_METHOD'
   | 'REAUTH_FAILED'
   // Windows print agent

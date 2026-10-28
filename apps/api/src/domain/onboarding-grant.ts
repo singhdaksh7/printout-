@@ -69,3 +69,13 @@ export async function resolveGrant(ctx: AppContext, request: FastifyRequest): Pr
 export function setGrantCookie(ctx: AppContext, reply: FastifyReply, raw: string, expires: Date): void {
   reply.setCookie(ONBOARDING_COOKIE, raw, { httpOnly: true, secure: ctx.config.NODE_ENV === 'production', sameSite: ctx.config.COOKIE_SAMESITE, path: COOKIE_PATH, expires });
 }
+
+export function clearGrantCookie(ctx: AppContext, reply: FastifyReply): void {
+  reply.clearCookie(ONBOARDING_COOKIE, {
+    httpOnly: true,
+    secure: ctx.config.NODE_ENV === 'production',
+    sameSite: ctx.config.COOKIE_SAMESITE,
+    path: COOKIE_PATH
+  });
+}
+

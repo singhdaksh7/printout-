@@ -57,7 +57,7 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
   });
 
   describe('happy path', () => {
-    it('creates user + shop + phone link in one transaction, as a restricted PILOT shop with no plan and no premium', async () => {
+    it('creates user + shop + phone link in one transaction, as an ACTIVE shop with no plan and no premium', async () => {
       const before = await counts();
       const grant = await restricted();
       const res = await onboard(grant);
@@ -68,7 +68,7 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
       const user = await h.prisma.user.findUniqueOrThrow({ where: { email: ONBOARDING_BODY.email }, include: { shop: true } });
       expect(user.role).toBe('SHOP_OWNER');
       expect(user.displayName).toBe(ONBOARDING_BODY.ownerName);
-      expect(user.shop).toMatchObject({ displayName: ONBOARDING_BODY.shopName, address: ONBOARDING_BODY.address, status: 'PILOT', acceptsOrders: false });
+      expect(user.shop).toMatchObject({ displayName: ONBOARDING_BODY.shopName, address: ONBOARDING_BODY.address, status: 'ACTIVE', acceptsOrders: true });
       expect(user.shop?.slug).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(await h.prisma.subscription.count({ where: { shopId: user.shopId! } })).toBe(0);
       expect(await h.prisma.userPhoneIdentity.findFirst({ where: { userId: user.id, phoneE164: PHONES.NEW } })).toBeTruthy();
@@ -76,10 +76,10 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
       expect(await h.prisma.shopSettings.count({ where: { shopId: user.shopId! } })).toBe(1);
     });
 
-    it('returns the user, the shop and a server-derived nextStep (generate_qr: shop exists but is not live)', async () => {
+    it('returns the user, the shop and a server-derived nextStep (dashboard: shop is immediately live)', async () => {
       const res = await onboard(await restricted());
       const d = dataOf(res);
-      expect(d.nextStep).toBe('generate_qr');
+      expect(d.nextStep).toBe('dashboard');
       expect(userOf(res).role).toBe('shop');
       expect(userOf(res).phoneNumber).toBe(PHONES.NEW);
       expect(userOf(res).phoneVerified).toBe(true);
@@ -88,22 +88,19 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
       expect(shop.status).toBe('standard');
       expect(shop.plan ?? null).toBeNull();
       expect(shop.registeredBy).toBe('self');
-      expect(shop.showQr).toBe(false);
+      expect(shop.showQr).toBe(true);
+      expect(shop.qrCodeUrl).toMatch(/^http:\/\/localhost:5173\/p\//);
     });
 
-    it('the public QR destination is derived from the new slug and is not ready until activation', async () => {
+    it('the public QR destination is derived from the new slug and is immediately ready on registration', async () => {
       const res = await onboard(await restricted());
       const auth = sessionAuthFrom(res);
-      const qr = dataOf(await req(h.app, auth, 'GET', '/shops/me/qr'));
-      expect(qr.ready).toBe(false);
-      expect(qr.publicUrl).toBeNull(); // no public destination is advertised while the shop is not live
-      expect(typeof qr.reason).toBe('string');
       const slug = (await h.prisma.shop.findFirstOrThrow({ where: { displayName: ONBOARDING_BODY.shopName } })).slug;
       expect(slug).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
-      // Admin activates -> ready, with no regeneration step: the URL is derived from the slug.
-      await h.prisma.shop.updateMany({ where: { slug }, data: { status: 'ACTIVE', acceptsOrders: true } });
-      const live = dataOf(await req(h.app, auth, 'GET', '/shops/me/qr'));
-      expect(live).toMatchObject({ ready: true, publicUrl: `http://localhost:5173/p/${slug}` });
+      const qr = dataOf(await req(h.app, auth, 'GET', '/shops/me/qr'));
+      expect(qr.ready).toBe(true);
+      expect(qr.publicUrl).toBe(`http://localhost:5173/p/${slug}`);
+      expect(qr.reason).toBeNull();
       expect(nextStepOf(await req(h.app, auth, 'GET', '/users/me'))).toBe('dashboard');
     });
 
@@ -129,7 +126,7 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
       const res = await exchange(h.app, tok(PHONES.NEW, 3), 'mobile');
       expect([200, 201], res.body).toContain(res.statusCode);
       expect(shopOf(res)!.shopName).toBe(ONBOARDING_BODY.shopName);
-      expect(nextStepOf(res)).toBe('generate_qr');
+      expect(nextStepOf(res)).toBe('dashboard');
     });
 
     it('the new account has no usable password: email login with a guessed password fails', async () => {
@@ -217,8 +214,8 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
       if ([200, 201].includes(res.statusCode)) {
         const user = await h.prisma.user.findUniqueOrThrow({ where: { email: ONBOARDING_BODY.email }, include: { shop: true } });
         expect(user.role).toBe('SHOP_OWNER');
-        expect(user.shop?.status).toBe('PILOT');
-        expect(user.shop?.acceptsOrders).toBe(false);
+        expect(user.shop?.status).toBe('ACTIVE');
+        expect(user.shop?.acceptsOrders).toBe(true);
         expect(user.shop?.slug).not.toBe('sharma-print');
         expect(await h.prisma.subscription.count({ where: { shopId: user.shopId! } })).toBe(0);
         expect(shopOf(res)!.registeredBy).toBe('self');
@@ -397,14 +394,14 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
       expect([200, 201]).toContain(pub.statusCode);
     });
 
-    it('a not-yet-live self-onboarded shop is not exposed as an open public upload page', async () => {
+    it('a self-onboarded shop is immediately active and accepts orders on its public upload page', async () => {
       await onboard(await restricted());
       const slug = (await h.prisma.shop.findFirstOrThrow({ where: { displayName: ONBOARDING_BODY.shopName } })).slug;
       const pub = await h.app.inject({ method: 'GET', url: `/api/v1/public/shops/${slug}` });
-      const body = pub.statusCode === 200 ? pub.json().data : null;
-      // Either hidden (404) or advertised as not accepting orders.
-      if (body) expect(body.acceptsOrders ?? body.availability?.acceptsOrders ?? false).toBe(false);
-      else expect(pub.statusCode).toBe(404);
+      expect(pub.statusCode).toBe(200);
+      const body = pub.json().data;
+      expect(body.status).toBe('ACTIVE');
+      expect(body.acceptsOrders).toBe(true);
     });
   });
 });

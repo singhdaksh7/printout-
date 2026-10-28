@@ -1,4 +1,4 @@
-import { DocumentStatus, OrderStatus, Prisma, type Document, type PrismaClient } from '@prisma/client';
+import { DevicePrintJobStatus, DocumentStatus, OrderStatus, Prisma, type Document, type PrismaClient } from '@prisma/client';
 
 /**
  * Document retention / cleanup job.
@@ -9,7 +9,10 @@ import { DocumentStatus, OrderStatus, Prisma, type Document, type PrismaClient }
  *    including orphans with no order,
  *  - UPLOADING / FAILED leftovers are swept after their expiry or a stale-upload age,
  *  - a document is marked DELETED only AFTER the object is verified gone,
- *  - orders and their metadata are never deleted.
+ *  - orders and their metadata are never deleted,
+ *  - a document an agent is actively fetching/submitting right now (live lease) is spared for at most
+ *    `activeJobGraceMinutes` past its deadline, so a job is not torn mid-flight. This is the ONLY retention extension;
+ *    it is hard-capped, never renewed by lease renewals, and reported as `deferred`.
  *
  * Concurrency approach: every document is processed independently with an idempotent
  * storage delete followed by a conditional `updateMany` (guarded by the expected status).
@@ -44,6 +47,8 @@ export interface CleanupOptions {
   staleUploadMinutes?: number;
   /** Also re-verify documents already DELETED within the last 24h and remove any object that reappeared. Default false. */
   recheckDeleted?: boolean;
+  /** Hard cap (minutes past the deadline) on sparing a document an agent holds a live lease on. 0 disables. Default 5. */
+  activeJobGraceMinutes?: number;
   events?: CleanupEvents;
   log?: CleanupLogger;
 }
@@ -59,6 +64,8 @@ export interface CleanupResult {
   alreadyMissing: number;
   /** Documents left untouched for retry because storage failed or verification failed. */
   failed: number;
+  /** Documents spared (within the capped grace) because an agent holds a live lease on their print job. */
+  deferred: number;
   /** Documents another worker finished first (informational). */
   raced: number;
   /** Orders moved to EXPIRED because their unprinted document expired. */
@@ -68,12 +75,17 @@ export interface CleanupResult {
 
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_STALE_UPLOAD_MINUTES = 60;
+const DEFAULT_ACTIVE_JOB_GRACE_MINUTES = 5;
+/** Agent-owned job states in which the document is being fetched or handed to the spooler right now. */
+const IN_FLIGHT_JOB_STATUSES: DevicePrintJobStatus[] = [
+  DevicePrintJobStatus.CLAIMED, DevicePrintJobStatus.DOWNLOADING, DevicePrintJobStatus.SUBMITTING, DevicePrintJobStatus.SUBMITTED_TO_SPOOLER
+];
 const RECHECK_WINDOW_MS = 24 * 60 * 60_000;
 const MAX_ERROR_LENGTH = 200;
 /** Order states from which an expired unprinted document expires the order. */
 const EXPIRABLE_ORDER_STATUSES: OrderStatus[] = [OrderStatus.NEW, OrderStatus.ACCEPTED, OrderStatus.PRINTING];
 
-type DueDocument = Pick<Document, 'id' | 'shopId' | 'objectKey' | 'status' | 'printedAt' | 'deletedAt'>;
+type DueDocument = Pick<Document, 'id' | 'shopId' | 'objectKey' | 'status' | 'printedAt' | 'deletedAt' | 'deleteAfter' | 'expiresAt'>;
 
 class VerificationError extends Error {
   readonly code = 'STORAGE_VERIFY_FAILED';
@@ -114,14 +126,14 @@ export async function cleanupExpiredDocuments(
   const now = opts.now ?? new Date();
   const batchSize = Math.max(1, opts.batchSize ?? DEFAULT_BATCH_SIZE);
   const staleBefore = new Date(now.getTime() - (opts.staleUploadMinutes ?? DEFAULT_STALE_UPLOAD_MINUTES) * 60_000);
-  const result: CleanupResult = { scanned: 0, deleted: 0, alreadyMissing: 0, failed: 0, raced: 0, ordersExpired: 0, errors: [] };
+  const result: CleanupResult = { scanned: 0, deleted: 0, alreadyMissing: 0, failed: 0, deferred: 0, raced: 0, ordersExpired: 0, errors: [] };
 
   // Keyset pagination by id: a document that fails stays "due" but is never re-fetched within this run.
   let cursor: string | undefined;
   for (;;) {
     const batch: DueDocument[] = await prisma.document.findMany({
       where: { AND: [dueWhere(now, staleBefore), cursor ? { id: { gt: cursor } } : {}] },
-      select: { id: true, shopId: true, objectKey: true, status: true, printedAt: true, deletedAt: true },
+      select: { id: true, shopId: true, objectKey: true, status: true, printedAt: true, deletedAt: true, deleteAfter: true, expiresAt: true },
       orderBy: { id: 'asc' },
       take: batchSize
     });
@@ -135,7 +147,7 @@ export async function cleanupExpiredDocuments(
 
   if (result.scanned > 0) {
     opts.log?.info?.(
-      { scanned: result.scanned, deleted: result.deleted, alreadyMissing: result.alreadyMissing, failed: result.failed, raced: result.raced, ordersExpired: result.ordersExpired },
+      { scanned: result.scanned, deleted: result.deleted, alreadyMissing: result.alreadyMissing, failed: result.failed, deferred: result.deferred, raced: result.raced, ordersExpired: result.ordersExpired },
       'document cleanup finished'
     );
   }
@@ -151,6 +163,10 @@ async function processDocument(
   result: CleanupResult
 ): Promise<void> {
   result.scanned += 1;
+  if (await sparedByActiveJob(prisma, document, now, opts)) {
+    result.deferred += 1;
+    return;
+  }
   let existed: boolean;
   try {
     existed = await deleteAndVerify(storage, document.objectKey);
@@ -176,6 +192,23 @@ async function processDocument(
   }
 }
 
+/**
+ * True while an agent holds a LIVE lease on a job for this document and the deadline passed less than the grace ago.
+ * Past the grace the document is deleted regardless (the agent's next call fails closed), so retention is never open-ended.
+ */
+async function sparedByActiveJob(prisma: PrismaClient, document: DueDocument, now: Date, opts: CleanupOptions): Promise<boolean> {
+  const graceMs = (opts.activeJobGraceMinutes ?? DEFAULT_ACTIVE_JOB_GRACE_MINUTES) * 60_000;
+  const deadline = document.deleteAfter ?? document.expiresAt;
+  if (graceMs <= 0 || !deadline || now.getTime() - deadline.getTime() >= graceMs) return false;
+  if (document.status !== DocumentStatus.AVAILABLE && document.status !== DocumentStatus.PRINTED_RETENTION) return false;
+  const live = await prisma.devicePrintJob.findFirst({
+    where: { documentId: document.id, status: { in: IN_FLIGHT_JOB_STATUSES }, leaseExpiresAt: { gt: now } },
+    select: { id: true }
+  });
+  if (live) opts.log?.info?.({ documentId: document.id }, 'document deletion deferred: print job in flight (capped grace)');
+  return !!live;
+}
+
 /** Deletes the object and proves it is gone. Returns whether the object existed before this call. */
 async function deleteAndVerify(storage: CleanupStorage, key: string): Promise<boolean> {
   const existed = await storage.exists(key);
@@ -193,7 +226,7 @@ async function recordFailure(prisma: PrismaClient, documentId: string, error: un
     // Status is deliberately left untouched so the document remains due.
     await prisma.document.updateMany({
       where: { id: documentId, status: { not: DocumentStatus.DELETED } },
-      data: { deletionError: code.slice(0, MAX_ERROR_LENGTH) }
+      data: { deletionError: code.slice(0, MAX_ERROR_LENGTH), deletionAttempts: { increment: 1 }, lastDeletionAttemptAt: new Date() }
     });
   } catch {
     /* recording the error is best effort */

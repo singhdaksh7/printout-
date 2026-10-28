@@ -28,6 +28,9 @@ export type HistoryEntry = { status?: string; toStatus?: string; at?: string; cr
 export type TrackedOrder = {
   orderNumber: string; shopName: string; status: OrderStatus; totalPaise: number; currency?: string; updatedAt?: string;
   // Additive / optional fields; the UI renders whatever the server provides.
+  pickup?: { address?: string | null; contact?: string | null } | null;
+  /** The shop's latest print attempt needs their attention (coarse; no printer/device detail). */
+  printIssue?: boolean;
   documentDeleteAfter?: string | null;
   documentStatus?: string | null;
   documentDeletedAt?: string | null;
