@@ -121,6 +121,9 @@ model User {
   role            Role
   /// Extra roles beyond the primary `role`. Authorization still keys on `role`; grants are additive facts (never ADMIN via any API).
   roleGrants      UserRoleGrant[]
+  /// Orders placed by this customer and documents uploaded by this customer (schema-v2 phase 3).
+  customerOrders  Order[]               @relation("CustomerOrders")
+  uploadedDocuments Document[]          @relation("DocumentUploader")
   /// Customer profile (schema-v2). Null for accounts that never set them. Not used by owner or admin flows.
   addressLine1    String?
   addressLine2    String?
@@ -331,6 +334,9 @@ model Document {
   shop                  Shop             @relation(fields: [shopId], references: [id], onDelete: Restrict)
   order                 Order?
   /// Target multi-document jobs: the PrintJob this document belongs to. Null for every existing Order-backed document.
+  /// Authenticated customer who initiated the upload (null for guest QR uploads). An order may only consume its uploader's documents.
+  uploaderUserId        String?
+  uploader              User?            @relation("DocumentUploader", fields: [uploaderUserId], references: [id], onDelete: SetNull)
   printJobId            String?
   printJob              PrintJob?        @relation(fields: [printJobId], references: [id], onDelete: SetNull)
   receipt               DeletionReceipt?
@@ -359,6 +365,7 @@ model Document {
   @@index([status, expiresAt])
   @@index([status, createdAt])
   @@index([printJobId])
+  @@index([uploaderUserId, createdAt])
 }
 
 model Order {
@@ -368,6 +375,11 @@ model Order {
   documentId                     String               @unique
   document                       Document             @relation(fields: [documentId], references: [id])
   orderNumber                    String
+  /// Authenticated marketplace customer (null for guest QR orders). Never changes after creation.
+  customerUserId                 String?
+  customer                       User?                @relation("CustomerOrders", fields: [customerUserId], references: [id], onDelete: SetNull)
+  /// Customer instructions (max 500 characters, DB CHECK). Not used for pricing.
+  note                           String?
   clientRequestId                String?
   trackingToken                  String               @unique
   customerDisplayNameOrReference String?
@@ -386,6 +398,7 @@ model Order {
   @@unique([shopId, clientRequestId])
   @@index([shopId, status, createdAt])
   @@index([shopId, createdAt])
+  @@index([customerUserId, createdAt])
 }
 
 model OrderStatusHistory {

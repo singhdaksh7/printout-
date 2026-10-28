@@ -52,6 +52,7 @@ export type ErrorCode =
   // Shared profile API / onboarding
   | 'SELF_ONBOARDING_DISABLED'
   | 'CUSTOMER_SIGNUP_DISABLED'
+  | 'SHOP_NOT_FOUND'
   | 'UNSUPPORTED_PAPER'
   | 'RATE_NOT_SET'
   | 'SHOP_NOT_ACTIVE'
