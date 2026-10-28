@@ -60,6 +60,9 @@ function toCard(s: CardShop, opts: { includeLocation?: boolean; now?: Date }) {
     /** Plain paper is the only type priced today; configured types are listed as stored. */
     paperTypes: paperTypes.length > 0 ? paperTypes : [...SUPPORTED_PAPER_TYPES],
     images: s.images.map((i) => ({ id: i.id, url: customerImagePath(s.id, i.id), sortOrder: i.sortOrder })),
+    /** cash is always possible unless the owner removed it; upiId is shown only when UPI is accepted. */
+    acceptedPaymentMethods: s.acceptedPaymentMethods.map((m) => (m === 'CASH' ? 'cash' : 'upi')),
+    upiId: s.acceptedPaymentMethods.includes('UPI') ? s.upiId : null,
     ratingAvg: null as number | null,
     ratingCount: 0
   };

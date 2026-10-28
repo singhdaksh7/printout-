@@ -6,6 +6,7 @@ import { quoteSecret } from '../config.js';
 import { subscriptionAllowsIntake } from '../domain/eligibility.js';
 import { assertAcceptingByHours } from '../domain/hours-view.js';
 import { createOrderFromQuote } from '../domain/order-create.js';
+import { apiPaymentMethod, apiPaymentStatus, dbPaymentMethod, normaliseUpiRef, paymentLocksStatusChange, submitUpiReference, UPI_REF } from '../domain/payments.js';
 import { MAX_TOTAL_PAISE, pageSelectionSchema, quote } from '../domain/pricing.js';
 import { signQuote, verifyQuote } from '../domain/quote-token.js';
 import { AppError, orderNotFound } from '../errors.js';
@@ -41,7 +42,7 @@ const customerPrintOptions = z
   .strict();
 const quoteBody = z.object({ shopId: idSchema, documentId: idSchema, printOptions: customerPrintOptions }).strict();
 const orderBody = z
-  .object({ quoteId: z.string().min(1).max(4096), clientRequestId: z.string().uuid().optional(), note: z.string().trim().max(MAX_NOTE_LENGTH).optional() })
+  .object({ quoteId: z.string().min(1).max(4096), clientRequestId: z.string().uuid().optional(), note: z.string().trim().max(MAX_NOTE_LENGTH).optional(), paymentMethod: z.enum(['cash', 'upi']) })
   .strict();
 const orderParam = z.object({ id: idSchema }).strict();
 const listQuery = z
@@ -51,9 +52,10 @@ const listQuery = z
     limit: z.coerce.number().int().min(1).max(50).default(20)
   })
   .strict();
+const paymentBody = z.object({ upiTxnRef: z.string().trim().regex(UPI_REF, 'Enter the UPI transaction reference (8-22 letters or digits)') }).strict();
 const cancelBody = z.object({ cancelReason: z.string().trim().max(200).optional() }).strict();
 
-type OrderRow = Prisma.OrderGetPayload<{ include: { shop: { select: { displayName: true } }; document: true } }>;
+type OrderRow = Prisma.OrderGetPayload<{ include: { shop: { select: { displayName: true, upiId: true } }; document: true } }>;
 
 const actorLabel = (actorUserId: string | null, actorDeviceId: string | null, customerUserId: string | null): 'customer' | 'shop' | 'system' =>
   actorUserId && actorUserId === customerUserId ? 'customer' : actorUserId || actorDeviceId ? 'shop' : 'system';
@@ -72,6 +74,13 @@ const customerOrderView = (o: OrderRow) => ({
   fileName: o.document.originalFilename,
   pages: o.document.pageCount,
   fileDeletedAt: o.document.deletedAt,
+  payment: {
+    method: apiPaymentMethod(o.paymentMethod),
+    status: apiPaymentStatus(o.paymentStatus),
+    upiTxnRef: o.upiTxnRef,
+    /** Where to pay: only for UPI orders. */
+    upiId: o.paymentMethod === 'UPI' ? o.shop.upiId : null
+  },
   note: o.note,
   createdAt: o.createdAt,
   updatedAt: o.updatedAt
@@ -179,8 +188,12 @@ export async function customerOrderRoutes(app: FastifyInstance, ctx: AppContext)
     const clientRequestId = clientRequestIdOf(request, body.clientRequestId);
     const payload = verifyQuote(quoteSecret(config), body.quoteId);
     const shop = await orderableShop(payload.shopId);
-    const order = await createOrderFromQuote(ctx, { shop, payload, clientRequestId, customerUserId: auth.userId, note: body.note ?? null });
-    const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { shop: { select: { displayName: true } }, document: true } });
+    const method = dbPaymentMethod(body.paymentMethod);
+    if (!shop.acceptedPaymentMethods.includes(method) || (method === 'UPI' && !shop.upiId)) {
+      throw new AppError(400, 'PAYMENT_METHOD_NOT_ACCEPTED', 'This shop does not accept that payment method', { field: 'paymentMethod' });
+    }
+    const order = await createOrderFromQuote(ctx, { shop, payload, clientRequestId, customerUserId: auth.userId, note: body.note ?? null, paymentMethod: method });
+    const full = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { shop: { select: { displayName: true, upiId: true } }, document: true } });
     reply.code(201);
     return json(customerOrderView(full));
   });
@@ -190,7 +203,7 @@ export async function customerOrderRoutes(app: FastifyInstance, ctx: AppContext)
     const q = listQuery.parse(request.query);
     const where: Prisma.OrderWhereInput = { customerUserId: auth.userId, ...(q.status ? { status: q.status } : {}) };
     const [rows, total] = await Promise.all([
-      prisma.order.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (q.page - 1) * q.limit, take: q.limit, include: { shop: { select: { displayName: true } }, document: true } }),
+      prisma.order.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (q.page - 1) * q.limit, take: q.limit, include: { shop: { select: { displayName: true, upiId: true } }, document: true } }),
       prisma.order.count({ where })
     ]);
     return json({ items: rows.map(customerOrderView), page: q.page, limit: q.limit, total });
@@ -200,12 +213,23 @@ export async function customerOrderRoutes(app: FastifyInstance, ctx: AppContext)
     const auth = authOf(request);
     const { id } = orderParam.parse(request.params);
     // Another customer's order and a missing order are indistinguishable (404).
-    const order = await prisma.order.findFirst({ where: { id, customerUserId: auth.userId }, include: { shop: { select: { displayName: true } }, document: true, histories: { orderBy: { createdAt: 'asc' } } } });
+    const order = await prisma.order.findFirst({ where: { id, customerUserId: auth.userId }, include: { shop: { select: { displayName: true, upiId: true } }, document: true, histories: { orderBy: { createdAt: 'asc' } } } });
     if (!order) throw orderNotFound();
     return json({
       ...customerOrderView(order),
       statusHistory: order.histories.map((h) => ({ status: h.toStatus, by: actorLabel(h.actorUserId, h.actorDeviceId, order.customerUserId), reason: h.reason, createdAt: h.createdAt }))
     });
+  });
+
+  /** UPI orders: submit the transaction reference. A claim only; the shop verifies it. */
+  app.post('/customer/orders/:id/payment', { preHandler: [guard, limits.shopMutation] }, async (request) => {
+    const auth = authOf(request);
+    const { id } = orderParam.parse(request.params);
+    const body = paymentBody.parse(request.body);
+    const updated = await submitUpiReference(prisma, { customerUserId: auth.userId, orderId: id, upiTxnRef: normaliseUpiRef(body.upiTxnRef) });
+    if (!updated) throw orderNotFound();
+    const full = await prisma.order.findUniqueOrThrow({ where: { id }, include: { shop: { select: { displayName: true, upiId: true } }, document: true } });
+    return json(customerOrderView(full));
   });
 
   /** Cancel while NEW or ACCEPTED and before any print was initiated. Compare-and-set, so a concurrent shop action wins cleanly. */
@@ -217,6 +241,7 @@ export async function customerOrderRoutes(app: FastifyInstance, ctx: AppContext)
       const order = await tx.order.findFirst({ where: { id, customerUserId: auth.userId }, include: { document: true } });
       if (!order) throw orderNotFound();
       if (order.status === OrderStatus.CANCELLED) return { order, changed: false };
+      if (paymentLocksStatusChange(order.paymentStatus)) throw new AppError(409, 'PAYMENT_RECORDED', 'A payment is recorded for this order. Contact the shop to resolve it before cancelling.');
       const cancellable = (order.status === OrderStatus.NEW || order.status === OrderStatus.ACCEPTED) && !order.document.printInitiatedAt;
       if (!cancellable) throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'This order can no longer be cancelled', { from: order.status, to: 'CANCELLED' });
       const updated = await tx.order.updateMany({ where: { id, status: order.status }, data: { status: OrderStatus.CANCELLED } });
@@ -230,7 +255,7 @@ export async function customerOrderRoutes(app: FastifyInstance, ctx: AppContext)
       events.emit(result.order.shopId, 'order.statusChanged', payload);
       events.emit(result.order.shopId, 'order.updated', payload);
     }
-    const full = await prisma.order.findUniqueOrThrow({ where: { id }, include: { shop: { select: { displayName: true } }, document: true } });
+    const full = await prisma.order.findUniqueOrThrow({ where: { id }, include: { shop: { select: { displayName: true, upiId: true } }, document: true } });
     return json({ ...customerOrderView(full), cancelReason: body.cancelReason ?? null });
   });
 }
