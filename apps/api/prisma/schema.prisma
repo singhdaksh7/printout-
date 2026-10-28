@@ -32,6 +32,21 @@ enum OrderStatus {
   COLLECTED
   CANCELLED
   EXPIRED
+  /// Shop declined a NEW order (schema-v2 D7). Set only while ORDER_REJECT_ENABLED; clients must tolerate it before the flag is turned on.
+  REJECTED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+}
+
+/// Customer-to-shop settlement state, independent of the order status. A UTR submission is only PENDING_VERIFICATION, never proof.
+enum PaymentStatus {
+  UNPAID
+  PENDING_VERIFICATION
+  PAID
+  REFUNDED
 }
 
 enum DocumentStatus {
@@ -78,6 +93,9 @@ model Shop {
   longitude          Float?
   /// Admin discovery verification. Separate from `status` (suspension) and from any subscription: an unverified ACTIVE shop works
   /// for QR/guest ordering but is hidden from customer discovery. Existing ACTIVE shops were backfilled to true.
+  /// Customer payment settings (schema-v2 phase 4). Cash is always available by default; UPI needs upiId.
+  upiId              String?
+  acceptedPaymentMethods PaymentMethod[] @default([CASH])
   isVerified         Boolean             @default(false)
   verifiedAt         DateTime?
   /// Admin user id that last verified the shop (plain id, no FK: the audit trail is AuditLog).
@@ -376,6 +394,11 @@ model Order {
   document                       Document             @relation(fields: [documentId], references: [id])
   orderNumber                    String
   /// Authenticated marketplace customer (null for guest QR orders). Never changes after creation.
+  paymentMethod                  PaymentMethod?
+  paymentStatus                  PaymentStatus        @default(UNPAID)
+  /// Customer-submitted UPI transaction reference (an unverified claim). Unique per shop.
+  upiTxnRef                      String?
+  paymentEvents                  OrderPaymentEvent[]
   customerUserId                 String?
   customer                       User?                @relation("CustomerOrders", fields: [customerUserId], references: [id], onDelete: SetNull)
   /// Customer instructions (max 500 characters, DB CHECK). Not used for pricing.
@@ -396,9 +419,32 @@ model Order {
 
   @@unique([shopId, orderNumber])
   @@unique([shopId, clientRequestId])
+  @@unique([shopId, upiTxnRef])
   @@index([shopId, status, createdAt])
   @@index([shopId, createdAt])
   @@index([customerUserId, createdAt])
+}
+
+/// Append-only payment evidence (database trigger forbids UPDATE/DELETE). Refunds are manual records by a platform admin; no money moves here.
+model OrderPaymentEvent {
+  id          String        @id @default(cuid())
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  shopId      String
+  /// UPI_SUBMITTED | UPI_VERIFIED | UPI_REJECTED | CASH_RECEIVED | REFUND_RECORDED (database CHECK)
+  event       String
+  fromStatus  PaymentStatus?
+  toStatus    PaymentStatus
+  upiTxnRef   String?
+  amountPaise Int?
+  reason      String?
+  actorUserId String?
+  /// CUSTOMER | SHOP_OWNER | PLATFORM_ADMIN (database CHECK)
+  actorRole   String
+  createdAt   DateTime      @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([shopId, createdAt])
 }
 
 model OrderStatusHistory {

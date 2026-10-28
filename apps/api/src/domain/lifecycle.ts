@@ -1,20 +1,21 @@
 import { AppError } from '../errors.js';
 
-export type OrderStatus = 'NEW' | 'ACCEPTED' | 'PRINTING' | 'PRINTED' | 'READY' | 'COLLECTED' | 'CANCELLED' | 'EXPIRED';
+export type OrderStatus = 'NEW' | 'ACCEPTED' | 'PRINTING' | 'PRINTED' | 'READY' | 'COLLECTED' | 'CANCELLED' | 'EXPIRED' | 'REJECTED';
 
 /** Full lifecycle graph. PRINTING -> PRINTED is only reachable through print-confirmation. */
 const transitions: Record<OrderStatus, OrderStatus[]> = {
-  NEW: ['ACCEPTED', 'CANCELLED', 'EXPIRED'],
+  NEW: ['ACCEPTED', 'CANCELLED', 'REJECTED', 'EXPIRED'],
   ACCEPTED: ['PRINTING', 'CANCELLED', 'EXPIRED'],
   PRINTING: ['PRINTED', 'EXPIRED'],
   PRINTED: ['READY'],
   READY: ['COLLECTED'],
   COLLECTED: [],
   CANCELLED: [],
+  REJECTED: [],
   EXPIRED: []
 };
 
-export const TERMINAL_STATUSES: OrderStatus[] = ['COLLECTED', 'CANCELLED', 'EXPIRED'];
+export const TERMINAL_STATUSES: OrderStatus[] = ['COLLECTED', 'CANCELLED', 'EXPIRED', 'REJECTED'];
 
 export const canTransition = (from: OrderStatus, to: OrderStatus): boolean => transitions[from].includes(to);
 

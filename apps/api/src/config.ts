@@ -148,6 +148,8 @@ const schema = z
     SHOP_SELF_ONBOARDING_ENABLED: bool.default('false'),
     /** Marketplace customer sign-up (schema-v2). Off by default: POST /customers/onboarding answers 403 CUSTOMER_SIGNUP_DISABLED. */
     CUSTOMER_SIGNUP_ENABLED: bool.default('false'),
+    /** Lets shops reject NEW orders (status REJECTED). Off until web/Android clients tolerate the new status (decision D7 rollout). */
+    ORDER_REJECT_ENABLED: bool.default('false'),
     /** Nearby-search backend. 'postgis' falls back to the portable haversine query when the extension is not installed. */
     GEO_BACKEND: z.enum(['haversine', 'postgis']).default('haversine'),
     /** Lifetime of the restricted onboarding grant issued to a verified phone that has no linked account. */

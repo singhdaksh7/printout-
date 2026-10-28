@@ -8,6 +8,7 @@ import { generateObjectKey } from '../storage/index.js';
 import { getLimiters } from '../rate-limits.js';
 import { assertCsrf, audit, authOf, authenticate, json, type AppContext } from './context.js';
 import { PINCODE } from './profile.js';
+import { dbPaymentMethod, UPI_ID } from '../domain/payments.js';
 
 export const MAX_SHOP_IMAGES = 8;
 export const MAX_SHOP_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -35,7 +36,10 @@ const patchBody = z
     latitude: coordinate(-90, 90).optional(),
     longitude: coordinate(-180, 180).optional(),
     /** The owner's open/closed switch (maps to Shop.acceptsOrders). */
-    isOpen: z.boolean().optional()
+    isOpen: z.boolean().optional(),
+    /** Where UPI customers pay (e.g. ramesh@upi). Null removes it (and UPI with it). */
+    upiId: z.string().trim().regex(UPI_ID, 'Enter a valid UPI ID such as name@bank').nullable().optional(),
+    acceptedPaymentMethods: z.array(z.enum(['cash', 'upi'])).min(1).max(2).optional()
   })
   .strict()
   .refine((b) => (b.latitude === undefined) === (b.longitude === undefined), { message: 'latitude and longitude must be sent together', path: ['latitude'] })
@@ -102,7 +106,15 @@ export async function shopProfileRoutes(app: FastifyInstance, ctx: AppContext): 
         const rates = await tx.pricingRule.count({ where: { shopId, active: true } });
         if (rates === 0) throw new AppError(422, 'RATE_NOT_SET', 'Set at least one price before opening the shop.');
       }
-      const { phoneNumber, isOpen, addressLine1, shopName, latitude, longitude, ...rest } = body;
+      const { phoneNumber, isOpen, addressLine1, shopName, latitude, longitude, acceptedPaymentMethods, ...rest } = body;
+      if (acceptedPaymentMethods !== undefined || body.upiId !== undefined) {
+        const current = await tx.shop.findUniqueOrThrow({ where: { id: shopId }, select: { upiId: true, acceptedPaymentMethods: true } });
+        const methods = acceptedPaymentMethods ? [...new Set(acceptedPaymentMethods.map(dbPaymentMethod))] : current.acceptedPaymentMethods;
+        const upi = body.upiId !== undefined ? body.upiId : current.upiId;
+        if (methods.includes('UPI') && !upi) throw new AppError(400, 'VALIDATION_ERROR', 'Set a UPI ID to accept UPI payments', { field: 'upiId' });
+        if (upi === null && methods.includes('UPI')) throw new AppError(400, 'VALIDATION_ERROR', 'Remove UPI from accepted methods before removing the UPI ID', { field: 'upiId' });
+        (rest as Record<string, unknown>).acceptedPaymentMethods = methods;
+      }
       await tx.shop.update({
         where: { id: shopId },
         data: {

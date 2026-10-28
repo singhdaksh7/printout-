@@ -34,7 +34,7 @@ export type RevenueQuery = z.infer<typeof revenueQuery>;
 
 export const resolveRevenueRange = (q: RevenueQuery, now = new Date()): HistoryRange => resolveHistoryRange(q, now);
 
-const NOT_COUNTED: OrderStatus[] = [OrderStatus.CANCELLED, OrderStatus.EXPIRED];
+const NOT_COUNTED: OrderStatus[] = [OrderStatus.CANCELLED, OrderStatus.EXPIRED, OrderStatus.REJECTED];
 const UNKNOWN = 'unknown';
 
 interface AggRow {
@@ -115,7 +115,8 @@ function totalsOf(rows: AggRow[]): RevenueTotals {
   for (const r of rows) {
     t.orderCount += r.orders;
     if (r.started) t.printStarted += r.orders;
-    if (r.status === OrderStatus.CANCELLED) t.cancelled += r.orders;
+    // A rejected order is reported with the cancelled ones (no new field in the existing report shape).
+    if (r.status === OrderStatus.CANCELLED || r.status === OrderStatus.REJECTED) t.cancelled += r.orders;
     if (r.status === OrderStatus.EXPIRED) t.expired += r.orders;
     if (NOT_COUNTED.includes(r.status)) {
       t.excludedQuotedValuePaise += Number(r.value);

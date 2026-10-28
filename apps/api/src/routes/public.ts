@@ -127,7 +127,7 @@ export async function publicRoutes(app: FastifyInstance, ctx: AppContext): Promi
     if (!order) throw notFound('Order not found');
     const price = order.priceSnapshot as { selectedPageCount?: number };
     // Coarse, customer-safe signal only: the LATEST print job needs the shop's attention. No printer, device or error detail.
-    const lastJob = ['CANCELLED', 'EXPIRED', 'COLLECTED'].includes(order.status)
+    const lastJob = ['CANCELLED', 'EXPIRED', 'COLLECTED', 'REJECTED'].includes(order.status)
       ? null
       : await prisma.devicePrintJob.findFirst({ where: { orderId: order.id }, orderBy: { createdAt: 'desc' }, select: { status: true } });
     const printIssue = !!lastJob && ATTENTION_JOB_STATUSES.includes(lastJob.status);

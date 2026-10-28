@@ -173,7 +173,7 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       // Pages = sum(selectedPageCount x copies) over orders that are not cancelled/expired (same rule as shop analytics).
       prisma.$queryRaw<Array<{ pages: bigint | number | null }>>`
         SELECT COALESCE(SUM(("priceSnapshot"->>'selectedPageCount')::int * COALESCE(("printOptionsSnapshot"->>'copies')::int, 1)), 0) AS pages
-        FROM "Order" WHERE status NOT IN ('CANCELLED', 'EXPIRED')`,
+        FROM "Order" WHERE status NOT IN ('CANCELLED', 'EXPIRED', 'REJECTED')`,
       prisma.shop.findMany({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 5, include: { subscription: { include: { plan: true } } } }),
       prisma.order.findMany({
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

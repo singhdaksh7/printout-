@@ -1,4 +1,4 @@
-import { DocumentStatus, OrderStatus, type Order, type Prisma, type ShopSettings } from '@prisma/client';
+import { DocumentStatus, OrderStatus, type Order, type PaymentMethod, type Prisma, type ShopSettings } from '@prisma/client';
 import { newToken } from '../auth.js';
 import { AppError } from '../errors.js';
 import { notifyShopOwners } from '../notifications/fcm.js';
@@ -21,6 +21,8 @@ export interface CreateOrderInput {
   /** Set for authenticated marketplace customers; null/absent for guest QR orders. */
   customerUserId?: string | null;
   note?: string | null;
+  /** Customer orders only; guest QR orders have none. */
+  paymentMethod?: PaymentMethod | null;
 }
 
 /**
@@ -92,6 +94,7 @@ export async function createOrderFromQuote(ctx: AppContext, input: CreateOrderIn
           customerDisplayNameOrReference: input.customerDisplayNameOrReference || null,
           customerUserId,
           note: input.note ?? null,
+          paymentMethod: input.paymentMethod ?? null,
           totalPaise: result.totalPaise,
           priceSnapshot: result as unknown as Prisma.InputJsonValue,
           printOptionsSnapshot: result.printOptions as unknown as Prisma.InputJsonValue,

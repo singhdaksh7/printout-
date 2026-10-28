@@ -48,7 +48,7 @@ describe('schema-v2 phase 3: customer orders', () => {
   }
   const quote = (auth: Auth, shopId: string, documentId: string, printOptions: unknown = OPTIONS) => req(h.app, auth, 'POST', '/customer/quotes', { shopId, documentId, printOptions });
   const order = (auth: Auth, quoteId: string, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) =>
-    h.app.inject({ method: 'POST', url: '/api/v1/customer/orders', headers: { ...headersFor(auth), ...headers }, payload: { quoteId, ...extra } });
+    h.app.inject({ method: 'POST', url: '/api/v1/customer/orders', headers: { ...headersFor(auth), ...headers }, payload: { quoteId, paymentMethod: 'cash', ...extra } });
 
   async function placed(auth: Auth, opts: { pages?: number; note?: string } = {}) {
     const docId = await uploadPdf(auth, shopA(), opts.pages);
