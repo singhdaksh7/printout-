@@ -214,6 +214,7 @@ export async function pdfFirebaseLogin(ctx: AppContext, request: FastifyRequest,
   let provider = 'google.com';
   try {
     const payload = body.idToken.split('.')[1];
+    if (!payload) throw new Error('missing token payload');
     const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { firebase?: { sign_in_provider?: unknown } };
     if (typeof decoded.firebase?.sign_in_provider === 'string') provider = decoded.firebase.sign_in_provider;
   } catch {
