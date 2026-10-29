@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { mobileAuthResponse, webAuthResponse } from '../domain/auth-response.js';
@@ -7,7 +8,8 @@ import { restrictedProfile } from '../domain/profile.js';
 import { AppError } from '../errors.js';
 import { PhoneTokenInvalidError, PhoneVerifierUnavailableError, maskEmail, type VerifiedGoogle } from '../firebase/verifier.js';
 import { clientIpKey } from '../rate-limits.js';
-import { authResponseFor, type FirebaseSignInResult } from './auth-firebase.js';
+import { fcmKey, registerToken } from '../notifications/fcm-registrations.js';
+import { authResponseFor, firebaseSignIn, type FirebaseSignInResult } from './auth-firebase.js';
 import { assertSameOrigin } from './auth-phone.js';
 import { sessionPayload } from './auth.js';
 import { actorTypeOf, audit, json, openSession, type AppContext } from './context.js';
@@ -17,6 +19,14 @@ export const GOOGLE_UNAVAILABLE_ERROR = () => new AppError(503, 'GOOGLE_LOGIN_UN
 export const GOOGLE_TOKEN_INVALID_ERROR = () => new AppError(401, 'GOOGLE_TOKEN_INVALID', 'That Google sign-in could not be confirmed. Try again.');
 
 const sessionBody = z.object({ idToken: z.string().min(20).max(4096) }).strict();
+
+const pdfLoginBody = z
+  .object({
+    idToken: z.string().min(20).max(4096),
+    fcmToken: z.object({ token: z.string().min(20).max(4096).regex(/^\S+$/), platform: z.enum(['android', 'ios', 'web']) }).strict().optional(),
+    referralCode: z.string().trim().min(1).max(80).optional()
+  })
+  .strict();
 
 /** Web Google sign-in: exchange of a verified Firebase Google ID token for the normal session cookie or restricted onboarding grant. */
 export async function authGoogleRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
@@ -185,4 +195,82 @@ export async function googleSignIn(
   const response = await authResponseFor(ctx, request, reply, user.id, 'mobile', input.deviceId);
   await audit(prisma, { shopId: user.shopId, actorUserId: user.id, actorType: actorTypeOf(user.role), action: input.auditAction, targetType: 'user', targetId: user.id, metadata: { method: 'google', client: 'mobile', outcome: 'session', email: masked } });
   return { response, principal: { userId: user.id, shopId: user.shopId } };
+}
+
+/**
+ * PDF-contract compatibility adapter for POST /auth/login.
+ *
+ * The legacy web endpoint remains email/password (including admin 2FA). This
+ * dispatcher is deliberately narrow: only the exact Firebase-shaped body is
+ * routed here. It returns the existing app-issued bearer/refresh pair rather
+ * than accepting the Firebase ID token as an API bearer credential.
+ */
+export async function pdfFirebaseLogin(ctx: AppContext, request: FastifyRequest, reply: FastifyReply, rawBody: unknown) {
+  const body = pdfLoginBody.parse(rawBody);
+  const installationId = `pdf-${randomUUID().replaceAll('-', '')}`;
+  // The PDF says Firebase ID token rather than Google-only token. The
+  // untrusted claim is used only to select the verifier; each branch then
+  // performs full Firebase Admin verification before any account lookup.
+  let provider = 'google.com';
+  try {
+    const payload = body.idToken.split('.')[1];
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { firebase?: { sign_in_provider?: unknown } };
+    if (typeof decoded.firebase?.sign_in_provider === 'string') provider = decoded.firebase.sign_in_provider;
+  } catch {
+    // The selected verifier will return the canonical invalid-token response.
+  }
+  const result = provider === 'phone' || provider === 'password'
+    ? await firebaseSignIn(ctx, request, reply, { idToken: body.idToken, client: 'mobile', deviceId: installationId, auditAction: 'auth.login', audience: 'customer' })
+    : await googleSignIn(ctx, request, reply, { idToken: body.idToken, deviceId: installationId, auditAction: 'auth.login', audience: 'customer' });
+
+  if (body.fcmToken && result.principal) {
+    try {
+      await registerToken(ctx.prisma, fcmKey(ctx.config), {
+        userId: result.principal.userId,
+        shopId: result.principal.shopId,
+        installationId,
+        platform: body.fcmToken.platform,
+        token: body.fcmToken.token
+      });
+      await audit(ctx.prisma, {
+        shopId: result.principal.shopId,
+        actorUserId: result.principal.userId,
+        actorType: 'CUSTOMER',
+        action: 'user.fcm_token.registered',
+        targetType: 'user',
+        targetId: result.principal.userId,
+        metadata: { platform: body.fcmToken.platform, via: 'pdf-auth-compat' }
+      });
+    } catch {
+      // Push registration is best effort and must not turn a successful login into a failure.
+    }
+  }
+
+  const customer = result.response.user;
+  let firebaseUid: string | null = null;
+  if (result.principal) {
+    const identity = await ctx.prisma.userGoogleIdentity.findUnique({ where: { userId: result.principal.userId }, select: { firebaseUid: true } });
+    firebaseUid = identity?.firebaseUid ?? null;
+  }
+
+  return {
+    ...result.response,
+    isNewUser: result.principal === null,
+    installationId,
+    user: {
+      id: customer.id,
+      firebaseUid,
+      roles: ['customer'],
+      name: customer.name,
+      phoneNumber: customer.phoneNumber,
+      isActive: customer.id !== null
+    },
+    compatibility: {
+      contract: 'pdf-v1',
+      firebaseIdTokenAcceptedOnlyForExchange: true,
+      bearerToken: 'application-access-token',
+      referralCodeAccepted: body.referralCode !== undefined,
+      referralCodeApplied: false
+    }
+  };
 }
