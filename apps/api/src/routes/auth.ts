@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { pdfFirebaseLogin } from './auth-google.js';
 import { burnPasswordCheck, csrfToken, newToken, tokenHash, verifyPassword } from '../auth.js';
 import { revokeFamily } from '../domain/credentials.js';
 import { clearGrantCookie, resolveGrant } from '../domain/onboarding-grant.js';
@@ -71,6 +72,11 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
     '/auth/login',
     { config: { rateLimit: { max: config.LOGIN_RATE_LIMIT_MAX, timeWindow: '1 minute' } } },
     async (request, reply) => {
+      // PDF-compatible Firebase exchange. Keep the legacy email/password
+      // contract and admin 2FA path unchanged for every other request shape.
+      if (request.body && typeof request.body === 'object' && ('idToken' in request.body || 'fcmToken' in request.body)) {
+        return json(await pdfFirebaseLogin(ctx, request, reply, request.body));
+      }
       const body = loginBody.parse(request.body);
       const throttleKey = `${request.ip}|${body.email}`;
       // Account-wide failure budget, independent of the client IP, so rotating (or spoofing) IPs cannot buy unlimited guesses.

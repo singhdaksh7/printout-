@@ -47,6 +47,31 @@ describe('schema-v2 phase 1: identity and multi-shop', () => {
     return { accessToken: data(created).accessToken as string, refreshToken: data(created).refreshToken as string, body: data(created) };
   }
 
+  it('accepts the PDF Firebase login shape at /auth/login without weakening legacy login', async () => {
+    await newGoogleCustomer('pdf-login@cust.test', 'pdf-login-uid');
+    const pdf = await h.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: {
+        idToken: gt('pdf-login@cust.test', 'pdf-login-uid'),
+        fcmToken: { token: 'pdf-fcm-token-01234567890123456789', platform: 'android' },
+        referralCode: 'WELCOME'
+      }
+    });
+    expect(pdf.statusCode, pdf.body).toBe(200);
+    expect(pdf.json().data).toMatchObject({
+      isNewUser: false,
+      user: { id: expect.any(String), firebaseUid: 'pdf-login-uid', roles: ['customer'], isActive: true },
+      tokenType: 'Bearer',
+      compatibility: { contract: 'pdf-v1', firebaseIdTokenAcceptedOnlyForExchange: true }
+    });
+    expect(pdf.json().data.accessToken).toEqual(expect.any(String));
+
+    const invalid = await h.app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { idToken: 'not-a-valid-firebase-token', fcmToken: { token: 'pdf-fcm-token-01234567890123456789', platform: 'android' } } });
+    expect(invalid.statusCode).toBe(401);
+    expect(invalid.json().error.code).toBe('GOOGLE_TOKEN_INVALID');
+  });
+
   describe('database invariants (migration 20261028100100)', () => {
     const mk = (over: Record<string, unknown>) => h.prisma.user.create({ data: { displayName: 'x', passwordHash: 'h', role: 'CUSTOMER', ...over } as never });
     it('allows many customers without an email (unique ignores NULL)', async () => {
