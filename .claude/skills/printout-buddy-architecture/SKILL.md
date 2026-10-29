@@ -17,6 +17,8 @@ Use this with `printout-buddy` (UI library, branch/CI workflow, as-built status)
 | BLOCKED | Depends on an unresolved decision or permission | no, do not build |
 | SUPERSEDED | Replaced by a later decision | no, ignore |
 
+**Deployment status:** phases 1-5 are CURRENT_PRODUCTION since 2026-10-28 (see `docs/schema-v2/IMPLEMENTATION_PROGRESS.md`, deployment records) with `CUSTOMER_SIGNUP_ENABLED`, `ORDER_REJECT_ENABLED` and the web `VITE_MARKETPLACE` flag OFF; the new routes exist but customers cannot register until the owner turns the flag on. OpenAPI: `docs/schema-v2/openapi-schema-v2.yaml`. Never `git add -A` in this repo (untracked prod backups sit in the root).
+
 **Owner approval (2026-10-28):** D1-D8, AD-3, AD-6, admin-only manual refunds and the 50 MiB upload cap are APPROVED_TARGET and final; see `docs/schema-v2/02-architecture-decisions.md`. APPROVED_TARGET still means *not yet existing*: only what `docs/schema-v2/IMPLEMENTATION_PROGRESS.md` marks MERGED/DEPLOYED (with evidence) is CURRENT_PRODUCTION. The approval does not authorize destructive or irreversible data operations, weakening authorization, retention expansion or platform billing.
 
 Anything in the PDF that is not in code is **not an existing API**. The PDF's endpoints, error shape, token model and sample domain are specifications, not contracts.

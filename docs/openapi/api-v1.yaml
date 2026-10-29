@@ -1,0 +1,911 @@
+openapi: 3.0.3
+info:
+  title: Printout API (current, verified)
+  version: schema-v2-integrated
+  description: |
+    Canonical API v1 contract for routes in apps/api. Field-level request and response details are in docs/API_CONTRACT.md.
+    Schema V2 customer additions are documented in docs/schema-v2/openapi-schema-v2.yaml. Firebase ID tokens are exchanged
+    only at authentication endpoints; ordinary calls use the returned bearer token.
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      summary: "Liveness"
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /ready:
+    get:
+      summary: "Readiness (database)"
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /public/shops/{slug}:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Public shop profile and rates; includes server-computed availability (open/closed/unknown, next opening, weekly hours)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /public/shops/{slug}/uploads/initiate:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Start an upload (signed content URL)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /public/uploads/{uploadId}/content:
+    parameters:
+      - { name: uploadId, in: path, required: true, schema: { type: string } }
+    put:
+      summary: "Upload bytes (token query parameter)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /public/shops/{slug}/uploads/{uploadId}/complete:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+      - { name: uploadId, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Finish upload; server validates type and counts pages"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /public/shops/{slug}/quotes:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Server-priced quote"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /public/shops/{slug}/orders:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Create order (clientRequestId idempotent)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /public/orders/{token}:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Order tracking by token"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/login:
+    post:
+      summary: "Password/admin login plus secure PDF Firebase exchange adapter"
+      description: "Email/password remains the legacy owner/admin contract and preserves admin 2FA. A body containing idToken is dispatched to the PDF-compatible customer Firebase exchange. The Firebase ID token is verified server-side and is never accepted as the application bearer token. New customers remain in the existing gated onboarding state until customer signup is enabled and onboarding is completed."
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [email, password]
+                  properties:
+                    email: { type: string, format: email }
+                    password: { type: string, minLength: 1, maxLength: 256 }
+                - type: object
+                  additionalProperties: false
+                  required: [idToken]
+                  properties:
+                    idToken: { type: string, minLength: 20, maxLength: 4096 }
+                    fcmToken:
+                      type: object
+                      additionalProperties: false
+                      required: [token, platform]
+                      properties:
+                        token: { type: string, minLength: 20, maxLength: 4096 }
+                        platform: { type: string, enum: [android, ios, web] }
+                    referralCode: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        '200': { description: 'Success: password session/2FA challenge or PDF adapter bearer response', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope; Firebase-shaped requests use GOOGLE_TOKEN_INVALID, GOOGLE_LOGIN_UNAVAILABLE or RATE_LIMITED as applicable', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/login/2fa:
+    post:
+      summary: "Second step of an admin sign-in (needs the printout_2fa pending-challenge cookie from /auth/login); issues the session only after a valid, unused TOTP or recovery code"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [method, code], properties: { method: { type: string, enum: [totp, recovery] }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 401 INVALID_TWO_FACTOR_CODE, 401 TWO_FACTOR_CHALLENGE_INVALID, 429 RATE_LIMITED, 503 TWO_FACTOR_UNAVAILABLE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/login/2fa/cancel:
+    post:
+      summary: "Abandon the pending second-factor sign-in (204)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/logout:
+    post:
+      summary: "Logout"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/session:
+    get:
+      summary: "Current session"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders:
+    get:
+      summary: "List orders (cursor)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/history:
+    get:
+      summary: "Order history (IST day range, search, cursor; metadata only)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (CSV body for export.csv)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/history/summary:
+    get:
+      summary: "Order history summary counts"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (CSV body for export.csv)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/history/export.csv:
+    get:
+      summary: "Order history CSV export (metadata only, formula-safe, rate-limited)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (CSV body for export.csv)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/analytics/revenue:
+    get:
+      summary: "Order value report: ESTIMATED order value from stored quotes (not payments); IST day range, comparison, daily series, breakdowns"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/analytics/revenue/export.csv:
+    get:
+      summary: "Order value CSV export (quoted values only, formula-safe, rate-limited, max 5000 rows)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'CSV body', content: { text/csv: { schema: { type: string } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Order detail"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/{id}/transitions:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Cancel an order (only CANCELLED accepted)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/{id}/print-now:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Start print and retention; returns document access"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/{id}/print-confirmation:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Legacy print confirmation"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/{id}/document-access:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Short-lived inline document URL"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/orders/{id}/document-download:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Short-lived download URL (Save file)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/settings:
+    get:
+      summary: "Shop settings"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    put:
+      summary: "Update settings (allow-listed fields)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/hours:
+    get:
+      summary: "Operating hours, closures, policy and current availability"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    put:
+      summary: "Update timezone, weekly hours (null removes), special closures, after-hours policy"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/hours/temporary-closure:
+    put:
+      summary: "Close the shop now (reason, optional until)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "Clear temporary closure"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/hours/reopen:
+    post:
+      summary: "Emergency reopen for 5..1440 minutes"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "End emergency reopen"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope (SHOP_CLOSED 409 on public upload/quote/order when closed and policy is BLOCK)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/pricing-rules:
+    get:
+      summary: "List pricing rules"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      summary: "Create rule"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/pricing-rules/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    put:
+      summary: "Update rule"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "Delete rule"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/qr:
+    get:
+      summary: "Public URL for the counter QR"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/analytics:
+    get:
+      summary: "Counts for a range"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/events:
+    get:
+      summary: "Server-Sent Events for the shop (also streams notification.created)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/notifications:
+    get:
+      summary: "Durable shop notifications, newest first (cursor / after / limit / unreadOnly)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: { items, nextCursor, hasMore, latestCursor, unreadCount } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/notifications/read-all:
+    post:
+      summary: "Mark every notification of the shop as read"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: { updated, unreadCount } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/notifications/{id}/read:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Mark one notification as read (404 for another shop's id)"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: { notification, unreadCount } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/devices:
+    get:
+      summary: "List paired devices"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/devices/pairing-codes:
+    post:
+      summary: "Create one-time pairing code"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/devices/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      summary: "Rename device"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/devices/{id}/revoke:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Disconnect device"
+      security:
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/pair:
+    post:
+      summary: "Exchange pairing code for a device credential"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/me:
+    get:
+      summary: "Device identity"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/heartbeat:
+    post:
+      summary: "Presence heartbeat"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/push-token:
+    put:
+      summary: "Register push token"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/orders:
+    get:
+      summary: "List orders for the device shop"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/orders/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Order detail"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/orders/{id}/print:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Print"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/orders/{id}/reprint:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Reprint"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /device/orders/{id}/download:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Document download URL"
+      security:
+        - deviceBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/dashboard:
+    get:
+      summary: "Platform counts"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/orders:
+    get:
+      summary: "Order metadata (no documents)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/shops:
+    get:
+      summary: "List shops"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      summary: "Create shop with owner"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/shops/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Shop detail"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    put:
+      summary: "Update shop / suspend"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/plans:
+    get:
+      summary: "List plans"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      summary: "Create plan"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/plans/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    put:
+      summary: "Update plan"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/subscriptions:
+    get:
+      summary: "List subscriptions"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/subscriptions/{shopId}:
+    parameters:
+      - { name: shopId, in: path, required: true, schema: { type: string } }
+    put:
+      summary: "Set subscription (manual)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account:
+    get:
+      summary: "Signed-in admin's own profile and session metadata (no secrets)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: { id, email, displayName, role, createdAt, session } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/email:
+    post:
+      summary: "Change own email (requires currentPassword; ends all of the admin's sessions)"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, newEmail], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, newEmail: { type: string, format: email, maxLength: 254 } } }
+      responses:
+        '200': { description: 'Success: { data: { email, signedOut: true } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 400 VALIDATION_ERROR, 403 INVALID_CURRENT_PASSWORD, 409 EMAIL_UNAVAILABLE, 409 CONFLICT, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/password:
+    post:
+      summary: "Change own password (requires currentPassword; ends all of the admin's sessions)"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, newPassword: { type: string, minLength: 12, maxLength: 256 } } }
+      responses:
+        '200': { description: 'Success: { data: { signedOut: true } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 400 VALIDATION_ERROR, 403 INVALID_CURRENT_PASSWORD, 409 CONFLICT, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa:
+    get:
+      summary: "Two-step verification status"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/enroll:
+    post:
+      summary: "Start enrollment: password re-auth, returns PENDING secret as otpauth URI + manual key (shown once)"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 409 TWO_FACTOR_ALREADY_ENABLED, 503 TWO_FACTOR_UNAVAILABLE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/enroll/verify:
+    post:
+      summary: "Confirm enrollment with a TOTP code; enables 2FA, returns recovery codes once, ends other sessions"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [code], properties: { code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_TWO_FACTOR_CODE, 409 NO_PENDING_ENROLLMENT', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/recovery-codes/acknowledge:
+    post:
+      summary: "Record that the recovery codes were saved (204)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/recovery-codes:
+    post:
+      summary: "Regenerate recovery codes (password + authenticator code); old codes stop working"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, code], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 403 INVALID_TWO_FACTOR_CODE, 429 RATE_LIMITED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/account/2fa/disable:
+    post:
+      summary: "Disable 2FA (password + authenticator or recovery code); ends other sessions"
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [currentPassword, code], properties: { currentPassword: { type: string, minLength: 1, maxLength: 256 }, method: { type: string, enum: [totp, recovery], default: totp }, code: { type: string, minLength: 1, maxLength: 64 } } }
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope: 403 INVALID_CURRENT_PASSWORD, 403 INVALID_TWO_FACTOR_CODE, 409 TWO_FACTOR_NOT_ENABLED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /admin/audit-logs:
+    get:
+      summary: "Audit entries (cursor)"
+      security:
+        - adminSession: []
+      responses:
+        '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/phone/config:
+    get:
+      summary: "Phone sign-in availability and allowed calling codes (public, no secrets)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/phone/session:
+    post:
+      summary: "Web phone sign-in: Firebase ID token for the session cookie (shop owners; strict Origin check)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/google/session:
+    post:
+      summary: "Web Google sign-in: Firebase ID token for the session cookie (shop owners; strict Origin check)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth:
+    post:
+      summary: "Mobile sign-in. loginMethod otp|google|email. Flat response: accessToken, refreshToken, tokenType, expiresIn, refreshTokenExpiresIn, isShopRegisteredAtLeastOne, showQr, nextStep, user, shops, shop, onboardingAvailable. Unlinked verified identity gets a restricted pair (user.id null, nextStep create_shop). Suspended: 403 ACCOUNT_BLOCKED, no tokens. Admins refused."
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/refresh:
+    post:
+      summary: "Rotate the token pair (single-use refresh token; reuse after the grace window revokes the family; 409 REFRESH_CONFLICT within the grace window; 401 REFRESH_TOKEN_INVALID/EXPIRED; malformed or over-length tokens also answer 401 REFRESH_TOKEN_INVALID; bad deviceId answers 400 VALIDATION_ERROR)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/logout-all:
+    post:
+      summary: "End every session and refresh family of the caller (all devices); push registrations removed unless keepPush"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '204': { description: 'No content' }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/firebase/exchange:
+    post:
+      summary: "OTP exchange. client=web: session cookie + csrfToken (web shape). client=mobile (needs deviceId): same flat shape as POST /auth. Restricted principal for an unlinked verified phone"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me:
+    get:
+      summary: "Own profile: user, shops (0 or 1), shop, nextStep, isShopRegisteredAtLeastOne, showQr. Accepts a restricted token. Never another user"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+        - restrictedBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    patch:
+      summary: "Change own name; email only for owners with a password and currentPassword"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities:
+    get:
+      summary: "Linked sign-in methods (masked): password.set, phone, google, googleAvailable"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities/google:
+    post:
+      summary: "Link or replace Google (fresh Google Firebase token plus reauth: exactly one of currentPassword or firebaseIdToken); ends other sessions"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/identities/google/unlink:
+    post:
+      summary: "Unlink Google (reauth required); 409 LAST_SIGNIN_METHOD if it is the only method"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/me:
+    get:
+      summary: "Own shop(s): shops (0 or 1 element), shop, nextStep, isShopRegisteredAtLeastOne, showQr. Unmodelled fields (location, payment, rating, images, referral, isVerified) are null"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    patch:
+      summary: "Change shopName, address, pincode (strict body; status, plan, slug, prices rejected)"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/me/qr:
+    get:
+      summary: "QR readiness {ready, publicUrl, qrCodeUrl, reason}. Virtual QR (origin + /p/slug), never stored. Optional ?shopId must be the caller's own shop"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shops/onboarding:
+    post:
+      summary: "Register a new PILOT shop for a verified identity with no account (restricted token). 201 created / 200 idempotent repeat. 403 SELF_ONBOARDING_DISABLED unless SHOP_SELF_ONBOARDING_ENABLED. No plan, acceptsOrders=false, admin activation required"
+      security:
+        - restrictedBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /users/me/fcm-token:
+    put:
+      summary: "Register, refresh or rotate this installation's FCM token (idempotent; token ownership moves to the caller)"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "Revoke by installationId or token; always 204"
+      security:
+        - mobileBearer: []
+        - ownerSession: []
+      responses:
+        '204': { description: 'No content' }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/account/phone:
+    get:
+      summary: "Linked phone status (masked)"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    post:
+      summary: "Link or replace the phone: idToken plus currentPassword or reauthIdToken; ends other sessions"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /shop/account/phone/unlink:
+    post:
+      summary: "Unlink the phone (currentPassword or reauthIdToken); 409 LAST_SIGNIN_METHOD"
+      security:
+        - ownerSession: []
+        - mobileBearer: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+components:
+  securitySchemes:
+    ownerSession: { type: apiKey, in: cookie, name: printout_session, description: "Shop owner session plus CSRF token header on mutations" }
+    adminSession: { type: apiKey, in: cookie, name: printout_session, description: "Platform admin session plus CSRF token header on mutations" }
+    deviceBearer: { type: http, scheme: bearer }
+    mobileBearer: { type: http, scheme: bearer, description: "Opaque access token from POST /auth (mobile, 15 min by default). No CSRF header is needed for bearer calls. Renew with POST /auth/refresh." }
+    restrictedBearer: { type: http, scheme: bearer, description: "Restricted access token of a verified identity with no account yet; accepted only by GET /users/me, POST /shops/onboarding and POST /auth/logout." }
+  schemas:
+    DataEnvelope: { type: object, required: [data], properties: { data: {} } }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties: { code: { type: string }, message: { type: string }, requestId: { type: string }, details: {} }
