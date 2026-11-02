@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { PhoneAuthError, googleAuthErrorMessage, initFirebaseAuth, phoneAuthConfigured, signInWithGoogleWeb } from '../lib/phone-auth';
-import { Banner, BrandLogo, Button, Card, TextField } from '../ui';
+import { Banner, BrandLogo, Button, Card } from '../ui';
 import { useAuth } from './auth';
+import { AdminSessionNotice } from './AdminSessionNotice';
 import { safeShopRedirect } from './safe-redirect';
 import './phone.css';
 
@@ -30,23 +31,13 @@ export function GoogleIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-function loginErrorMessage(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.status === 429 || e.code === 'RATE_LIMITED') return 'Too many sign-in attempts. Please wait a minute and try again.';
-    if (e.code === 'NETWORK_ERROR') return 'Cannot reach the server. Check your connection and try again.';
-    if (e.code === 'SHOP_UNAVAILABLE' || e.code === 'SHOP_SUSPENDED') return 'This shop account is suspended. Please contact support.';
-    if (e.status >= 500) return 'The server had a problem. Please try again shortly.';
-  }
-  return 'Incorrect email or password.'; // deliberately generic
-}
-
 export function googleLoginError(e: unknown): string {
   if (e instanceof ApiError) {
     switch (e.code) {
-      case 'GOOGLE_NOT_LINKED': return "This Google account isn't linked to a shop account. Sign in with email and password, then link it in Settings.";
+      case 'GOOGLE_NOT_LINKED': return "This Google account isn't linked to a shop account yet. Continue with Google again to set up your shop, or contact support if you expected an existing shop.";
       case 'GOOGLE_TOKEN_INVALID': return 'We could not verify that Google account. Try again.';
       case 'SHOP_SUSPENDED': case 'SHOP_UNAVAILABLE': return 'This shop account is suspended. Please contact support.';
-      case 'GOOGLE_LOGIN_UNAVAILABLE': return 'Google sign-in is unavailable right now. Use another sign-in method.';
+      case 'GOOGLE_LOGIN_UNAVAILABLE': return 'Google sign-in is unavailable right now. Please try again shortly.';
       case 'RATE_LIMITED': return 'Too many sign-in attempts. Please wait a minute and try again.';
       case 'NETWORK_ERROR': return 'Cannot reach the server. Check your connection and try again.';
     }
@@ -54,7 +45,7 @@ export function googleLoginError(e: unknown): string {
     if (e.status >= 500) return 'The server had a problem. Please try again shortly.';
   }
   if (e instanceof PhoneAuthError) return googleAuthErrorMessage(e);
-  return 'Could not sign in with Google. Try again or use another method.';
+  return 'Could not sign in with Google. Please try again.';
 }
 
 export type Classified = { message: string; restart: boolean };
@@ -78,42 +69,23 @@ export function phoneLoginError(e: unknown): Classified {
 }
 
 export default function LoginPage() {
-  const { state, login, googleLogin } = useAuth();
+  const { state, googleLogin } = useAuth();
   const loc = useLocation();
   const navigate = useNavigate();
   const from = (loc.state as { from?: string; expired?: boolean } | null)?.from;
   const expired = !!(loc.state as { expired?: boolean } | null)?.expired;
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const configured = phoneAuthConfigured();
 
   useEffect(() => {
-    if (phoneAuthConfigured()) {
-      initFirebaseAuth().catch(() => undefined);
-    }
-  }, []);
+    if (configured) initFirebaseAuth().catch(() => undefined);
+  }, [configured]);
 
+  // This page never redirects into /admin: administrators sign in only at their own explicit route.
   if (state.status === 'authed' && !busy) {
-    if (state.session.user.role === 'PLATFORM_ADMIN') return <Navigate to="/admin" replace />;
+    if (state.session.user.role === 'PLATFORM_ADMIN') return <AdminSessionNotice />;
     return <Navigate to={safeShopRedirect(from)} replace />;
-  }
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const s = await login(email.trim(), password);
-      // An admin who signed in on the shop page with two-factor on: the code step lives on the admin sign-in screen.
-      if ('twoFactorRequired' in s) { navigate('/admin/login', { replace: true, state: { resumeTwoFactor: true } }); return; }
-      if (s.user.role === 'PLATFORM_ADMIN') navigate('/admin', { replace: true });
-      else navigate(safeShopRedirect(from), { replace: true });
-    } catch (err) {
-      setError(loginErrorMessage(err));
-      setBusy(false);
-    }
   }
 
   async function onGoogleClick() {
@@ -127,7 +99,8 @@ export default function LoginPage() {
         navigate('/shop/register', { replace: true });
         return;
       }
-      navigate(s.user.role === 'PLATFORM_ADMIN' ? '/admin' : safeShopRedirect(from), { replace: true });
+      if (s.user.role === 'PLATFORM_ADMIN') { setBusy(false); return; } // renders the notice above; no redirect
+      navigate(safeShopRedirect(from), { replace: true });
     } catch (err) {
       setError(googleLoginError(err));
       setBusy(false);
@@ -138,55 +111,28 @@ export default function LoginPage() {
     <div className="pb-theme pb-login">
       <div className="pb-login__brand"><BrandLogo /></div>
       <Card as="section" className="pb-login__card">
-        <form onSubmit={submit} aria-labelledby="login-title" noValidate className="pb-login__form">
-          <div>
-            <h1 id="login-title" className="pb-h1">Shop sign in</h1>
-            <p className="pb-muted pb-pagehead__sub">Printout for print shops</p>
-            <div
-              data-testid="free-platform-notice"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.375rem',
-                marginTop: '0.375rem',
-                padding: '0.25rem 0.625rem',
-                background: 'rgba(34, 197, 94, 0.1)',
-                color: '#15803d',
-                borderRadius: '9999px',
-                fontSize: '0.75rem',
-                fontWeight: 600
-              }}
-            >
-              Printout Buddy is currently free to use.
-            </div>
-          </div>
+        <div className="pb-login__form">
+          <h1 id="login-title" className="pb-h1">Shop sign in</h1>
           {expired && !error && <Banner tone="warn">Session expired — sign in again.</Banner>}
           {error && <Banner tone="err">{error}</Banner>}
-          {phoneAuthConfigured() && (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                fullWidth
-                className="pb-login__google-btn"
-                onClick={onGoogleClick}
-                disabled={busy}
-                data-testid="google-login-btn"
-              >
-                <GoogleIcon />
-                <span>Continue with Google</span>
-              </Button>
-              <div className="pb-login__divider" role="separator">
-                <span>or</span>
-              </div>
-            </>
-          )}
-          <TextField label="Email" type="email" autoComplete="username" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
-          <TextField label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-          <Button type="submit" variant="primary" fullWidth disabled={busy || !email || !password} loading={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
+          {!configured && <Banner tone="err">Google sign-in is not available right now. Please try again later.</Banner>}
+          <Button
+            type="button"
+            variant="outline"
+            fullWidth
+            className="pb-login__google-btn"
+            onClick={onGoogleClick}
+            disabled={busy || !configured}
+            loading={busy}
+            data-testid="google-login-btn"
+          >
+            <GoogleIcon />
+            <span>Continue with Google</span>
           </Button>
-        </form>
+          <p className="pb-login__recover">
+            <Link to="/shop/recover" data-testid="recover-link">Existing account without Google? Recover access</Link>
+          </p>
+        </div>
       </Card>
     </div>
   );

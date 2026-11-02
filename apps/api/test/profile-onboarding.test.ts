@@ -5,6 +5,8 @@ import {
   userByEmail, userOf, type Auth, type Harness
 } from './helpers/profile-harness.js';
 
+const DETAILS_PATCH = { phoneNumber: '+919876543210', city: 'Kolkata', state: 'West Bengal' };
+
 describe('POST /shops/onboarding (restricted self-onboarding)', () => {
   let h: Harness;
   beforeAll(async () => {
@@ -314,6 +316,75 @@ describe('POST /shops/onboarding (restricted self-onboarding)', () => {
       const res = await onboard(grant);
       expect(res.statusCode, res.body).toBeGreaterThanOrEqual(400);
       expect(await counts()).toEqual(before);
+    });
+  });
+
+  describe('shop details and setup status', () => {
+    const DETAILS = { phoneNumber: '+919876543210', city: 'Kolkata', state: 'West Bengal' };
+
+    it('persists phone, city and state atomically with the shop', async () => {
+      const res = await onboard(await restricted(), { ...ONBOARDING_BODY, ...DETAILS });
+      expect([200, 201], res.body).toContain(res.statusCode);
+      const shop = await h.prisma.shop.findFirstOrThrow({ where: { displayName: ONBOARDING_BODY.shopName }, include: { settings: true } });
+      expect(shop).toMatchObject({ city: 'Kolkata', state: 'West Bengal', pincode: ONBOARDING_BODY.pincode });
+      expect(shop.settings?.publicContact).toBe(DETAILS.phoneNumber);
+    });
+
+    it.each([
+      ['bad phone', { phoneNumber: '98765' }],
+      ['empty city', { city: '  ' }],
+      ['over-long state', { state: 'S'.repeat(101) }]
+    ])('rejects %s with 400 and creates nothing', async (_n, extra) => {
+      const grant = await restricted();
+      const before = await counts();
+      const res = await onboard(grant, { ...ONBOARDING_BODY, ...extra });
+      expect(res.statusCode, res.body).toBe(400);
+      expect(await counts()).toEqual(before);
+    });
+
+    it('a retry with the details never creates a second shop', async () => {
+      const grant = await restricted();
+      const body = { ...ONBOARDING_BODY, ...DETAILS };
+      await onboard(grant, body);
+      const before = await counts();
+      const again = await onboard(grant, body);
+      expect([200, 201, 401, 403, 409]).toContain(again.statusCode);
+      expect(await counts()).toEqual(before);
+    });
+
+    it('GET /shop/setup-status reports only what is really saved and points at the first incomplete section', async () => {
+      const created = await onboard(await restricted(), ONBOARDING_BODY);
+      const owner = sessionAuthFrom(created);
+      const first = dataOf(await req(h.app, owner, 'GET', '/shop/setup-status'));
+      expect(first.sections.profile).toMatchObject({ complete: false });
+      expect(first.sections.profile.missing).toEqual(expect.arrayContaining(['phoneNumber', 'city', 'state']));
+      expect(first.sections.rates).toMatchObject({ complete: false, activeCount: 0 });
+      expect(first.sections.paper.complete).toBe(false);
+      expect(first.sections.payments.complete).toBe(false);
+      expect(first.nextStep).toBe('profile');
+
+      const shopId = (await h.prisma.shop.findFirstOrThrow({ where: { displayName: ONBOARDING_BODY.shopName } })).id;
+      expect((await req(h.app, owner, 'PATCH', `/shops/${shopId}`, DETAILS_PATCH)).statusCode).toBe(200);
+      const second = dataOf(await req(h.app, owner, 'GET', '/shop/setup-status'));
+      expect(second.sections.profile.complete).toBe(true);
+      expect(second.nextStep).toBe('rates');
+
+      expect((await req(h.app, owner, 'POST', '/shop/pricing-rules', { colourMode: 'bw', sides: 'duplex', pricePerSheetPaise: 150 })).statusCode).toBe(201);
+      expect(dataOf(await req(h.app, owner, 'GET', '/shop/setup-status')).nextStep).toBe('paper');
+      expect((await req(h.app, owner, 'PUT', `/shops/${shopId}/paper-options`, { paperSizes: ['A4'], paperTypes: ['normal'] })).statusCode).toBe(200);
+      expect(dataOf(await req(h.app, owner, 'GET', '/shop/setup-status')).nextStep).toBe('payments');
+      expect((await req(h.app, owner, 'PATCH', `/shops/${shopId}`, { acceptedPaymentMethods: ['cash'] })).statusCode).toBe(200);
+      const done = dataOf(await req(h.app, owner, 'GET', '/shop/setup-status'));
+      expect(done).toMatchObject({ complete: true, nextStep: null });
+    });
+
+    it('UPI without a UPI ID is refused by the profile route', async () => {
+      const owner = sessionAuthFrom(await onboard(await restricted(), ONBOARDING_BODY));
+      const shopId = (await h.prisma.shop.findFirstOrThrow({ where: { displayName: ONBOARDING_BODY.shopName } })).id;
+      const bad = await req(h.app, owner, 'PATCH', `/shops/${shopId}`, { acceptedPaymentMethods: ['cash', 'upi'] });
+      expect(bad.statusCode).toBe(400);
+      const ok = await req(h.app, owner, 'PATCH', `/shops/${shopId}`, { acceptedPaymentMethods: ['cash', 'upi'], upiId: 'asha@okbank' });
+      expect(ok.statusCode).toBe(200);
     });
   });
 

@@ -237,7 +237,7 @@ paths:
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/settings:
     get:
-      summary: "Shop settings"
+      summary: "Shop settings (includes read-only admin-controlled shopStatus and isVerified)"
       security:
         - ownerSession: []
       responses:
@@ -710,6 +710,13 @@ paths:
   /auth/google/session:
     post:
       summary: "Web Google sign-in: Firebase ID token for the session cookie (shop owners; strict Origin check)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/google/recover:
+    post:
+      summary: "One-time legacy owner recovery (web): body {email, password, idToken}. Proves the existing email+password AND a verified Firebase Google identity, links the uid to the SHOP_OWNER, ends all other sessions, returns the normal cookie session. Strict Origin check. 401 INVALID_CREDENTIALS (generic: wrong password/admin/customer/shop-less), 409 GOOGLE_IDENTITY_UNAVAILABLE | GOOGLE_ALREADY_LINKED, 401 GOOGLE_TOKEN_INVALID, 429, 503 GOOGLE_LOGIN_UNAVAILABLE"
       security: []
       responses:
         '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
