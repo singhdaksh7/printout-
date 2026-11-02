@@ -4,8 +4,9 @@ import { listOrders } from '../lib/shop-api';
 import { useAuth } from './auth';
 import { AppShell, Banner, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, type ChipTone, type NavItem } from '../ui';
 import { ShopErrorBoundary, UnsavedContext, UNSAVED_PROMPT } from './components';
-import { useAutoRefresh, useDebounced } from './hooks';
-import { useRealtime, useRealtimeRefresh } from './realtime';
+import { ShopStatusBar } from './ShopStatusBar';
+import { useRealtime } from './realtime';
+import { ORDERS_REFRESHED } from './QueuePage';
 import { NotificationBell } from './NotificationBell';
 import { NotificationsProvider } from './notifications';
 
@@ -24,8 +25,8 @@ const NAV_ITEMS: NavItem[] = [
 /** Phone tab bar: five destinations stay visible; the rest (QR & standee, Settings) live under "More", so nothing is hidden or reachable only by a side link. */
 const PHONE_PATHS = ['/shop', '/shop/history', '/shop/analytics', '/shop/devices', '/shop/pricing'];
 
+/** State of the notification stream only (new-order alerts). The order list never uses it; it updates on Refresh. */
 const CONN_LABEL = { live: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', offline: 'Offline' } as const;
-// Never red: a lost live connection is recoverable and the queue keeps working (it refreshes on focus and every 45s).
 const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'warn' };
 
 function useNewOrderBadge() {
@@ -34,9 +35,10 @@ function useNewOrderBadge() {
     listOrders({ status: 'NEW' }).then((p) => setCount(p.items.length)).catch(() => { /* badge is best effort */ });
   }, []);
   useEffect(load, [load]);
-  const debounced = useDebounced(load, 400);
-  useRealtimeRefresh(debounced);
-  useAutoRefresh(load, 60_000);
+  useEffect(() => {
+    window.addEventListener(ORDERS_REFRESHED, load);
+    return () => window.removeEventListener(ORDERS_REFRESHED, load);
+  }, [load]);
   useEffect(() => {
     document.title = count > 0 ? `(${count}) Printout` : 'Printout';
     return () => { document.title = 'Printout'; };
@@ -82,7 +84,7 @@ export default function Shell() {
     <UnsavedContext.Provider value={guard}>
       <NotificationsProvider>
       <AppShell
-        notice={(!online || conn === 'offline') ? <Banner tone="warn" layout="bar">You are offline. Orders may be out of date until the connection returns.</Banner> : undefined}
+        notice={!online ? <Banner tone="warn" layout="bar">You are offline. Press Refresh once you are back online.</Banner> : undefined}
         sidebar={<Sidebar label="Shop sections" brand={<BrandLogo onDark />} items={items} onNavigate={onNavClick} />}
         topbar={
           <TopBar
@@ -96,6 +98,7 @@ export default function Shell() {
         }
         bottomNav={<BottomNav label="Shop sections, phone" items={phoneItems} moreItems={moreItems} onNavigate={onNavClick} />}
       >
+        <ShopStatusBar shopName={shopName} />
         <ShopErrorBoundary><Outlet /></ShopErrorBoundary>
       </AppShell>
       </NotificationsProvider>

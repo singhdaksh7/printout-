@@ -17,7 +17,7 @@ test('shop + customer lifecycle across two browser contexts (SSE, Print starts r
   await shot(shop, '10-shop-queue');
   await shop.evaluate(() => ((window as unknown as { __noReload: number }).__noReload = 1));
 
-  // ---- a customer places an order; it appears with no refresh ----
+  // ---- a customer places an order; it appears after the shop presses Refresh (no automatic list updates) ----
   const NAME = 'Lifecycle Ravi';
   const order = await createOrderViaApi('central-print', { pages: 4, name: NAME, fileName: 'lifecycle-notes.pdf', colourMode: 'colour', sides: 'duplex', copies: 2 });
   writeState({ lifecycleToken: order.trackingToken });
@@ -25,6 +25,8 @@ test('shop + customer lifecycle across two browser contexts (SSE, Print starts r
   await expect(cust.getByText('Submitted').first()).toBeVisible();
 
   const card = shop.getByTestId('order-card').filter({ hasText: NAME });
+  await expect(card).toHaveCount(0);
+  await shop.getByTestId('queue-refresh').click();
   await expect(card).toBeVisible({ timeout: 15_000 });
   expect(await shop.evaluate(() => (window as unknown as { __noReload?: number }).__noReload)).toBe(1); // same document: no reload
   await expect(card).toContainText(`#${order.orderNumber}`);
