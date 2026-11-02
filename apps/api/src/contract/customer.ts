@@ -298,14 +298,14 @@ export async function pdfCustomerRoutes(app: FastifyInstance, ctx: AppContext): 
 
   // ---- FCM token (reuses the encrypted, user-scoped registration store; the token is never returned or logged) ------------------------
 
-  app.put('/me/fcm-token', { ...pdfOnly }, async (request, reply) => {
+  app.put('/me/fcm-token', { ...pdfOnly, preHandler: [anyGuard] }, async (request, reply) => {
     const body = fcmPutBody.parse(request.body);
     const installationId = `pdf${createHash('sha256').update(body.token).digest('hex').slice(0, 40)}`;
     await forward(app, request, { method: 'PUT', url: '/users/me/fcm-token', body: { installationId, token: body.token, platform: body.platform } });
     return reply.code(204).send();
   });
 
-  app.delete('/me/fcm-token', { ...pdfOnly }, async (request, reply) => {
+  app.delete('/me/fcm-token', { ...pdfOnly, preHandler: [anyGuard] }, async (request, reply) => {
     const q = fcmDeleteQuery.parse(request.query);
     await forward(app, request, { method: 'DELETE', url: '/users/me/fcm-token', body: { token: q.token } });
     return reply.code(204).send();
