@@ -10,6 +10,7 @@ import RegisterShopPage from './RegisterShopPage';
 import QueuePage from './QueuePage';
 import OrderDetailPage from './OrderDetailPage';
 import PricingPage from './PricingPage';
+import SetupPage from './SetupPage';
 import QrPage from './QrPage';
 import AnalyticsPage from './AnalyticsPage';
 import HistoryPage from './HistoryPage';
@@ -34,7 +35,7 @@ export default function ShopRoutes() {
             <Route index element={<QueuePage />} />
             <Route path="orders/:id" element={<OrderDetailPage />} />
             <Route path="pricing" element={<PricingPage />} />
-            <Route path="setup" element={<PricingPage onboarding />} />
+            <Route path="setup" element={<SetupPage />} />
             <Route path="qr" element={<QrPage />} />
             <Route path="qr/poster" element={<Suspense fallback={<Skeleton lines={6} label="Loading poster generator" />}><PosterPage /></Suspense>} />
             <Route path="history" element={<HistoryPage />} />
