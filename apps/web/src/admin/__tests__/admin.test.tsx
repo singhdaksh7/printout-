@@ -276,3 +276,67 @@ describe('audit log chips', () => {
     expect(rows[2]).toHaveTextContent('System');
   });
 });
+
+describe('shop detail: danger zone (delete shop)', () => {
+  function setupDelete(ordersByStatus: object, del: Parameters<typeof mockFetch>[0]) {
+    return mockFetch(
+      authed,
+      ({ method, path }) => (method === 'GET' && path === '/admin/shops/shop-0001' ? { data: { shop: shop(), owners: [], subscription: sub, usage: { orderCount: 1, ordersLast30Days: 1, pricingRuleCount: 0, lastOrderAt: null }, ordersByStatus, pricingRules: [], recentOrders: [] } } : undefined),
+      ({ method, path }) => (method === 'GET' && path === '/admin/audit-logs' ? { data: { items: [] } } : undefined),
+      ({ method, path }) => (method === 'GET' && path.startsWith('/admin/shops') && path !== '/admin/shops/shop-0001' ? { data: { items: [] } } : undefined),
+      del
+    );
+  }
+  const openModal = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /Delete shop/ }));
+    return screen.findByRole('dialog');
+  };
+
+  it('explains the effect and keeps delete disabled until the exact slug and password are entered', async () => {
+    const user = userEvent.setup();
+    const { calls } = setupDelete({ PRINTED: 2 }, () => undefined);
+    renderAdmin('/admin/shops/shop-0001');
+    expect(await screen.findByRole('heading', { name: 'Danger zone' })).toBeInTheDocument();
+    const dlg = await openModal(user);
+    const confirm = within(dlg).getByRole('button', { name: 'Delete permanently' });
+    expect(confirm).toBeDisabled();
+    expect(within(dlg).queryByLabelText(/active orders/i)).toBeNull();
+    await user.type(within(dlg).getByLabelText(/Type the shop slug/), 'centra');
+    await user.type(within(dlg).getByLabelText('Your admin password'), 'pw');
+    expect(confirm).toBeDisabled();
+    await user.type(within(dlg).getByLabelText(/Type the shop slug/), 'l');
+    expect(confirm).toBeEnabled();
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+  });
+
+  it('shows a clear error and keeps the modal open when the server refuses', async () => {
+    const user = userEvent.setup();
+    setupDelete({}, ({ method }) => (method === 'DELETE' ? { status: 403, error: { code: 'INVALID_CURRENT_PASSWORD', message: 'Current password is incorrect.' } } : undefined));
+    renderAdmin('/admin/shops/shop-0001');
+    const dlg = await openModal(user);
+    await user.type(within(dlg).getByLabelText(/Type the shop slug/), 'central');
+    await user.type(within(dlg).getByLabelText('Your admin password'), 'bad');
+    await user.click(within(dlg).getByRole('button', { name: 'Delete permanently' }));
+    expect(await within(dlg).findByRole('alert')).toHaveTextContent(/password is incorrect/i);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('requires the active-orders checkbox when orders are in progress, then deletes and returns to the shop list with a toast', async () => {
+    const user = userEvent.setup();
+    const { calls } = setupDelete({ NEW: 2, PRINTED: 1 }, ({ method, path }) => (method === 'DELETE' && path === '/admin/shops/shop-0001' ? { data: { deleted: true, shopId: 'shop-0001', slug: 'central', counts: {}, owners: { deleted: 1, detached: 0 } } } : undefined));
+    renderAdmin('/admin/shops/shop-0001');
+    const dlg = await openModal(user);
+    await user.type(within(dlg).getByLabelText(/Type the shop slug/), 'central');
+    await user.type(within(dlg).getByLabelText('Your admin password'), 'pw');
+    const confirm = within(dlg).getByRole('button', { name: 'Delete permanently' });
+    expect(confirm).toBeDisabled();
+    await user.click(within(dlg).getByLabelText(/Also delete shop with active orders/));
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+    expect(await screen.findByRole('heading', { name: 'Shops' })).toBeInTheDocument();
+    expect(await screen.findByText('Deleted Central Print')).toBeInTheDocument();
+    const del = calls.find((c) => c.method === 'DELETE')!;
+    expect(del.body).toEqual({ confirmSlug: 'central', currentPassword: 'pw', force: true });
+    expect(del.headers['x-csrf-token']).toBe('csrf-a');
+  });
+});
