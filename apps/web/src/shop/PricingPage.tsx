@@ -29,7 +29,7 @@ function baselineOf(rules: PricingRule[]): Record<string, Row> {
   return out;
 }
 
-export default function PricingPage({ onboarding = false }: { onboarding?: boolean }) {
+export default function PricingPage({ onboarding = false, onContinue }: { onboarding?: boolean; onContinue?: () => void }) {
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [loading, setLoading] = useState(true);
@@ -197,7 +197,9 @@ export default function PricingPage({ onboarding = false }: { onboarding?: boole
           <div className="pb-ratecard__actions">
             <Button type="submit" variant="primary" disabled={!dirty || saving} loading={saving}>{saving ? 'Saving…' : 'Save prices'}</Button>
             <Button variant="ghost" onClick={reset} disabled={!dirty || saving}>Reset</Button>
-            {onboarding && <Link className={buttonClass({ variant: 'outline' })} to="/shop" data-testid="setup-continue">{rules.some((r) => r.active) ? 'Continue to dashboard' : 'Skip for now'}</Link>}
+            {onboarding && (onContinue
+              ? <Button variant="outline" onClick={onContinue} disabled={saving || dirty} data-testid="setup-continue">{rules.some((r) => r.active) ? 'Continue' : 'Skip for now'}</Button>
+              : <Link className={buttonClass({ variant: 'outline' })} to="/shop" data-testid="setup-continue">{rules.some((r) => r.active) ? 'Continue to dashboard' : 'Skip for now'}</Link>)}
           </div>
         </form>
       )}

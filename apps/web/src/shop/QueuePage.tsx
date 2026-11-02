@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import { retentionPhrase } from '../lib/retention';
-import { getAnalytics, getQueueCounts, listOrders, listPricingRules, listPrintJobs, describeError, type OrderSummary, type PrintJobView } from '../lib/shop-api';
+import { getAnalytics, getQueueCounts, listOrders, listPricingRules, listPrintJobs, describeError, getSetupStatus, type SetupSection, type OrderSummary, type PrintJobView } from '../lib/shop-api';
 import { createContext, useContext } from 'react';
 import { latestByOrder, PrintJobChip } from './PrintJobPanel';
 import { Banner, Button, Card, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Switch, Tabs, buttonClass, cx, type Column } from '../ui';
@@ -277,13 +277,21 @@ const OrderCard = memo(function OrderCard({ o, onChanged }: { o: OrderSummary; o
   );
 });
 
+const SETUP_LABEL = { profile: 'shop details are', rates: 'printing rates are', paper: 'paper options are', payments: 'payment methods are' } as const;
+
 export default function QueuePage() {
   const [tabKey, setTabKey] = useState('new');
   const [sort, setSort] = useState<Sort>('newest');
   const [attention, setAttention] = useState(0);
   // null = unknown (never show the prompt on a failed lookup)
   const [ratesMissing, setRatesMissing] = useState<boolean | null>(null);
-  useEffect(() => { void listPricingRules().then((r) => setRatesMissing(!r.some((x) => x.active))).catch(() => setRatesMissing(null)); }, []);
+  const [setupNext, setSetupNext] = useState<SetupSection | null>(null);
+  useEffect(() => {
+    // The setup-status endpoint is the source of truth; if it is unavailable fall back to the rates check alone.
+    void getSetupStatus()
+      .then((st) => { setSetupNext(st.nextStep); setRatesMissing(st.nextStep === 'rates' ? true : false); })
+      .catch(() => listPricingRules().then((r) => setRatesMissing(!r.some((x) => x.active))).catch(() => setRatesMissing(null)));
+  }, []);
   const baseTab = [...TABS, ATTENTION_TAB].find((t) => t.key === tabKey)!;
   // Sort is part of the list identity: changing it resets paging and discards in-flight responses for the old order.
   const tab = useMemo<Tab>(() => ({ ...baseTab, key: `${baseTab.key}:${sort}`, query: { ...baseTab.query, sort } }), [baseTab, sort]);
@@ -358,6 +366,13 @@ export default function QueuePage() {
         <div data-testid="rates-missing">
           <Banner tone="warn" actions={<Link className={buttonClass({ variant: 'dark', size: 'sm' })} to="/shop/setup">Set printing rates</Link>}>
             Printing rates are not configured. Customers cannot order until you set them.
+          </Banner>
+        </div>
+      )}
+      {setupNext && setupNext !== 'rates' && (
+        <div data-testid="setup-incomplete">
+          <Banner tone="warn" actions={<Link className={buttonClass({ variant: 'dark', size: 'sm' })} to="/shop/setup">Continue setup</Link>}>
+            Shop setup is not finished: {SETUP_LABEL[setupNext]} not configured.
           </Banner>
         </div>
       )}

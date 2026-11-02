@@ -108,6 +108,47 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
     return json(await settingsView(shopId));
   });
 
+  /**
+   * Which first-time setup sections are really saved. Server-derived from stored rows only: a section is never "configured" because
+   * a form showed a default. Payments count as configured once the owner has saved them (cash is the stored default, so an explicit
+   * save is recorded in the audit trail) or UPI is set up.
+   */
+  app.get('/shop/setup-status', { preHandler: limits.shopRead }, async (request) => {
+    const shopId = shopIdOf(request);
+    const auth = authOf(request);
+    const [shop, owner, rules, paperCount, paymentSaves] = await Promise.all([
+      prisma.shop.findUniqueOrThrow({ where: { id: shopId }, include: { settings: true } }),
+      prisma.user.findUnique({ where: { id: auth.userId }, select: { displayName: true } }),
+      prisma.pricingRule.findMany({ where: { shopId }, select: { colourMode: true, sides: true, active: true, paperSize: true } }),
+      prisma.shopPaperOption.count({ where: { shopId } }),
+      prisma.auditLog.count({
+        where: { shopId, action: 'shop.profile.updated', OR: [{ metadata: { path: ['fields'], array_contains: 'acceptedPaymentMethods' } }, { metadata: { path: ['fields'], array_contains: 'upiId' } }] }
+      })
+    ]);
+    const present = (v: string | null | undefined) => !!v && v.trim().length > 0;
+    const missing = [
+      ...(present(owner?.displayName) ? [] : ['ownerName']),
+      ...(present(shop.settings?.publicContact) ? [] : ['phoneNumber']),
+      ...(present(shop.address) ? [] : ['address']),
+      ...(present(shop.city) ? [] : ['city']),
+      ...(present(shop.state) ? [] : ['state']),
+      ...(present(shop.pincode) ? [] : ['pincode'])
+    ];
+    const activeRules = rules.filter((r) => r.active);
+    const methods = shop.acceptedPaymentMethods.map((m) => (m === 'CASH' ? 'cash' : 'upi'));
+    const paymentsValid = methods.length > 0 && (!methods.includes('upi') || !!shop.upiId);
+    const paymentsConfigured = paymentsValid && (methods.includes('upi') || paymentSaves > 0);
+    const sections = {
+      profile: { complete: missing.length === 0, missing },
+      rates: { complete: activeRules.length > 0, activeCount: activeRules.length, configured: rules.map((r) => `${r.colourMode}-${r.sides}`) },
+      paper: { complete: paperCount > 0, optionCount: paperCount },
+      payments: { complete: paymentsConfigured, methods, upiId: shop.upiId }
+    };
+    const order = ['profile', 'rates', 'paper', 'payments'] as const;
+    const nextStep = order.find((k) => !sections[k].complete) ?? null;
+    return json({ shopId, shopStatus: shop.status, isOpen: shop.acceptsOrders, isVerified: shop.isVerified, sections, nextStep, complete: nextStep === null });
+  });
+
   app.get('/shop/pricing-rules', { preHandler: limits.shopRead }, async (request) => {
     const rules = await prisma.pricingRule.findMany({
       where: { shopId: shopIdOf(request) },
