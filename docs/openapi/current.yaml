@@ -714,6 +714,13 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/google/recover:
+    post:
+      summary: "One-time legacy owner recovery (web): body {email, password, idToken}. Proves the existing email+password AND a verified Firebase Google identity, links the uid to the SHOP_OWNER, ends all other sessions, returns the normal cookie session. Strict Origin check. 401 INVALID_CREDENTIALS (generic: wrong password/admin/customer/shop-less), 409 GOOGLE_IDENTITY_UNAVAILABLE | GOOGLE_ALREADY_LINKED, 401 GOOGLE_TOKEN_INVALID, 429, 503 GOOGLE_LOGIN_UNAVAILABLE"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /auth:
     post:
       summary: "Mobile sign-in. loginMethod otp|google|email. Flat response: accessToken, refreshToken, tokenType, expiresIn, refreshTokenExpiresIn, isShopRegisteredAtLeastOne, showQr, nextStep, user, shops, shop, onboardingAvailable. Unlinked verified identity gets a restricted pair (user.id null, nextStep create_shop). Suspended: 403 ACCOUNT_BLOCKED, no tokens. Admins refused."
