@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { LoginThrottle } from './auth.js';
 import { configWarnings, loadConfig, type Config } from './config.js';
 import { AppError, registerErrorHandlers } from './errors.js';
+import { contractConstraint, pdfContractRoutes } from './contract/facade.js';
 import { ShopEvents } from './events.js';
 import { NoopNotifier } from './notifications/noop.js';
 import type { Notifier } from './notifications/types.js';
@@ -139,7 +140,8 @@ export function createApp(deps: AppDeps = {}) {
     requestTimeout: deps.http?.requestTimeout ?? 15 * 60_000,
     ...(deps.http?.keepAliveTimeout !== undefined ? { keepAliveTimeout: deps.http.keepAliveTimeout } : {}),
     ...(deps.http?.connectionsCheckingInterval !== undefined ? { http: { connectionsCheckingInterval: deps.http.connectionsCheckingInterval } } : {}),
-    genReqId: () => randomUUID()
+    genReqId: () => randomUUID(),
+    constraints: { contract: contractConstraint as never }
   });
 
   registerErrorHandlers(app);
@@ -153,7 +155,7 @@ export function createApp(deps: AppDeps = {}) {
     origin: config.WEB_ORIGIN,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['content-type', 'x-csrf-token', 'last-event-id']
+    allowedHeaders: ['content-type', 'x-csrf-token', 'last-event-id', 'authorization', 'idempotency-key', 'x-api-contract']
   });
   app.register(cookie);
   app.register(rateLimit, {
@@ -226,6 +228,8 @@ export function createApp(deps: AppDeps = {}) {
       await api.register((i) => deviceSelfRoutes(i, ctx));
       await api.register((i) => devicePrintRoutes(i, ctx));
       await api.register((i) => shopPrintJobRoutes(i, ctx));
+      // PDF contract facade: X-API-Contract: pdf selects twins of shared paths; PDF-only paths always answer in the PDF shape.
+      await api.register((i) => pdfContractRoutes(i, ctx));
     },
     { prefix: '/api/v1' }
   );
