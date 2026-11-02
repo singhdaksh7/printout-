@@ -159,6 +159,12 @@ export class ShopNotificationHub {
     return this.timer !== undefined;
   }
 
+  /** Drops the subscribers of one shop (shop deleted). */
+  closeShop(shopId: string): void {
+    this.entries.delete(shopId);
+    if (this.entries.size === 0) this.stopPolling();
+  }
+
   close(): void {
     this.entries.clear();
     this.stopPolling();

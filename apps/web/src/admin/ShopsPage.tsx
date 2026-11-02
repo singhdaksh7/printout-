@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { createShop, fmtDate, listShops, slugHint, type AdminShop, type ShopStatus } from '../lib/admin-api';
-import { Banner, Button, Card, EmptyState, Select, TextField, buttonClass } from '../ui';
+import { Banner, Button, Card, EmptyState, Select, TextField, buttonClass, useToast } from '../ui';
 import { LoadError, LoadMore, Loading, ShopStatusChip, adminError, useCursorList, useLoad } from './ui';
 
 export function ShopsList() {
@@ -11,8 +11,12 @@ export function ShopsList() {
   const [status, setStatus] = useState<ShopStatus | ''>('');
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 300); return () => clearTimeout(t); }, [q]);
   const list = useCursorList<AdminShop>((cursor, signal) => listShops({ status, q: debounced, cursor, limit: 25 }, signal), [status, debounced]);
+  const toast = useToast();
+  const flash = (useLocation().state as { toast?: string } | null)?.toast;
+  useEffect(() => { if (flash) toast.show(flash); }, [flash]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
+      {toast.node}
       <div className="pb-pagehead">
         <h1 className="pb-h1">Shops</h1>
         <Link className={buttonClass({ variant: 'primary', size: 'sm' })} to="new">Create shop</Link>

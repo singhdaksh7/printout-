@@ -78,6 +78,10 @@ export type ErrorCode =
   | 'GOOGLE_NOT_LINKED'
   | 'LAST_SIGNIN_METHOD'
   | 'REAUTH_FAILED'
+  // Admin shop deletion
+  | 'SHOP_SLUG_MISMATCH'
+  | 'SHOP_HAS_ACTIVE_WORK'
+  | 'STORAGE_DELETE_FAILED'
   // Windows print agent
   | 'PRINT_JOB_NOT_FOUND'
   | 'LEASE_MISMATCH'

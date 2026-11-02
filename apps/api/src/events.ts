@@ -76,6 +76,19 @@ export class ShopEvents {
     return this.sinks.get(shopId)?.size ?? 0;
   }
 
+  /** Ends every open stream of one shop and forgets its replay buffer (shop deleted). */
+  closeShop(shopId: string): void {
+    for (const sink of [...(this.sinks.get(shopId) ?? [])]) {
+      this.remove(shopId, sink);
+      try {
+        sink.close();
+      } catch {
+        /* already closed */
+      }
+    }
+    this.buffers.delete(shopId);
+  }
+
   /** Ends every open stream (used on shutdown). */
   closeAll(): void {
     for (const [shopId, set] of this.sinks) {

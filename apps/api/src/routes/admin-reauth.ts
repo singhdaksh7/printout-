@@ -3,7 +3,7 @@ import { verifyPassword } from '../auth.js';
 import { AppError } from '../errors.js';
 import { audit, authOf, staffEmail, type AppContext } from './context.js';
 
-export type ReauthOperation = 'email' | 'password' | '2fa_enroll' | '2fa_disable' | '2fa_regenerate';
+export type ReauthOperation = 'email' | 'password' | '2fa_enroll' | '2fa_disable' | '2fa_regenerate' | 'shop_delete';
 
 /** Re-authenticates the signed-in admin with their current password. Failures are throttled per admin account. */
 export async function reauthenticateAdmin(ctx: AppContext, request: FastifyRequest, password: string, operation: ReauthOperation) {
