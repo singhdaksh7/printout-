@@ -32,6 +32,10 @@ export const contractConstraint = {
   deriveConstraint(request: { headers: Record<string, string | string[] | undefined> }) {
     return request.headers[CONTRACT_HEADER] === PDF_CONTRACT ? PDF_CONTRACT : undefined;
   },
+  /** Fastify requires a validator for custom constraints; the only route constraint value is 'pdf'. */
+  validate(value: unknown) {
+    if (typeof value !== 'string') throw new Error('contract constraint must be a string');
+  },
   mustMatchWhenDerived: false
 };
 
