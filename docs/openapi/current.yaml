@@ -237,7 +237,7 @@ paths:
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/settings:
     get:
-      summary: "Shop settings"
+      summary: "Shop settings (includes read-only admin-controlled shopStatus and isVerified)"
       security:
         - ownerSession: []
       responses:
@@ -540,6 +540,36 @@ paths:
       responses:
         '200': { description: 'Success: { data: ... } (201 or 204 where the contract says so)', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    delete:
+      summary: "Permanently delete a shop and all its data (admin only; CSRF; password step-up)"
+      description: >-
+        Body { confirmSlug (must equal the shop slug, else 400 SHOP_SLUG_MISMATCH), currentPassword (admin step-up, else 403 INVALID_CURRENT_PASSWORD),
+        force? (needed while orders are NEW/ACCEPTED/PRINTING or a print job is in flight, else 409 SHOP_HAS_ACTIVE_WORK) }.
+        Storage objects are deleted first (502 STORAGE_DELETE_FAILED before any row is touched), then all rows in one transaction.
+        The owner account is deleted only if it has no other shop/membership. One audit row admin.shop.delete survives (shopId null).
+        A second call returns 404.
+      security:
+        - adminSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmSlug, currentPassword]
+              additionalProperties: false
+              properties:
+                confirmSlug: { type: string }
+                currentPassword: { type: string }
+                force: { type: boolean }
+      responses:
+        '200': { description: 'Deleted: { data: { deleted: true, shopId, slug, counts, storageObjects, owners: { deleted, detached } } }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        '400': { description: 'SHOP_SLUG_MISMATCH or VALIDATION_ERROR', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '403': { description: 'FORBIDDEN, CSRF_INVALID or INVALID_CURRENT_PASSWORD', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '404': { description: 'Shop not found (also on a repeated call)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '409': { description: 'SHOP_HAS_ACTIVE_WORK (details: activeOrders, activeDevicePrintJobs, activePrintJobs)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '502': { description: 'STORAGE_DELETE_FAILED; nothing was removed from the database', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /admin/plans:
     get:
       summary: "List plans"
@@ -710,6 +740,13 @@ paths:
   /auth/google/session:
     post:
       summary: "Web Google sign-in: Firebase ID token for the session cookie (shop owners; strict Origin check)"
+      security: []
+      responses:
+        '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }
+        default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/google/recover:
+    post:
+      summary: "One-time legacy owner recovery (web): body {email, password, idToken}. Proves the existing email+password AND a verified Firebase Google identity, links the uid to the SHOP_OWNER, ends all other sessions, returns the normal cookie session. Strict Origin check. 401 INVALID_CREDENTIALS (generic: wrong password/admin/customer/shop-less), 409 GOOGLE_IDENTITY_UNAVAILABLE | GOOGLE_ALREADY_LINKED, 401 GOOGLE_TOKEN_INVALID, 429, 503 GOOGLE_LOGIN_UNAVAILABLE"
       security: []
       responses:
         '200': { description: 'Success: { data: ... }', content: { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } } }

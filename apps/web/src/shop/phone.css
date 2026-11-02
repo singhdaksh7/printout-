@@ -26,3 +26,5 @@
 .pb-login__divider { display: flex; align-items: center; text-align: center; color: var(--pb-n500); font-size: 0.8125rem; margin: var(--pb-space-1) 0; }
 .pb-login__divider::before, .pb-login__divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--pb-n300); }
 .pb-login__divider span { padding: 0 var(--pb-space-2); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
+.pb-login__recover { margin: var(--pb-space-3) 0 0; text-align: center; font-size: 0.875rem; }
+.pb-recover__steps { margin: 0; padding-left: var(--pb-space-4); display: grid; gap: var(--pb-space-1); }

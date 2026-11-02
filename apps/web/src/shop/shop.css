@@ -34,7 +34,7 @@
 /* print: poster only, single A4 page */
 @page { size: A4; margin: 10mm; }
 @media print {
-  .pb-sidebar, .pb-topbar, .pb-bottomnav, .pb-skip, .qr-controls, .pb-toast-region, .pb-banner { display: none !important; }
+  .pb-sidebar, .pb-topbar, .pb-bottomnav, .pb-statusbar, .pb-skip, .qr-controls, .pb-toast-region, .pb-banner { display: none !important; }
   html, body { background: #fff !important; }
   .pb-shell { display: block; min-height: 0; padding: 0 !important; background: #fff !important; }
   .pb-shell__main { padding: 0 !important; }

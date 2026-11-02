@@ -1,11 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { describeError, getQr, getSettings, putSettings, type ShopSettings } from '../lib/shop-api';
-import { Banner, Button, Card, Checkbox, Chip, Icon, Skeleton, TextArea, TextField, useToast } from '../ui';
+import { Banner, Button, Card, Checkbox, Chip, Icon, Skeleton, TextArea, TextField, buttonClass, useToast } from '../ui';
 import { useUnsavedGuard } from './components';
 import HoursSection from './HoursSection';
-import PhoneSignInSection from './PhoneSignInSection';
-import GoogleAccountSection from './GoogleAccountSection';
 import './hours.css';
 
 interface Form { displayName: string; address: string; publicContact: string; brandColor: string; acceptsOrders: boolean }
@@ -90,7 +88,7 @@ export default function SettingsPage() {
       {url && <p className="pb-muted pb-wrap">Your public shop page: <a href={url} target="_blank" rel="noopener noreferrer">{url}</a></p>}
       {error && <Banner tone="err">{error}</Banner>}
       <Link className="pb-card pb-card--pad-md pb-linkcard" to="/shop/devices">
-        <span><strong>Printing Devices</strong><br /><small className="pb-muted">Connect a phone or PC to print your orders.</small></span>
+        <span><strong>Printing Devices</strong></span>
         <Icon name="chevron-right" size={20} />
       </Link>
       <Card>
@@ -101,9 +99,9 @@ export default function SettingsPage() {
         {present.has('address') && (
           <TextArea label="Address" rows={2} value={form.address} maxLength={300} error={errors.address} onChange={(e) => set('address', e.target.value)} />
         )}
-        <TextField label="Public contact" helperText="Shown to customers, e.g. a counter phone or email." value={form.publicContact} maxLength={100} error={errors.publicContact} onChange={(e) => set('publicContact', e.target.value)} />
+        <TextField label="Public contact" value={form.publicContact} maxLength={100} error={errors.publicContact} onChange={(e) => set('publicContact', e.target.value)} />
         <TextField
-          label="Brand colour" helperText="Hex colour, e.g. #E8772E." placeholder="#E8772E" value={form.brandColor} maxLength={7} error={errors.brandColor}
+          label="Brand colour" placeholder="#E8772E" value={form.brandColor} maxLength={7} error={errors.brandColor}
           endAdornment={<span className="pb-swatch" style={{ background: swatch }} aria-hidden="true" />}
           onChange={(e) => set('brandColor', e.target.value)}
         />
@@ -116,19 +114,16 @@ export default function SettingsPage() {
         </div>
       </form>
       </Card>
-      <Card className="pb-card--pad-md">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div>
-            <strong>Platform Access</strong>
-            <p className="pb-muted" style={{ margin: '0.25rem 0 0' }}>
-              Printout Buddy is currently free to use. All printing features, live queue, customer QR ordering, and Windows agent printing are included.
-            </p>
-          </div>
-          <Chip tone="ok">Free</Chip>
+      <Card className="pb-card--pad-md" data-testid="account-security">
+        <div className="pb-linkcard">
+          <span>
+            <strong>Sign-in and security</strong>
+            <br />
+            <small className="pb-muted">You sign in with Google, so your password and 2-step verification are managed in your Google Account. Printout Buddy has no password to change.</small>
+          </span>
+          <a className={buttonClass({ variant: 'outline', size: 'sm' })} href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer">Manage Google Account Security</a>
         </div>
       </Card>
-      <GoogleAccountSection />
-      <PhoneSignInSection />
       <HoursSection />
       {toast}
     </section>

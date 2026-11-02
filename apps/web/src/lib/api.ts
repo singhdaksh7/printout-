@@ -16,7 +16,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   let res: Response;
   try {
     res = await fetch(`/api/v1${path}`, {
-      method, headers, credentials: 'include', signal: init.signal ?? null,
+      method, headers, credentials: 'include', cache: 'no-store', signal: init.signal ?? null,
       body: init.body !== undefined ? JSON.stringify(init.body) : null
     });
   } catch (e) {

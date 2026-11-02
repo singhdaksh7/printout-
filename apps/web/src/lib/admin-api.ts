@@ -60,6 +60,10 @@ export const createShop = (body: CreateShopInput) =>
 export const getShop = (id: string, signal?: AbortSignal) => shopRequest<ShopDetail>(`/admin/shops/${encodeURIComponent(id)}`, { signal: signal as AbortSignal });
 export const updateShop = (id: string, body: { status?: ShopStatus; acceptsOrders?: boolean; displayName?: string }) =>
   shopRequest<{ shop: AdminShop }>(`/admin/shops/${encodeURIComponent(id)}`, { method: 'PUT', body });
+export interface DeleteShopResult { deleted: true; shopId: string; slug: string; counts: Record<string, number>; owners: { deleted: number; detached: number } }
+/** Permanent. `confirmSlug` must equal the slug; `currentPassword` is the admin step-up; `force` allows deleting with orders in progress. */
+export const deleteShop = (id: string, body: { confirmSlug: string; currentPassword: string; force?: boolean }) =>
+  shopRequest<DeleteShopResult>(`/admin/shops/${encodeURIComponent(id)}`, { method: 'DELETE', body });
 /** `shopId` identifies the subscription (one per shop). */
 export const updateSubscription = (shopId: string, body: { status?: SubStatus; planId?: string; renewsAt?: string | null }) =>
   shopRequest<Subscription>(`/admin/subscriptions/${encodeURIComponent(shopId)}`, { method: 'PUT', body });

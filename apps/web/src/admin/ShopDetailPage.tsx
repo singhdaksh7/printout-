@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  SUB_STATUSES, fmtDate, getShop, inr, listPlans, updateShop, updateSubscription,
+  SUB_STATUSES, deleteShop, fmtDate, getShop, inr, listPlans, updateShop, updateSubscription,
   type ShopDetail, type ShopStatus, type SubStatus
 } from '../lib/admin-api';
-import { Banner, Button, Card, CardHeader, KeyValueList, Modal, Select, ShopStatusChip, TextField, buttonClass, useToast } from '../ui';
+import { ApiError } from '../lib/api';
+import { Banner, Button, Card, CardHeader, Checkbox, KeyValueList, Modal, Select, ShopStatusChip, TextField, buttonClass, useToast } from '../ui';
 import { AuditList } from './AuditPage';
 import { AdminOrderRows } from './OrdersPage';
 import { LoadError, Loading, MANUAL_NOTE, adminError, useLoad } from './ui';
@@ -60,57 +61,88 @@ function StatusCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) 
   );
 }
 
-const toDateInput = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '');
+const IN_PROGRESS = ['NEW', 'ACCEPTED', 'PRINTING'] as const;
 
-function SubscriptionCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) => void }) {
-  const sub = d.subscription;
-  const plans = useLoad((s) => listPlans(s), []);
-  const [planId, setPlanId] = useState(sub?.plan.id ?? '');
-  const [status, setStatus] = useState<SubStatus>(sub?.status ?? 'ACTIVE');
-  const [renews, setRenews] = useState(toDateInput(sub?.renewsAt));
+export function DangerZone({ d }: { d: ShopDetail }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [slug, setSlug] = useState('');
+  const [password, setPassword] = useState('');
+  const [force, setForce] = useState(false);
+  const [serverBlocked, setServerBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const needsPlan = !sub && !planId;
+  const inProgress = IN_PROGRESS.reduce((n, k) => n + (d.ordersByStatus[k] ?? 0), 0);
+  const needsForce = inProgress > 0 || serverBlocked;
+  const ready = slug === d.shop.slug && password.length > 0 && (!needsForce || force);
 
-  async function save() {
-    if (needsPlan) { setErr('Choose a plan to create the subscription.'); return; }
+  function close() {
+    if (busy) return;
+    setOpen(false); setSlug(''); setPassword(''); setForce(false); setErr(null);
+  }
+  async function submit() {
+    if (!ready || busy) return;
     setBusy(true);
     setErr(null);
     try {
-      await updateSubscription(d.shop.id, {
-        status,
-        ...(planId ? { planId } : {}),
-        renewsAt: renews ? new Date(`${renews}T00:00:00.000Z`).toISOString() : null
-      });
-      onChanged('Subscription saved');
-    } catch (e) { setErr(adminError(e)); }
+      await deleteShop(d.shop.id, { confirmSlug: slug, currentPassword: password, ...(force ? { force: true } : {}) });
+      navigate('/admin/shops', { state: { toast: `Deleted ${d.shop.displayName}` } });
+      return;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'SHOP_HAS_ACTIVE_WORK') {
+        setServerBlocked(true);
+        setErr('This shop has orders or print jobs in progress. Tick the box below to delete it anyway.');
+      } else if (e instanceof ApiError && e.code === 'INVALID_CURRENT_PASSWORD') {
+        setErr('Your admin password is incorrect.');
+      } else if (e instanceof ApiError && e.code === 'SHOP_SLUG_MISMATCH') {
+        setErr('The typed slug does not match this shop.');
+      } else {
+        setErr(adminError(e));
+      }
+    }
     setBusy(false);
   }
   return (
-    <Card as="section" aria-labelledby="sub-h">
-      <CardHeader id="sub-h" title="Plan and subscription" />
-      <div className="ad-form">
-        <Banner tone="info">{MANUAL_NOTE}</Banner>
-        <KeyValueList items={[
-          { label: 'Plan', value: sub ? `${sub.plan.name} (${inr(sub.plan.pricePaise)}/month)` : 'None' },
-          { label: 'Subscription', value: sub ? sub.status.charAt(0) + sub.status.slice(1).toLowerCase() : 'None' },
-          { label: 'Renewal date', value: fmtDate(sub?.renewsAt) }
-        ]} />
-        {err && <Banner tone="err">{err}</Banner>}
-        {plans.error != null && <LoadError error={plans.error} onRetry={plans.reload} />}
-        <Select label="Plan" value={planId} onChange={(e) => setPlanId(e.target.value)}>
-          {!sub && <option value="">Select a plan</option>}
-          {(plans.data ?? []).filter((p) => p.active || p.id === sub?.plan.id).map((p) => <option key={p.id} value={p.id}>{p.name} — {inr(p.pricePaise)}/month</option>)}
-        </Select>
-        <Select label="Subscription status" value={status} onChange={(e) => setStatus(e.target.value as SubStatus)}>
-          {SUB_STATUSES.map((s) => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-        </Select>
-        <TextField label="Renewal date (informational)" type="date" value={renews} onChange={(e) => setRenews(e.target.value)} />
-        <div className="ad-actions"><Button variant="primary" onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : sub ? 'Save subscription' : 'Create subscription'}</Button></div>
+    <Card as="section" aria-labelledby="dz-h">
+      <CardHeader id="dz-h" title="Danger zone" />
+      <p>Permanently deletes this shop, its orders, files, devices and the owner login. This cannot be undone.</p>
+      <div className="ad-actions">
+        <Button variant="danger" onClick={() => setOpen(true)}>Delete shop…</Button>
       </div>
+      {open && (
+        <Modal
+          title={`Delete ${d.shop.displayName}?`}
+          tone="danger"
+          onClose={close}
+          busy={busy}
+          footer={<>
+            <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
+            <Button variant="danger" onClick={submit} disabled={!ready || busy} loading={busy}>
+              {busy ? 'Deleting…' : 'Delete permanently'}
+            </Button>
+          </>}
+        >
+          <p>All orders, uploaded files, devices, settings and the owner account of this shop will be removed. Customer accounts are kept.</p>
+          <TextField label={`Type the shop slug (${d.shop.slug}) to confirm`} value={slug} onChange={(e) => setSlug(e.target.value)} autoComplete="off" disabled={busy} />
+          <TextField label="Your admin password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" disabled={busy} />
+          {needsForce && (
+            <Checkbox
+              label="Also delete shop with active orders"
+              hint={inProgress > 0 ? `${inProgress} order${inProgress === 1 ? ' is' : 's are'} still new, accepted or printing.` : 'Print jobs are still in progress.'}
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+              disabled={busy}
+            />
+          )}
+          {err && <Banner tone="err">{err}</Banner>}
+        </Modal>
+      )}
     </Card>
   );
 }
+
+const toDateInput = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '');
+
 
 export default function ShopDetailPage() {
   const { id = '' } = useParams();
@@ -165,11 +197,11 @@ export default function ShopDetailPage() {
             <p className="pb-muted">Operational metadata only. Customer documents are not accessible to platform administrators.</p>
           </Card>
           <StatusCard d={data} onChanged={changed} />
-          <SubscriptionCard key={`${data.subscription?.updatedAt ?? 'none'}`} d={data} onChanged={changed} />
           <Card as="section" aria-labelledby="aud-h">
             <CardHeader id="aud-h" title="Recent audit entries" />
             <AuditList shopId={data.shop.id} pageSize={10} />
           </Card>
+          <DangerZone d={data} />
         </>
       )}
       {toast.node}

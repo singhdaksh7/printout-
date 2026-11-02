@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { getMyProfile } from '../lib/shop-api';
+import { getMyProfile, normalisePhone } from '../lib/shop-api';
 import { Banner, BrandLogo, Button, Card, TextField } from '../ui';
 import { useAuth } from './auth';
+import { StepIndicator } from './SetupSteps';
 
 export const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 
@@ -11,7 +12,7 @@ export function onboardingErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
     switch (e.code) {
       case 'EMAIL_UNAVAILABLE':
-        return 'An account with this email address already exists. Sign in with email and password, then link your Google account in Settings.';
+        return 'An account with this email address already exists and is not linked to this Google account. Please contact support to link it.';
       case 'ALREADY_ONBOARDED':
       case 'GOOGLE_IDENTITY_UNAVAILABLE':
         return 'This Google account has already registered a shop. Sign in to access your shop dashboard.';
@@ -42,13 +43,20 @@ export default function RegisterShopPage() {
   const [shopName, setShopName] = useState('');
   const [address, setAddress] = useState('');
   const [pincode, setPincode] = useState('');
+  const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
+  const [stateName, setStateName] = useState('');
   const [busy, setBusy] = useState(false);
+  const justCreated = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     ownerName?: string;
     shopName?: string;
     address?: string;
     pincode?: string;
+    phone?: string;
+    city?: string;
+    stateName?: string;
   }>({});
 
   useEffect(() => {
@@ -90,7 +98,7 @@ export default function RegisterShopPage() {
   }, [state.status, navigate]);
 
   if (state.status === 'authed' && !busy) {
-    return <Navigate to="/shop" replace />;
+    return <Navigate to={justCreated.current ? '/shop/setup' : '/shop'} replace />;
   }
 
   function validate(): boolean {
@@ -123,6 +131,11 @@ export default function RegisterShopPage() {
       errs.pincode = 'Enter a valid 6-digit Indian PIN code (e.g. 110001).';
     }
 
+    if (!phone.trim()) errs.phone = 'Shop phone number is required.';
+    else if (!normalisePhone(phone)) errs.phone = 'Enter a 10-digit mobile number or a number starting with +.';
+    if (!city.trim()) errs.city = 'City is required.';
+    if (!stateName.trim()) errs.stateName = 'State is required.';
+
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -136,15 +149,20 @@ export default function RegisterShopPage() {
 
     setBusy(true);
     try {
+      justCreated.current = true;
       await onboard({
         ownerName: ownerName.trim(),
         shopName: shopName.trim(),
         address: address.trim(),
         pincode: pincode.trim(),
+        phoneNumber: normalisePhone(phone)!,
+        city: city.trim(),
+        state: stateName.trim(),
         ...(googleEmail ? { email: googleEmail } : {})
       });
-      navigate('/shop', { replace: true });
+      navigate('/shop/setup', { replace: true });
     } catch (err) {
+      justCreated.current = false;
       setError(onboardingErrorMessage(err));
       setBusy(false);
     }
@@ -171,46 +189,11 @@ export default function RegisterShopPage() {
               <h1 id="register-title" className="pb-h1">
                 Register Your Shop
               </h1>
-              <div
-                data-testid="free-platform-notice"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.375rem',
-                  marginTop: '0.375rem',
-                  marginBottom: '0.5rem',
-                  padding: '0.25rem 0.625rem',
-                  background: 'rgba(34, 197, 94, 0.1)',
-                  color: '#15803d',
-                  borderRadius: '9999px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600
-                }}
-              >
-                Printout Buddy is currently free to use.
-              </div>
-              <p className="pb-muted pb-pagehead__sub">
-                Complete your details to set up your print shop and start receiving customer print orders immediately. No credit card or subscription required.
-              </p>
+              <StepIndicator current="details" />
             </div>
 
             {googleEmail && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.625rem 0.875rem',
-                  background: 'var(--pb-color-surface-subtle, #f8fafc)',
-                  border: '1px solid var(--pb-color-border-subtle, #e2e8f0)',
-                  borderRadius: 'var(--pb-radius-md, 8px)',
-                  fontSize: '0.875rem',
-                  color: 'var(--pb-color-text-subtle, #475569)'
-                }}
-              >
-                <span>Google Account:</span>
-                <strong style={{ color: 'var(--pb-color-text, #0f172a)' }}>{googleEmail}</strong>
-              </div>
+              <TextField label="Email (verified by Google)" value={googleEmail} readOnly disabled autoComplete="email" />
             )}
 
             {error && <Banner tone="err">{error}</Banner>}
@@ -245,6 +228,22 @@ export default function RegisterShopPage() {
             />
 
             <TextField
+              label="Shop Phone"
+              required
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+              }}
+              error={fieldErrors.phone}
+              disabled={busy}
+              maxLength={16}
+              inputMode="tel"
+              placeholder="10-digit mobile number"
+              autoComplete="tel"
+            />
+
+            <TextField
               label="Shop Address"
               required
               value={address}
@@ -255,8 +254,36 @@ export default function RegisterShopPage() {
               error={fieldErrors.address}
               disabled={busy}
               maxLength={300}
-              placeholder="Shop number, street, landmark, city"
+              placeholder="Shop number, street, landmark"
               autoComplete="street-address"
+            />
+
+            <TextField
+              label="City"
+              required
+              value={city}
+              onChange={(e) => {
+                setCity(e.target.value);
+                if (fieldErrors.city) setFieldErrors((prev) => ({ ...prev, city: undefined }));
+              }}
+              error={fieldErrors.city}
+              disabled={busy}
+              maxLength={100}
+              autoComplete="address-level2"
+            />
+
+            <TextField
+              label="State"
+              required
+              value={stateName}
+              onChange={(e) => {
+                setStateName(e.target.value);
+                if (fieldErrors.stateName) setFieldErrors((prev) => ({ ...prev, stateName: undefined }));
+              }}
+              error={fieldErrors.stateName}
+              disabled={busy}
+              maxLength={100}
+              autoComplete="address-level1"
             />
 
             <TextField
