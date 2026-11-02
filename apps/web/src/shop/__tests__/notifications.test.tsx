@@ -253,6 +253,19 @@ describe('reconnect and resume', () => {
     expect(FakeAudio.started).toBe(started); // no sound for catch-up
   });
 
+  it('shows Reconnecting and Offline as warnings (never an error colour) and keeps the panel informative', async () => {
+    await setup({ items: [] });
+    const chip = () => screen.getByRole('status', { name: /connection/i });
+    act(() => FakeES.open[0]!.fail(false));
+    expect(chip()).toHaveTextContent('Reconnecting…');
+    expect(chip().className).toContain('warn');
+    act(() => { window.dispatchEvent(new Event('offline')); });
+    expect(chip()).toHaveTextContent('Offline');
+    expect(chip().className).not.toContain('err');
+    await userEvent.click(await bell());
+    expect(await screen.findByText(/Temporarily disconnected/)).toBeInTheDocument();
+  });
+
   it('keeps one EventSource under StrictMode and closes it (and stops delivering) on unmount', async () => {
     const box = inbox({ items: [] });
     mockFetch(authedSession, box.handler, emptyList);

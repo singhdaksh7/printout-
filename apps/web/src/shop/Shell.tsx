@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { listOrders } from '../lib/shop-api';
 import { useAuth } from './auth';
-import { AppShell, Banner, BottomNav, BrandLogo, Button, Sidebar, TopBar, type NavItem } from '../ui';
+import { AppShell, Banner, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, type ChipTone, type NavItem } from '../ui';
 import { ShopErrorBoundary, UnsavedContext, UNSAVED_PROMPT } from './components';
 import { ShopStatusBar } from './ShopStatusBar';
+import { useRealtime } from './realtime';
 import { ORDERS_REFRESHED } from './QueuePage';
 import { NotificationBell } from './NotificationBell';
 import { NotificationsProvider } from './notifications';
@@ -23,6 +24,10 @@ const NAV_ITEMS: NavItem[] = [
 ];
 /** Phone tab bar: five destinations stay visible; the rest (QR & standee, Settings) live under "More", so nothing is hidden or reachable only by a side link. */
 const PHONE_PATHS = ['/shop', '/shop/history', '/shop/analytics', '/shop/devices', '/shop/pricing'];
+
+/** State of the notification stream only (new-order alerts). The order list never uses it; it updates on Refresh. */
+const CONN_LABEL = { live: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', offline: 'Offline' } as const;
+const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'warn' };
 
 function useNewOrderBadge() {
   const [count, setCount] = useState(0);
@@ -43,6 +48,7 @@ function useNewOrderBadge() {
 
 export default function Shell() {
   const { state, logout } = useAuth();
+  const { state: conn } = useRealtime();
   const navigate = useNavigate();
   const newCount = useNewOrderBadge();
   const dirty = useRef(new Set<string>());
@@ -85,6 +91,7 @@ export default function Shell() {
             start={<span className="pb-shopname" title={shopName}>{shopName}</span>}
             end={<>
               <NotificationBell />
+              <Chip tone={CONN_TONE[conn]} className="shop-conn" role="status" aria-live="polite" aria-label={`Connection: ${CONN_LABEL[conn]}`}>{CONN_LABEL[conn]}</Chip>
               <Button variant="outline" size="sm" iconStart="log-out" onClick={doLogout} disabled={leaving}>Log out</Button>
             </>}
           />

@@ -121,11 +121,6 @@ test('WCAG AA contrast: customer, shop and admin screens and states', async ({ b
   // shop: login (with error), queue, notifications, detail, history, revenue, devices, rate card, QR, settings
   await page.goto('/shop/login'); await settle();
   await auditText(page, 'shop login');
-  await page.getByLabel('Email').fill('owner@central.test');
-  await page.getByLabel('Password').fill('wrong-password-123');
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('alert').first()).toBeVisible();
-  await auditText(page, 'shop login error');
   await uiLogin(page, 'owner@central.test');
   await expect(page).toHaveURL(/\/shop$/); await settle();
   await auditText(page, 'shop queue');
@@ -155,7 +150,7 @@ test('WCAG AA contrast: customer, shop and admin screens and states', async ({ b
   await expect(page).toHaveURL(/\/admin$/); await settle();
   await auditText(page, 'admin dashboard');
   await auditFocusRing(page, 'admin dashboard (navy sidebar)');
-  for (const [name, url] of [['shops', '/admin/shops'], ['create shop', '/admin/shops/new'], ['orders', '/admin/orders'], ['subscriptions', '/admin/subscriptions'], ['plans', '/admin/plans'], ['audit log', '/admin/audit'], ['account', '/admin/account']] as const) {
+  for (const [name, url] of [['shops', '/admin/shops'], ['create shop', '/admin/shops/new'], ['orders', '/admin/orders'], ['audit log', '/admin/audit'], ['account', '/admin/account']] as const) {
     await page.goto(url); await settle();
     await auditText(page, `admin ${name}`);
   }

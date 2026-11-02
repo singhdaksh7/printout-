@@ -77,6 +77,14 @@ export async function createOrderViaApi(
 
 /** Logs in through the UI and waits for the shell. */
 export async function uiLogin(page: Page, email: string, loginPath = '/shop/login') {
+  if (loginPath.startsWith('/shop')) {
+    // The shop sign-in screen is Google-only. Seeded owners authenticate through the unchanged email/password API
+    // (cookies land in the page's context), then the app loads signed in.
+    const res = await page.request.post('/api/v1/auth/login', { data: { email, password: SEED_PASSWORD } });
+    if (!res.ok()) throw new Error(`e2e API login failed for ${email}: ${res.status()}`);
+    await page.goto('/shop');
+    return;
+  }
   await page.goto(loginPath);
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(SEED_PASSWORD);

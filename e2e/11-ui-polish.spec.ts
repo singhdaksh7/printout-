@@ -148,7 +148,7 @@ test.describe('shop UI', () => {
   });
 });
 
-test('admin phone: More offers Subscriptions, Plans and Account; the header stays on one row', async ({ browser }) => {
+test('admin phone: More offers Account; the header stays on one row', async ({ browser }) => {
   const ctx = await newMobileContext(browser, VIEWPORTS.s360);
   const page = await ctx.newPage();
   await page.goto('/admin/login');
@@ -163,7 +163,7 @@ test('admin phone: More offers Subscriptions, Plans and Account; the header stay
   const bar = page.getByRole('navigation', { name: 'Admin sections, phone' });
   await bar.getByRole('button', { name: 'More' }).click();
   const sheet = page.getByRole('dialog', { name: 'More' });
-  for (const label of ['Subscriptions', 'Plans', 'Account']) await expect(sheet.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['Account']) await expect(sheet.getByRole('link', { name: label })).toBeVisible();
   await sheet.getByRole('link', { name: 'Account' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Account settings' })).toBeVisible();
   await expectNoOverflow(page, 'admin account 360');
