@@ -38,8 +38,10 @@ test('tenant isolation in the browser: metro cannot see or open central orders, 
   m.on('response', async (r) => { if (r.url().includes('/shop/orders?')) metroApiCalls.push(await r.text().catch(() => '')); });
   await createOrderViaApi('central-print', { name: 'Central Secret Customer', fileName: 'secret.pdf' });
   await expect(c.getByTestId('order-card').first()).toBeVisible();
+  await c.getByTestId('queue-refresh').click(); // the list only updates on Refresh
   await expect(c.getByText('Central Secret Customer')).toBeVisible({ timeout: 15_000 });
-  await m.waitForTimeout(2500);
+  await m.getByTestId('queue-refresh').click(); // metro refreshes too and still must not see central's order
+  await m.waitForTimeout(1500);
   await expect(m.getByText('Central Secret Customer')).toHaveCount(0);
   await expect(m.getByTestId('order-card')).toHaveCount(0);
   expect(metroApiCalls.join('')).not.toContain('secret.pdf');

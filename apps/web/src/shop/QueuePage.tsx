@@ -2,16 +2,15 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatCountdown, formatPaise } from '../lib/format';
 import { retentionPhrase } from '../lib/retention';
-import { getAnalytics, getQueueCounts, listOrders, listPrintJobs, describeError, type OrderSummary, type PrintJobView } from '../lib/shop-api';
+import { getAnalytics, getQueueCounts, listOrders, listPricingRules, listPrintJobs, describeError, type OrderSummary, type PrintJobView } from '../lib/shop-api';
 import { createContext, useContext } from 'react';
 import { latestByOrder, PrintJobChip } from './PrintJobPanel';
 import { Banner, Button, Card, Chip, DataTable, EmptyState, JobCode, LoadMore, OrderStatusChip, StatTile, Switch, Tabs, buttonClass, cx, type Column } from '../ui';
 import { pageSelectionText } from './components';
 import { useAuth } from './auth';
 import { useAlertSound } from './alert-sound';
-import { ageLabel, useAutoRefresh, useDebounced, useTick } from './hooks';
+import { ageLabel, useDebounced, useTick } from './hooks';
 import { printNowAndOpen, saveFileToDevice, SAVE_FILE_NOTE } from './print-actions';
-import { useRealtimeRefresh } from './realtime';
 import './pb-pages.css';
 
 export interface Tab { key: string; label: string; query: { status?: string; active?: boolean; print?: 'pending' | 'initiated' | 'attention'; sort?: 'newest' | 'oldest' } }
@@ -26,6 +25,8 @@ export const TABS: Tab[] = [
 export const ATTENTION_TAB: Tab = { key: 'attention', label: 'Needs attention', query: { print: 'attention' } };
 type Sort = 'newest' | 'oldest';
 const MAX_REFRESH_PAGES = 5;
+/** Fired after a manual refresh so the navigation badge re-reads the New count. */
+export const ORDERS_REFRESHED = 'pb:orders-refreshed';
 
 /** Lists orders for one filter (newest first, API cursor pagination). */
 function useQueue(tab: Tab) {
@@ -36,6 +37,8 @@ function useQueue(tab: Tab) {
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [freshTick, setFreshTick] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const pages = useRef(1);
   const seen = useRef<Set<string> | null>(null);
   const gen = useRef(0);
@@ -46,7 +49,7 @@ function useQueue(tab: Tab) {
 
   const refresh = useCallback(async (initial = false) => {
     const my = ++gen.current;
-    if (initial) setLoading(true);
+    if (initial) setLoading(true); else setRefreshing(true);
     try {
       // Re-fetch as many pages as the user has loaded so far, so "Load more" results stay current.
       const all: OrderSummary[] = [];
@@ -73,11 +76,12 @@ function useQueue(tab: Tab) {
       setItems(merged);
       setNextCursor(cursor);
       setError(null);
+      setLastRefreshed(new Date());
     } catch (e) {
       if (my !== gen.current) return;
       setError(describeError(e));
     } finally {
-      if (my === gen.current) setLoading(false);
+      if (my === gen.current) { setLoading(false); setRefreshing(false); }
     }
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -114,7 +118,7 @@ function useQueue(tab: Tab) {
     }
   }, [key, nextCursor]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { items, loading, loadingMore, error, fresh, freshTick, newestFresh, hasMore: !!nextCursor, loadMore, refresh: useCallback(() => void refresh(false), [refresh]) };
+  return { items, loading, loadingMore, refreshing, lastRefreshed, error, fresh, freshTick, newestFresh, hasMore: !!nextCursor, loadMore, refresh: useCallback(() => refresh(false), [refresh]) };
 }
 
 function Retention({ deleteAfter, documentStatus }: { deleteAfter?: string | null | undefined; documentStatus?: string | undefined }) {
@@ -198,9 +202,9 @@ function SettingsCell({ o }: { o: OrderSummary }) {
   );
 }
 
-/** A status chip for queue rows. NEW is the state of every row in the New tab (nothing has happened yet), so a chip would only repeat the tab; later states carry information and are shown. */
+/** Every order card and row carries its order status chip (payment status is separate). */
 function QueueStatusChip({ status }: { status: OrderSummary['status'] }) {
-  return status === 'NEW' ? null : <OrderStatusChip status={status} />;
+  return <OrderStatusChip status={status} />;
 }
 
 /** Latest Windows print job per order (best effort; the queue works without it). */
@@ -277,6 +281,9 @@ export default function QueuePage() {
   const [tabKey, setTabKey] = useState('new');
   const [sort, setSort] = useState<Sort>('newest');
   const [attention, setAttention] = useState(0);
+  // null = unknown (never show the prompt on a failed lookup)
+  const [ratesMissing, setRatesMissing] = useState<boolean | null>(null);
+  useEffect(() => { void listPricingRules().then((r) => setRatesMissing(!r.some((x) => x.active))).catch(() => setRatesMissing(null)); }, []);
   const baseTab = [...TABS, ATTENTION_TAB].find((t) => t.key === tabKey)!;
   // Sort is part of the list identity: changing it resets paging and discards in-flight responses for the old order.
   const tab = useMemo<Tab>(() => ({ ...baseTab, key: `${baseTab.key}:${sort}`, query: { ...baseTab.query, sort } }), [baseTab, sort]);
@@ -307,29 +314,29 @@ export default function QueuePage() {
     void listPrintJobs().then((r) => setJobs(latestByOrder(r.jobs))).catch(() => undefined);
   }, []);
   useEffect(loadJobs, [loadJobs]);
-  const refreshAll = useCallback(() => { q.refresh(); loadStats(); loadJobs(); loadCounts(); }, [q.refresh, loadStats, loadJobs, loadCounts]);
-
-  const debounced = useDebounced(refreshAll, 300);
-  useRealtimeRefresh(debounced);
-  useAutoRefresh(refreshAll, 45_000);
+  // Manual refresh is the only way the list updates (no sockets, no timers); overlapping clicks are ignored.
+  const inFlight = useRef(false);
+  const refreshAll = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try { loadStats(); loadJobs(); loadCounts(); await q.refresh(); window.dispatchEvent(new Event(ORDERS_REFRESHED)); } finally { inFlight.current = false; }
+  }, [q.refresh, loadStats, loadJobs, loadCounts]);
 
   // when a retention countdown reaches zero, refetch once so the card flips to "File deleted"
   const expired = useTick(() => q.items.filter((o) => o.deleteAfter && o.documentStatus !== 'DELETED' && Date.parse(o.deleteAfter) <= Date.now()).length);
-  const refreshSoon = useDebounced(q.refresh, 2000);
+  const refreshSoon = useDebounced(() => void q.refresh(), 2000);
   useEffect(() => { if (expired > 0) refreshSoon(); }, [expired, refreshSoon]);
 
   const empty = !q.loading && q.items.length === 0 && !q.error;
-  const refresh = q.refresh;
-  // Every row on the New tab is a request nobody printed yet, so its Status cell is empty until Print is pressed: drop the column then.
-  const showStatus = tabKey !== 'new' || q.items.some((o) => o.status !== 'NEW' || !!o.printInitiatedAt || !!o.deleteAfter || o.documentStatus === 'DELETED');
+  const refresh = useCallback(() => void q.refresh(), [q.refresh]);
   const columns = useMemo<Column<OrderSummary>[]>(() => [
     { key: 'order', header: 'Order', cell: (o) => <OrderCell o={o} /> },
     { key: 'file', header: 'File', cell: (o) => <FileCell o={o} /> },
     { key: 'specs', header: 'Pages × copies', cell: (o) => <SpecsCell o={o} /> },
     { key: 'settings', header: 'Settings', cell: (o) => <SettingsCell o={o} /> },
-    ...(showStatus ? [{ key: 'status', header: 'Status', cell: (o: OrderSummary) => <StatusCell o={o} /> }] : []),
+    { key: 'status', header: 'Status', cell: (o: OrderSummary) => <StatusCell o={o} /> },
     { key: 'action', header: 'Action', srOnlyHeader: true, align: 'end', cell: (o) => <RowActions o={o} onChanged={refresh} /> }
-  ], [refresh, showStatus]);
+  ], [refresh]);
 
   return (
     <PrintJobsCtx.Provider value={jobs}>
@@ -337,16 +344,29 @@ export default function QueuePage() {
       <div className="pb-pagehead">
         <div>
           <h1 id="queue-title" className="pb-h1">Print queue</h1>
-          <p className="pb-muted pb-pagehead__sub">{sort === 'newest' ? 'Newest first' : 'Oldest first'}. Files are deleted automatically {retentionPhrase(retentionMinutes)} after you press Print.</p>
+          <p className="pb-muted pb-pagehead__sub">Files are deleted {retentionPhrase(retentionMinutes)} after you press Print.</p>
+        </div>
+        <div className="pb-refreshbar">
+          <Button variant="outline" size="sm" iconStart="refresh-cw" onClick={() => void refreshAll()} loading={q.refreshing} disabled={q.refreshing || q.loading} data-testid="queue-refresh">
+            {q.refreshing ? 'Refreshing…' : 'Refresh'}
+          </Button>
+          {q.lastRefreshed && <span className="pb-muted" data-testid="last-refreshed" role="status">Last refreshed {q.lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
         </div>
         <Switch label="Sound for new orders" checked={sound.enabled} onChange={() => sound.set(!sound.enabled)} />
       </div>
+      {ratesMissing && (
+        <div data-testid="rates-missing">
+          <Banner tone="warn" actions={<Link className={buttonClass({ variant: 'dark', size: 'sm' })} to="/shop/setup">Set printing rates</Link>}>
+            Printing rates are not configured. Customers cannot order until you set them.
+          </Banner>
+        </div>
+      )}
       {stats && (
         <div className="pb-stats pb-stats--queue" aria-label="Today at a glance" role="group" data-testid="queue-stats">
-          <StatTile label="Waiting for print" value={String(stats.waiting)} hint="New requests you have not printed yet." />
+          <StatTile label="Waiting for print" value={String(stats.waiting)}  />
           <StatTile label="Orders today" value={String(stats.orders)} />
-          <StatTile label="Pages today" value={String(stats.pages)} hint="Pages x copies, excluding cancelled and expired." />
-          <StatTile label="Prints started today" value={String(stats.initiated)} hint="Times Print was pressed." />
+          <StatTile label="Pages today" value={String(stats.pages)}  />
+          <StatTile label="Prints started today" value={String(stats.initiated)}  />
         </div>
       )}
       <div className="pb-queue-controls">
@@ -360,7 +380,7 @@ export default function QueuePage() {
         </label>
       </div>
       <div id="queue-panel" role="tabpanel" aria-labelledby={`queue-tab-${tabKey}`} className="pb-page">
-        {q.error && <Banner tone="err" actions={<Button size="sm" variant="dark" onClick={q.refresh}>Retry</Button>}>{q.error}</Banner>}
+        {q.error && <Banner tone="err" actions={<Button size="sm" variant="dark" onClick={() => void refreshAll()}>Retry</Button>}>{q.error}</Banner>}
         <div aria-live="polite" className="pb-sr-only">{q.fresh.size > 0 ? 'New order received' : ''}</div>
         {empty && (
           <Card padding="none">

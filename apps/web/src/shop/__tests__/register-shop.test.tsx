@@ -30,6 +30,7 @@ describe('RegisterShopPage', () => {
           <Routes>
             <Route path="/shop/register" element={<RegisterShopPage />} />
             <Route path="/shop" element={<div data-testid="shop-dashboard">Shop Dashboard</div>} />
+            <Route path="/shop/setup" element={<div data-testid="shop-setup">Set your printing rates</div>} />
             <Route path="/shop/login" element={<div data-testid="shop-login">Shop Login</div>} />
           </Routes>
         </AuthProvider>
@@ -68,8 +69,10 @@ describe('RegisterShopPage', () => {
       expect(screen.getByRole('heading', { name: 'Register Your Shop' })).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Printout Buddy is currently free to use.')).toBeInTheDocument();
-    expect(screen.getByText('anita@gmail.com')).toBeInTheDocument();
+    expect(screen.queryByTestId('free-platform-notice')).toBeNull();
+    const email = screen.getByLabelText(/Email \(verified by Google\)/);
+    expect(email).toHaveValue('anita@gmail.com');
+    expect(email).toBeDisabled();
     expect(screen.getByLabelText(/Owner Name/i)).toHaveValue('Anita Verma');
     expect(screen.getByLabelText(/Shop Name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Shop Address/i)).toBeInTheDocument();
@@ -249,7 +252,7 @@ describe('RegisterShopPage', () => {
         pincode: '110001',
         email: 'rajesh@gmail.com'
       });
-      expect(screen.getByTestId('shop-dashboard')).toBeInTheDocument();
+      expect(screen.getByTestId('shop-setup')).toBeInTheDocument();
     });
   });
 
@@ -294,7 +297,7 @@ describe('RegisterShopPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('An account with this email address already exists. Sign in with email and password, then link your Google account in Settings.')
+        screen.getByText('An account with this email address already exists and is not linked to this Google account. Please contact support to link it.')
       ).toBeInTheDocument();
     });
   });

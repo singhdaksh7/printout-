@@ -31,7 +31,7 @@ describe('pricing editor', () => {
     expect(screen.getByLabelText('B&W · Duplex')).toHaveValue('3.50');
     expect(screen.getByLabelText('Colour · Single-sided')).toHaveValue('');
     expect(screen.getByLabelText('Colour · Duplex')).toHaveValue('');
-    expect(screen.getByText(/Duplex is charged per physical sheet \(2 pages per sheet\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Duplex counts 2 pages per sheet/)).toBeInTheDocument();
   });
 
   it('converts rupees to paise, updating existing rules (PUT) and creating missing ones (POST); shows unsaved state + toast', async () => {

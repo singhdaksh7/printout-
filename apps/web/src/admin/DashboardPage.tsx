@@ -21,7 +21,6 @@ export default function DashboardPage() {
         <>
           <section aria-label="Platform totals" className="pb-stats">
             <StatTile label="Shops" value={data.totalShops} />
-            <StatTile label="Active subscriptions" value={data.activeSubscriptions} />
             <StatTile label="Orders today (all shops)" value={data.ordersToday} />
             <StatTile label="Total orders" value={data.totalOrders} />
             <StatTile label="Total pages (non-cancelled)" value={data.totalPages} />
@@ -34,10 +33,6 @@ export default function DashboardPage() {
             <Card as="section" aria-labelledby="d-shops">
               <CardHeader id="d-shops" title="Shops by status" />
               <KeyValueList items={counts(data.shopsByStatus).map((c) => ({ label: c.label, value: c.value }))} />
-            </Card>
-            <Card as="section" aria-labelledby="d-subs">
-              <CardHeader id="d-subs" title="Subscriptions by status" />
-              <KeyValueList items={counts(data.subscriptionsByStatus).map((c) => ({ label: c.label, value: c.value }))} />
             </Card>
           </div>
           <Card as="section" aria-labelledby="d-rs">

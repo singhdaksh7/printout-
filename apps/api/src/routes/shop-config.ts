@@ -73,7 +73,10 @@ export async function shopConfigRoutes(app: FastifyInstance, ctx: AppContext): P
       address: shop.address,
       publicContact: shop.settings?.publicContact ?? null,
       brandColor: shop.settings?.brandColor ?? null,
-      acceptsOrders: shop.acceptsOrders
+      acceptsOrders: shop.acceptsOrders,
+      // Read-only, admin-controlled; the owner cannot change either through this route.
+      shopStatus: shop.status,
+      isVerified: shop.isVerified
     };
   }
 

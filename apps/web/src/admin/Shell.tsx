@@ -21,12 +21,10 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin', label: 'Dashboard', end: true, icon: 'layout-dashboard' },
   { to: '/admin/shops', label: 'Shops', icon: 'store' },
   { to: '/admin/orders', label: 'Orders', icon: 'list-ordered' },
-  { to: '/admin/subscriptions', label: 'Subscriptions', icon: 'credit-card' },
-  { to: '/admin/plans', label: 'Plans', icon: 'receipt' },
   { to: '/admin/audit', label: 'Audit log', icon: 'scroll-text' },
   { to: '/admin/account', label: 'Account', icon: 'lock' }
 ];
-/** Phone tab bar: four destinations plus "More" (Subscriptions, Plans, Account). "Subscriptions" does not fit a 60px tab at 360px, so it lives under More. */
+/** Phone tab bar: four destinations plus "More" (Account). */
 const PHONE_PATHS = ['/admin', '/admin/shops', '/admin/orders', '/admin/audit'];
 
 export default function Shell() {

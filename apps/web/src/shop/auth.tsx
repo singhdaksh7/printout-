@@ -7,6 +7,7 @@ import {
   onboardShop as apiOnboardShop, type GoogleSessionResponse, type LoginResult, type OnboardShopInput, type SecondFactorMethod, type SessionData
 } from '../lib/shop-api';
 import { Button } from '../ui';
+import { AdminSessionNotice } from './AdminSessionNotice';
 
 type AuthState =
   | { status: 'loading' }
@@ -165,6 +166,6 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     const from = location.pathname + location.search;
     return <Navigate to="/shop/login" replace state={{ from, expired: !!state.expired }} />;
   }
-  if (state.session.user.role === 'PLATFORM_ADMIN') return <Navigate to="/admin" replace />;
+  if (state.session.user.role === 'PLATFORM_ADMIN') return <AdminSessionNotice />;
   return <>{children}</>;
 }
