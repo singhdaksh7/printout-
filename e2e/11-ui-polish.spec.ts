@@ -125,12 +125,13 @@ test.describe('shop UI', () => {
     await ctx.close();
   });
 
-  test('queue: Sound is a switch that persists, and the New tab has no empty Status column', async ({ page }) => {
+  test('queue: Sound is a switch that persists, and every row carries an order status chip', async ({ page }) => {
     await createOrderViaApi(SLUG, { name: 'Switch check' });
     await page.setViewportSize(VIEWPORTS.desktop);
     await uiLogin(page, 'owner@central.test');
     await expect(page.getByTestId('order-card').first()).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'Status' })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: 'Status' })).toBeVisible();
+    await expect(page.getByTestId('order-card').first()).toContainText('New');
     await expect(page.getByRole('columnheader', { name: 'Settings' })).toBeVisible();
     const sound = page.getByRole('switch', { name: 'Sound for new orders' });
     await expect(sound).not.toBeChecked();

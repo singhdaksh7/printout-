@@ -39,7 +39,7 @@ export function ShopStatusBar({ shopName }: { shopName: string }) {
   }
 
   return (
-    <div className="pb-statusbar" role="region" aria-label="Shop status" data-testid="shop-status">
+    <div className="pb-statusbar" role="region" aria-label="Current shop" data-testid="shop-status">
       <strong className="pb-ellipsis">{shopName}</strong>
       <Chip tone={st.tone} data-testid="shop-status-chip">{st.label}</Chip>
       {canToggle && (
