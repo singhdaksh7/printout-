@@ -385,6 +385,10 @@ export const phoneSession = (idToken: string) => api<SessionData>('/auth/phone/s
 /** Exchanges a Firebase Google ID token for a normal shop session or a restricted onboarding grant. */
 export const googleSession = (idToken: string) => api<GoogleSessionResponse>('/auth/google/session', { method: 'POST', body: { idToken } });
 
+/** One-time legacy owner recovery: existing email+password AND a Firebase Google ID token in one request; links Google and returns a normal session. */
+export const recoverWithGoogle = (email: string, password: string, idToken: string) =>
+  api<SessionData>('/auth/google/recover', { method: 'POST', body: { email, password, idToken } });
+
 export interface OnboardShopInput {
   ownerName: string;
   shopName: string;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { PhoneAuthError, googleAuthErrorMessage, initFirebaseAuth, phoneAuthConfigured, signInWithGoogleWeb } from '../lib/phone-auth';
 import { Banner, BrandLogo, Button, Card } from '../ui';
@@ -129,6 +129,9 @@ export default function LoginPage() {
             <GoogleIcon />
             <span>Continue with Google</span>
           </Button>
+          <p className="pb-login__recover">
+            <Link to="/shop/recover" data-testid="recover-link">Existing account without Google? Recover access</Link>
+          </p>
         </div>
       </Card>
     </div>
