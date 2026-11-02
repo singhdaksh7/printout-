@@ -70,13 +70,6 @@ describe('queue', () => {
     expect(screen.getByRole('link', { name: 'Order #CENT-1' })).toHaveAttribute('href', '/shop/orders/o1');
   });
 
-  it('does not repeat a "New" status chip on rows of the New tab', async () => {
-    mockFetch(authedSession, orders({ items: [order()] }));
-    renderShop('/shop');
-    const c = within(await screen.findByTestId('order-card'));
-    expect(c.queryByText('New')).not.toBeInTheDocument();
-  });
-
   it('long filenames are truncated with the full name in a title', async () => {
     const long = `${'a'.repeat(200)}.pdf`;
     mockFetch(authedSession, orders({ items: [order({ originalFilename: long })] }));
@@ -127,32 +120,66 @@ describe('queue', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
   });
 
-  it('shows a new order from SSE without a manual refresh and updates the title badge', async () => {
+  it('shows a new order only after the Refresh button is pressed, with fresh data and a last-refreshed time', async () => {
+    const user = userEvent.setup();
     const store = { items: [order()] };
-    mockFetch(authedSession, orders(store));
+    const { calls } = mockFetch(authedSession, orders(store));
     renderShop('/shop');
     await screen.findByText('#CENT-1');
-    await waitFor(() => expect(document.title).toBe('(1) Printout'));
-    const es = FakeES.open[0]!;
-    act(() => es.open_());
     store.items.unshift(order({ id: 'o3', orderNumber: 'CENT-3', createdAt: new Date().toISOString() }));
-    act(() => es.emit('order.created', { id: 'o3', status: 'NEW' }, 'e1'));
+    expect(screen.queryByText('#CENT-3')).toBeNull();
+    const before = calls.filter((c) => c.path === '/shop/orders').length;
+    await user.click(screen.getByTestId('queue-refresh'));
     expect(await screen.findByText('#CENT-3')).toBeInTheDocument();
+    expect(calls.filter((c) => c.path === '/shop/orders').length).toBeGreaterThan(before);
+    expect(screen.getByTestId('last-refreshed')).toHaveTextContent(/Last refreshed/);
     await waitFor(() => expect(document.title).toBe('(2) Printout'));
   });
 
-  it('reports connection state: Live, Reconnecting, then Live again', async () => {
-    mockFetch(authedSession, orders({ items: [] }));
+  it('ignores a second Refresh click while one is running and keeps the selected sort', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const seen: string[] = [];
+    mockFetch(authedSession, orders({ items: [order()] }));
     renderShop('/shop');
-    await screen.findByText('No new requests');
-    const es = FakeES.open[0]!;
-    const status = () => screen.getByRole('status', { name: /connection/i });
-    act(() => es.open_());
-    expect(status()).toHaveTextContent('Live');
-    act(() => es.fail(false));
-    expect(status()).toHaveTextContent('Reconnecting…');
-    act(() => es.open_());
-    expect(status()).toHaveTextContent('Live');
+    await screen.findByText('#CENT-1');
+    await user.selectOptions(screen.getByTestId('queue-sort'), 'oldest');
+    await screen.findByText('#CENT-1');
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (...a: Parameters<typeof fetch>) => {
+      if (String(a[0]).includes('/shop/orders?')) { seen.push(String(a[0])); await gate; }
+      return realFetch(...a);
+    });
+    await user.click(screen.getByTestId('queue-refresh'));
+    expect(screen.getByTestId('queue-refresh')).toBeDisabled();
+    await user.click(screen.getByTestId('queue-refresh'));
+    release();
+    await waitFor(() => expect(screen.getByTestId('queue-refresh')).toBeEnabled());
+    const queue = seen.filter((u) => u.includes('sort=oldest'));
+    expect(queue).toHaveLength(1); // one list request despite two clicks, with the chosen sort
+  });
+
+  it('shows the status chip on every order, including New', async () => {
+    mockFetch(authedSession, orders({ items: [order()] }));
+    renderShop('/shop');
+    const card = within(await screen.findByTestId('order-card'));
+    expect(card.getAllByText('New').length).toBeGreaterThan(0);
+  });
+
+  it('does not refresh the queue on its own when a realtime event or focus event arrives', async () => {
+    const store = { items: [order()] };
+    const { calls } = mockFetch(authedSession, orders(store));
+    renderShop('/shop');
+    await screen.findByTestId('order-card');
+    const before = calls.filter((c) => c.path === '/shop/orders').length;
+    store.items = [order({ id: 'o9', orderNumber: 'CENT-9' }), ...store.items];
+    const es = FakeES.open[0];
+    if (es) act(() => { es.open_(); es.emit('order.created', { id: 'o9' }, 'e1'); });
+    window.dispatchEvent(new Event('focus'));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(calls.filter((c) => c.path === '/shop/orders').length).toBe(before);
+    expect(screen.queryByText('#CENT-9')).toBeNull();
   });
 
   it('opens a single EventSource under React StrictMode and closes it on unmount', async () => {
@@ -213,20 +240,9 @@ describe('queue', () => {
     await screen.findByTestId('order-card');
     await user.selectOptions(screen.getByTestId('queue-sort'), 'oldest');
     await waitFor(() => expect(seen.some((q) => q.includes('sort=oldest'))).toBe(true));
-    expect(screen.getByText(/Oldest first\./)).toBeInTheDocument();
+    expect(screen.getByTestId('queue-sort')).toHaveValue('oldest');
     await user.selectOptions(screen.getByTestId('queue-sort'), 'newest');
-    await waitFor(() => expect(screen.getByText(/Newest first\./)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('queue-sort')).toHaveValue('newest'));
   });
 
-  it('does not duplicate a row when the same order arrives via a realtime event and a refresh', async () => {
-    const store = { items: [order()] };
-    mockFetch(authedSession, orders(store));
-    renderShop('/shop');
-    await screen.findByTestId('order-card');
-    store.items = [order({ id: 'o9', orderNumber: 'CENT-9' }), ...store.items];
-    const es = FakeES.open[0]!;
-    act(() => { es.open_(); es.emit('order.created', { id: 'o9' }, 'e1'); es.emit('order.created', { id: 'o9' }, 'e1'); });
-    await waitFor(() => expect(screen.getAllByTestId('order-card')).toHaveLength(2));
-    expect(screen.getAllByTestId('order-card')).toHaveLength(2);
-  });
 });

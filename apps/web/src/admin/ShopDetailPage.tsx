@@ -62,55 +62,6 @@ function StatusCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) 
 
 const toDateInput = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '');
 
-function SubscriptionCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) => void }) {
-  const sub = d.subscription;
-  const plans = useLoad((s) => listPlans(s), []);
-  const [planId, setPlanId] = useState(sub?.plan.id ?? '');
-  const [status, setStatus] = useState<SubStatus>(sub?.status ?? 'ACTIVE');
-  const [renews, setRenews] = useState(toDateInput(sub?.renewsAt));
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const needsPlan = !sub && !planId;
-
-  async function save() {
-    if (needsPlan) { setErr('Choose a plan to create the subscription.'); return; }
-    setBusy(true);
-    setErr(null);
-    try {
-      await updateSubscription(d.shop.id, {
-        status,
-        ...(planId ? { planId } : {}),
-        renewsAt: renews ? new Date(`${renews}T00:00:00.000Z`).toISOString() : null
-      });
-      onChanged('Subscription saved');
-    } catch (e) { setErr(adminError(e)); }
-    setBusy(false);
-  }
-  return (
-    <Card as="section" aria-labelledby="sub-h">
-      <CardHeader id="sub-h" title="Plan and subscription" />
-      <div className="ad-form">
-        <Banner tone="info">{MANUAL_NOTE}</Banner>
-        <KeyValueList items={[
-          { label: 'Plan', value: sub ? `${sub.plan.name} (${inr(sub.plan.pricePaise)}/month)` : 'None' },
-          { label: 'Subscription', value: sub ? sub.status.charAt(0) + sub.status.slice(1).toLowerCase() : 'None' },
-          { label: 'Renewal date', value: fmtDate(sub?.renewsAt) }
-        ]} />
-        {err && <Banner tone="err">{err}</Banner>}
-        {plans.error != null && <LoadError error={plans.error} onRetry={plans.reload} />}
-        <Select label="Plan" value={planId} onChange={(e) => setPlanId(e.target.value)}>
-          {!sub && <option value="">Select a plan</option>}
-          {(plans.data ?? []).filter((p) => p.active || p.id === sub?.plan.id).map((p) => <option key={p.id} value={p.id}>{p.name} — {inr(p.pricePaise)}/month</option>)}
-        </Select>
-        <Select label="Subscription status" value={status} onChange={(e) => setStatus(e.target.value as SubStatus)}>
-          {SUB_STATUSES.map((s) => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-        </Select>
-        <TextField label="Renewal date (informational)" type="date" value={renews} onChange={(e) => setRenews(e.target.value)} />
-        <div className="ad-actions"><Button variant="primary" onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : sub ? 'Save subscription' : 'Create subscription'}</Button></div>
-      </div>
-    </Card>
-  );
-}
 
 export default function ShopDetailPage() {
   const { id = '' } = useParams();
@@ -165,7 +116,6 @@ export default function ShopDetailPage() {
             <p className="pb-muted">Operational metadata only. Customer documents are not accessible to platform administrators.</p>
           </Card>
           <StatusCard d={data} onChanged={changed} />
-          <SubscriptionCard key={`${data.subscription?.updatedAt ?? 'none'}`} d={data} onChanged={changed} />
           <Card as="section" aria-labelledby="aud-h">
             <CardHeader id="aud-h" title="Recent audit entries" />
             <AuditList shopId={data.shop.id} pageSize={10} />

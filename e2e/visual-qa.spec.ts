@@ -131,7 +131,7 @@ test.describe('visual QA', () => {
       await page.waitForTimeout(700);
       await capture(page, 'admin-2-shops', w, logs);
       const shop = await page.locator('main a[href^="/admin/shops/"]:not([href$="/new"])').first().getAttribute('href');
-      const routes = [['3-shop-new', '/admin/shops/new'], ['4-shop-detail', shop ?? '/admin/shops'], ['5-orders', '/admin/orders'], ['6-subscriptions', '/admin/subscriptions'], ['7-plans', '/admin/plans'], ['8-audit', '/admin/audit'], ['9-account', '/admin/account']];
+      const routes = [['3-shop-new', '/admin/shops/new'], ['4-shop-detail', shop ?? '/admin/shops'], ['5-orders', '/admin/orders'], ['8-audit', '/admin/audit'], ['9-account', '/admin/account']];
       for (const [name, url] of routes) {
         await page.goto(url);
         await page.waitForTimeout(900);

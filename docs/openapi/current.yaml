@@ -237,7 +237,7 @@ paths:
         default: { description: 'Error envelope', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /shop/settings:
     get:
-      summary: "Shop settings"
+      summary: "Shop settings (includes read-only admin-controlled shopStatus and isVerified)"
       security:
         - ownerSession: []
       responses:

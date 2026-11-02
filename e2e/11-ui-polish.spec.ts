@@ -125,12 +125,13 @@ test.describe('shop UI', () => {
     await ctx.close();
   });
 
-  test('queue: Sound is a switch that persists, and the New tab has no empty Status column', async ({ page }) => {
+  test('queue: Sound is a switch that persists, and every row carries an order status chip', async ({ page }) => {
     await createOrderViaApi(SLUG, { name: 'Switch check' });
     await page.setViewportSize(VIEWPORTS.desktop);
     await uiLogin(page, 'owner@central.test');
     await expect(page.getByTestId('order-card').first()).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'Status' })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: 'Status' })).toBeVisible();
+    await expect(page.getByTestId('order-card').first()).toContainText('New');
     await expect(page.getByRole('columnheader', { name: 'Settings' })).toBeVisible();
     const sound = page.getByRole('switch', { name: 'Sound for new orders' });
     await expect(sound).not.toBeChecked();
@@ -148,7 +149,7 @@ test.describe('shop UI', () => {
   });
 });
 
-test('admin phone: More offers Subscriptions, Plans and Account; the header stays on one row', async ({ browser }) => {
+test('admin phone: More offers Account; the header stays on one row', async ({ browser }) => {
   const ctx = await newMobileContext(browser, VIEWPORTS.s360);
   const page = await ctx.newPage();
   await page.goto('/admin/login');
@@ -163,7 +164,7 @@ test('admin phone: More offers Subscriptions, Plans and Account; the header stay
   const bar = page.getByRole('navigation', { name: 'Admin sections, phone' });
   await bar.getByRole('button', { name: 'More' }).click();
   const sheet = page.getByRole('dialog', { name: 'More' });
-  for (const label of ['Subscriptions', 'Plans', 'Account']) await expect(sheet.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['Account']) await expect(sheet.getByRole('link', { name: label })).toBeVisible();
   await sheet.getByRole('link', { name: 'Account' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Account settings' })).toBeVisible();
   await expectNoOverflow(page, 'admin account 360');
