@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { getMyProfile } from '../lib/shop-api';
+import { getMyProfile, normalisePhone } from '../lib/shop-api';
 import { Banner, BrandLogo, Button, Card, TextField } from '../ui';
 import { useAuth } from './auth';
+import { StepIndicator } from './SetupSteps';
 
 export const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 
@@ -42,6 +43,9 @@ export default function RegisterShopPage() {
   const [shopName, setShopName] = useState('');
   const [address, setAddress] = useState('');
   const [pincode, setPincode] = useState('');
+  const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
+  const [stateName, setStateName] = useState('');
   const [busy, setBusy] = useState(false);
   const justCreated = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +54,9 @@ export default function RegisterShopPage() {
     shopName?: string;
     address?: string;
     pincode?: string;
+    phone?: string;
+    city?: string;
+    stateName?: string;
   }>({});
 
   useEffect(() => {
@@ -124,6 +131,11 @@ export default function RegisterShopPage() {
       errs.pincode = 'Enter a valid 6-digit Indian PIN code (e.g. 110001).';
     }
 
+    if (!phone.trim()) errs.phone = 'Shop phone number is required.';
+    else if (!normalisePhone(phone)) errs.phone = 'Enter a 10-digit mobile number or a number starting with +.';
+    if (!city.trim()) errs.city = 'City is required.';
+    if (!stateName.trim()) errs.stateName = 'State is required.';
+
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -143,6 +155,9 @@ export default function RegisterShopPage() {
         shopName: shopName.trim(),
         address: address.trim(),
         pincode: pincode.trim(),
+        phoneNumber: normalisePhone(phone)!,
+        city: city.trim(),
+        state: stateName.trim(),
         ...(googleEmail ? { email: googleEmail } : {})
       });
       navigate('/shop/setup', { replace: true });
@@ -174,6 +189,7 @@ export default function RegisterShopPage() {
               <h1 id="register-title" className="pb-h1">
                 Register Your Shop
               </h1>
+              <StepIndicator current="details" />
             </div>
 
             {googleEmail && (
@@ -212,6 +228,22 @@ export default function RegisterShopPage() {
             />
 
             <TextField
+              label="Shop Phone"
+              required
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+              }}
+              error={fieldErrors.phone}
+              disabled={busy}
+              maxLength={16}
+              inputMode="tel"
+              placeholder="10-digit mobile number"
+              autoComplete="tel"
+            />
+
+            <TextField
               label="Shop Address"
               required
               value={address}
@@ -222,8 +254,36 @@ export default function RegisterShopPage() {
               error={fieldErrors.address}
               disabled={busy}
               maxLength={300}
-              placeholder="Shop number, street, landmark, city"
+              placeholder="Shop number, street, landmark"
               autoComplete="street-address"
+            />
+
+            <TextField
+              label="City"
+              required
+              value={city}
+              onChange={(e) => {
+                setCity(e.target.value);
+                if (fieldErrors.city) setFieldErrors((prev) => ({ ...prev, city: undefined }));
+              }}
+              error={fieldErrors.city}
+              disabled={busy}
+              maxLength={100}
+              autoComplete="address-level2"
+            />
+
+            <TextField
+              label="State"
+              required
+              value={stateName}
+              onChange={(e) => {
+                setStateName(e.target.value);
+                if (fieldErrors.stateName) setFieldErrors((prev) => ({ ...prev, stateName: undefined }));
+              }}
+              error={fieldErrors.stateName}
+              disabled={busy}
+              maxLength={100}
+              autoComplete="address-level1"
             />
 
             <TextField

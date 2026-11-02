@@ -391,6 +391,10 @@ export interface OnboardShopInput {
   address: string;
   pincode: string;
   email?: string;
+  /** Optional, validated by the server and saved with the shop. International format, e.g. +919876543210. */
+  phoneNumber?: string;
+  city?: string;
+  state?: string;
 }
 
 export interface OnboardShopResponse {
@@ -440,3 +444,40 @@ export const unlinkGoogleIdentity = (currentPassword?: string) =>
     method: 'POST',
     body: { reauth: { ...(currentPassword ? { currentPassword } : {}) } }
   });
+
+// ---- first-time setup (stepper) ------------------------------------------------------------------------
+export type SetupSection = 'profile' | 'rates' | 'paper' | 'payments';
+export interface SetupStatus {
+  shopId: string; shopStatus: string; isOpen: boolean; isVerified: boolean;
+  sections: {
+    profile: { complete: boolean; missing: string[] };
+    rates: { complete: boolean; activeCount: number; configured: string[] };
+    paper: { complete: boolean; optionCount: number };
+    payments: { complete: boolean; methods: Array<'cash' | 'upi'>; upiId: string | null };
+  };
+  nextStep: SetupSection | null; complete: boolean;
+}
+export const getSetupStatus = () => shopRequest<SetupStatus>('/shop/setup-status');
+
+export interface ShopProfileView {
+  shopName?: string; phoneNumber?: string | null; addressLine1?: string | null; city?: string | null; state?: string | null; pincode?: string | null;
+  acceptedPaymentMethods?: Array<'cash' | 'upi'>; upiId?: string | null; paperSizes?: string[]; paperTypes?: string[];
+}
+export interface ShopProfilePatch {
+  phoneNumber?: string | null; addressLine1?: string; city?: string; state?: string; pincode?: string;
+  upiId?: string | null; acceptedPaymentMethods?: Array<'cash' | 'upi'>;
+}
+export const getShopProfile = (shopId: string) => shopRequest<ShopProfileView>(`/shops/${encodeURIComponent(shopId)}`);
+export const patchShopProfile = (shopId: string, patch: ShopProfilePatch) =>
+  shopRequest<ShopProfileView>(`/shops/${encodeURIComponent(shopId)}`, { method: 'PATCH', body: patch });
+export const putPaperOptions = (shopId: string, paperSizes: string[], paperTypes: string[]) =>
+  shopRequest<{ shopId: string; paperSizes: string[]; paperTypes: string[] }>(`/shops/${encodeURIComponent(shopId)}/paper-options`, { method: 'PUT', body: { paperSizes, paperTypes } });
+
+/** 10-digit Indian mobile numbers are stored as +91...; anything else must already be international (+...). */
+export function normalisePhone(raw: string): string | null {
+  const t = raw.replace(/[\s-]/g, '');
+  if (/^[6-9][0-9]{9}$/.test(t)) return `+91${t}`;
+  if (/^\+[1-9][0-9]{6,14}$/.test(t)) return t;
+  return null;
+}
+export const UPI_ID_REGEX = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9]{1,31}$/;

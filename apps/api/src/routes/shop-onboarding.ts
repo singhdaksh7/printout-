@@ -33,6 +33,10 @@ const onboardingBody = z
     shopName: z.string().trim().min(2).max(100),
     address: z.string().trim().min(5).max(300),
     pincode: z.string().trim().regex(PINCODE, 'Enter a valid 6-digit PIN code'),
+    /** Optional shop details persisted atomically with the shop (same rules as PATCH /shops/{shopId}). */
+    phoneNumber: z.string().trim().regex(/^\+[1-9][0-9]{6,14}$/, 'Use international format, e.g. +919999999999').optional(),
+    city: z.string().trim().min(1).max(100).optional(),
+    state: z.string().trim().min(1).max(100).optional(),
     client: clientParam,
     deviceId: deviceIdSchema.optional()
   })
@@ -90,7 +94,7 @@ export async function shopOnboardingRoutes(app: FastifyInstance, ctx: AppContext
         try {
           const userId = await prisma.$transaction(async (tx) => {
             const shop = await tx.shop.create({
-              data: { slug: newSlug(body.shopName), displayName: body.shopName, address: body.address, pincode: body.pincode, status: 'ACTIVE', acceptsOrders: true, settings: { create: {} } }
+              data: { slug: newSlug(body.shopName), displayName: body.shopName, address: body.address, pincode: body.pincode, ...(body.city ? { city: body.city } : {}), ...(body.state ? { state: body.state } : {}), status: 'ACTIVE', acceptsOrders: true, settings: { create: body.phoneNumber ? { publicContact: body.phoneNumber } : {} } }
             });
             const user = await tx.user.create({
               data: { email: accountEmail, displayName: body.ownerName, passwordHash, passwordSet: false, role: 'SHOP_OWNER', shopId: shop.id }
