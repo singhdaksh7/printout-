@@ -1,16 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { createShop, fmtDate, listShops, slugHint, type AdminShop, type ShopStatus } from '../lib/admin-api';
-import { Banner, Button, Card, EmptyState, Select, TextField, buttonClass, useToast } from '../ui';
+import { Banner, Button, Card, Chip, EmptyState, Select, TextField, buttonClass, useToast } from '../ui';
 import { LoadError, LoadMore, Loading, ShopStatusChip, adminError, useCursorList, useLoad } from './ui';
 
 export function ShopsList() {
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
-  const [status, setStatus] = useState<ShopStatus | ''>('');
+  // The dashboard links here with ?status= or ?verified= already chosen.
+  const [params] = useSearchParams();
+  const [status, setStatus] = useState<ShopStatus | ''>(params.get('status') === 'SUSPENDED' ? 'SUSPENDED' : params.get('status') === 'ACTIVE' ? 'ACTIVE' : '');
+  const [verified, setVerified] = useState<'true' | 'false' | ''>(params.get('verified') === 'false' ? 'false' : params.get('verified') === 'true' ? 'true' : '');
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 300); return () => clearTimeout(t); }, [q]);
-  const list = useCursorList<AdminShop>((cursor, signal) => listShops({ status, q: debounced, cursor, limit: 25 }, signal), [status, debounced]);
+  const list = useCursorList<AdminShop>((cursor, signal) => listShops({ status, q: debounced, isVerified: verified, cursor, limit: 25 }, signal), [status, verified, debounced]);
   const toast = useToast();
   const flash = (useLocation().state as { toast?: string } | null)?.toast;
   useEffect(() => { if (flash) toast.show(flash); }, [flash]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -26,11 +29,14 @@ export function ShopsList() {
         <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as ShopStatus | '')}>
           <option value="">All</option><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option>
         </Select>
+        <Select label="Verification" value={verified} onChange={(e) => setVerified(e.target.value as 'true' | 'false' | '')}>
+          <option value="">All</option><option value="false">Not verified</option><option value="true">Verified</option>
+        </Select>
       </div>
       {list.loading && <Loading label="Loading shops" />}
       {list.error != null && <LoadError error={list.error} onRetry={list.reload} />}
       {!list.loading && !list.error && list.items.length === 0 && (
-        <EmptyState icon="store" title="No shops found">{q || status ? 'Try different filters.' : 'Create the first shop.'}</EmptyState>
+        <EmptyState icon="store" title="No shops found">{q || status || verified ? 'Try different filters.' : 'Create the first shop.'}</EmptyState>
       )}
       {!list.loading && list.items.length > 0 && (
         <>
@@ -43,7 +49,8 @@ export function ShopsList() {
                   {s.owner && <div className="pb-muted pb-wrap">{s.owner.displayName} · {s.owner.email}</div>}
                 </div>
                 <div className="ad-right">
-                  <ShopStatusChip status={s.status} size="sm" />
+                  <ShopStatusChip status={s.status} size="sm" />{' '}
+                  <Chip tone={s.isVerified ? 'ok' : 'warn'} size="sm">{s.isVerified ? 'Verified' : 'Not verified'}</Chip>
                   <div className="pb-muted">{s.orderCount ?? 0} orders · last {fmtDate(s.lastOrderAt)}</div>
                 </div>
               </li>
