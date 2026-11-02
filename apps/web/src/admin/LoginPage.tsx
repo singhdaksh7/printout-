@@ -4,6 +4,7 @@ import { ApiError } from '../lib/api';
 import { isTwoFactorRequired, type SecondFactorMethod } from '../lib/shop-api';
 import { useAuth } from '../shop/auth';
 import { Banner, BrandLogo, Button, Card, TextField } from '../ui';
+import { PasswordField } from './account-parts';
 
 function loginErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
@@ -139,7 +140,7 @@ export default function LoginPage() {
             {nav?.expired && !error && !nav.credentialsChanged && <Banner tone="warn">Session expired — sign in again.</Banner>}
             {error && <Banner tone="err">{error}</Banner>}
             <TextField label="Email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
-            <TextField ref={passwordRef} label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+            <PasswordField ref={passwordRef} label="Password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
             <Button type="submit" variant="primary" fullWidth disabled={busy || !email || !password} loading={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
           </form>
         ) : (
