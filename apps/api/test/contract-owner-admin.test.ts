@@ -239,7 +239,6 @@ describe('PDF contract: owner and admin endpoints', () => {
       // Own shop id with another tenant's order id is an unknown order.
       expectPdfError(await pdf(owner, 'PATCH', `/shops/${shopA()}/orders/${order.id}/status`, { status: 'rejected', rejectReason: 'x' }), 404, 'ORDER_NOT_FOUND');
       expect((await h.prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe('NEW');
-      void ownerB;
     });
   });
 
@@ -347,7 +346,7 @@ describe('PDF contract: owner and admin endpoints', () => {
       expect(body(await pdf(admin, 'PATCH', `/admin/shops/${shopA()}/block`, { isActive: true }))).toEqual({ id: shopA(), isActive: true });
       expectPdfError(await pdf(admin, 'PATCH', '/admin/shops/does-not-exist-1/verify', { isVerified: true }), 404, 'SHOP_NOT_FOUND');
       expectPdfError(await pdf(admin, 'PATCH', '/admin/shops/does-not-exist-1/block', { isActive: false }), 404, 'SHOP_NOT_FOUND');
-      expectPdfError(await pdf(owner, 'PATCH', `/admin/shops/${shopA()}/verify`, { isVerified: true }), 403, 'FORBIDDEN');
+      expectPdfError(await pdf(ownerB, 'PATCH', `/admin/shops/${shopA()}/verify`, { isVerified: true }), 403, 'FORBIDDEN');
       expectPdfError(await pdf(admin, 'PATCH', `/admin/shops/${shopA()}/verify`, {}), 400, 'VALIDATION_ERROR');
       // Without the header the native response (extra `status`) is unchanged.
       expect((await req(h.app, admin, 'PATCH', `/admin/shops/${shopA()}/block`, { isActive: false })).json().data).toMatchObject({ id: shopA(), isActive: false, status: 'SUSPENDED' });

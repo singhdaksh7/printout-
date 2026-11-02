@@ -52,6 +52,8 @@ const err = (status: number, code: string, message: string, details?: unknown) =
 const invalidField = (field: string, message: string) => err(400, 'VALIDATION_ERROR', message, { field });
 
 const SHOP_PARAM = z.object({ shopId: z.string().min(8).max(64) }).strict();
+/** Tenant check on routes that carry more params (orderId): only shopId is read here. */
+const SHOP_OF_PARAMS = z.object({ shopId: z.string().min(8).max(64) }).passthrough();
 const ORDER_PARAM = z.object({ shopId: z.string().min(8).max(64), orderId: z.string().min(8).max(64) }).strict();
 const PHONE = /^\+[1-9][0-9]{6,14}$/;
 const PINCODE = /^[1-9][0-9]{5}$/;
@@ -194,7 +196,7 @@ export async function pdfOwnerAdminRoutes(app: FastifyInstance, ctx: AppContext)
   };
   /** The single tenant check. A shop the caller does not own is the PDF's 403 NOT_SHOP_OWNER (the app-native routes keep their 404). */
   const owned = async (request: FastifyRequest) => {
-    const { shopId } = SHOP_PARAM.parse(request.params);
+    const { shopId } = SHOP_OF_PARAMS.parse(request.params);
     try {
       await requireOwnedShop(prisma, authOf(request).userId, shopId);
     } catch (error) {
