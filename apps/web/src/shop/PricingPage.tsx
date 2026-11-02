@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   createPricingRule, deletePricingRule, describeError, errorCode, listPricingRules, updatePricingRule, type PricingRule
 } from '../lib/shop-api';
 import { ApiError } from '../lib/api';
 import { paiseToRupeesInput, parseRupeesToPaise } from '../lib/shop-money';
-import { Banner, Button, Card, CardHeader, Checkbox, Chip, Skeleton, TextField, useToast } from '../ui';
+import { Banner, Button, Card, CardHeader, Checkbox, Chip, Skeleton, TextField, buttonClass, useToast } from '../ui';
 import { useUnsavedGuard } from './components';
 import { formatPaise } from '../lib/format';
 
@@ -28,7 +29,7 @@ function baselineOf(rules: PricingRule[]): Record<string, Row> {
   return out;
 }
 
-export default function PricingPage() {
+export default function PricingPage({ onboarding = false }: { onboarding?: boolean }) {
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [loading, setLoading] = useState(true);
@@ -151,8 +152,8 @@ export default function PricingPage() {
     <section aria-labelledby="pricing-title" className="pb-theme pb-page">
       <div className="pb-pagehead">
         <div>
-          <h1 id="pricing-title" className="pb-h1">Rate card</h1>
-          <p className="pb-muted pb-pagehead__sub">Price per sheet for A4 printing, in rupees. Duplex is charged per physical sheet (2 pages per sheet). Orders are priced by the server using these saved prices.</p>
+          <h1 id="pricing-title" className="pb-h1">{onboarding ? 'Set your printing rates' : 'Rate card'}</h1>
+          <p className="pb-muted pb-pagehead__sub">Price per sheet, A4, in rupees. Duplex counts 2 pages per sheet.</p>
         </div>
         {dirty && <Chip tone="warn" role="status">Unsaved changes</Chip>}
       </div>
@@ -181,7 +182,7 @@ export default function PricingPage() {
                     onChange={(e) => setRow(c.key, { value: e.target.value })}
                   />
                   <div className="pb-ratecard__foot">
-                    {!hasRule && <Chip size="sm" dot={false}>Not set</Chip>}
+                    {!hasRule && <Chip size="sm" dot={false}>Not configured</Chip>}
                     <Checkbox label="Active" checked={row.active} onChange={(e) => setRow(c.key, { active: e.target.checked })} />
                     {hasRule && (
                       <Button variant="ghost" size="sm" onClick={() => void remove(c.key)} aria-label={`Remove price for ${c.label}`}>
@@ -196,6 +197,7 @@ export default function PricingPage() {
           <div className="pb-ratecard__actions">
             <Button type="submit" variant="primary" disabled={!dirty || saving} loading={saving}>{saving ? 'Saving…' : 'Save prices'}</Button>
             <Button variant="ghost" onClick={reset} disabled={!dirty || saving}>Reset</Button>
+            {onboarding && <Link className={buttonClass({ variant: 'outline' })} to="/shop" data-testid="setup-continue">{rules.some((r) => r.active) ? 'Continue to dashboard' : 'Skip for now'}</Link>}
           </div>
         </form>
       )}

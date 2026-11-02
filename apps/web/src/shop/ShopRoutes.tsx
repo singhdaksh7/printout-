@@ -32,6 +32,7 @@ export default function ShopRoutes() {
             <Route index element={<QueuePage />} />
             <Route path="orders/:id" element={<OrderDetailPage />} />
             <Route path="pricing" element={<PricingPage />} />
+            <Route path="setup" element={<PricingPage onboarding />} />
             <Route path="qr" element={<QrPage />} />
             <Route path="qr/poster" element={<Suspense fallback={<Skeleton lines={6} label="Loading poster generator" />}><PosterPage /></Suspense>} />
             <Route path="history" element={<HistoryPage />} />

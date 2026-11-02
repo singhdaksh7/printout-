@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../lib/api';
-import { createShop, fmtDate, inr, listPlans, listShops, slugHint, type AdminShop, type ShopStatus } from '../lib/admin-api';
+import { createShop, fmtDate, listShops, slugHint, type AdminShop, type ShopStatus } from '../lib/admin-api';
 import { Banner, Button, Card, EmptyState, Select, TextField, buttonClass } from '../ui';
 import { LoadError, LoadMore, Loading, ShopStatusChip, adminError, useCursorList, useLoad } from './ui';
 
@@ -40,7 +40,6 @@ export function ShopsList() {
                 </div>
                 <div className="ad-right">
                   <ShopStatusChip status={s.status} size="sm" />
-                  <div className="pb-muted">{s.subscription ? `${s.subscription.plan.name} · ${s.subscription.status.toLowerCase()}` : 'No subscription'}</div>
                   <div className="pb-muted">{s.orderCount ?? 0} orders · last {fmtDate(s.lastOrderAt)}</div>
                 </div>
               </li>
@@ -60,8 +59,7 @@ function genPassword(): string {
 }
 
 export function CreateShop() {
-  const plans = useLoad((s) => listPlans(s), []);
-  const [f, setF] = useState({ displayName: '', slug: '', ownerEmail: '', ownerName: '', password: '', planId: '' });
+  const [f, setF] = useState({ displayName: '', slug: '', ownerEmail: '', ownerName: '', password: '' });
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [serverErr, setServerErr] = useState<{ slug?: string; email?: string; general?: string }>({});
@@ -90,7 +88,6 @@ export function CreateShop() {
     try {
       const r = await createShop({
         slug: f.slug, displayName: f.displayName.trim(),
-        ...(f.planId ? { planId: f.planId } : {}),
         owner: { email: f.ownerEmail.trim(), displayName: f.ownerName.trim(), password: f.password }
       });
       setDone({ shopId: r.shop.id, slug: r.shop.slug, email: r.owner.email, password: f.password });
@@ -136,11 +133,6 @@ export function CreateShop() {
           <TextField label="Owner email" type="email" value={f.ownerEmail} onChange={set('ownerEmail')} error={emailErr} autoComplete="off" />
           <TextField label="Initial password" helperText="Min 12 characters. Shown once after creation; the owner should change it." value={f.password} onChange={set('password')} error={show('password')} autoComplete="off" spellCheck={false} />
           <div><Button variant="outline" size="sm" onClick={() => setF((x) => ({ ...x, password: genPassword() }))}>Generate password</Button></div>
-          <Select label="Plan (optional)" value={f.planId} onChange={set('planId')}>
-            <option value="">No plan yet</option>
-            {(plans.data ?? []).filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} — {inr(p.pricePaise)}/month</option>)}
-          </Select>
-          <p className="pb-muted">Plan and payment are tracked manually; creating a shop never charges anyone.</p>
           <Button variant="primary" type="submit" fullWidth disabled={busy} loading={busy}>{busy ? 'Creating…' : 'Create shop'}</Button>
         </form>
       </Card>

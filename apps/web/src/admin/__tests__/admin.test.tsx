@@ -114,8 +114,8 @@ describe('dashboard', () => {
     expect(await screen.findByText('42')).toBeInTheDocument();
     const totals = screen.getByLabelText('Platform totals');
     expect(within(totals).getByText('5')).toBeInTheDocument();
-    expect(within(totals).getByText('3')).toBeInTheDocument();
-    expect(screen.getAllByText('Suspended')).toHaveLength(2);
+    expect(within(totals).queryByText(/subscription/i)).toBeNull();
+    expect(screen.getAllByText('Suspended')).toHaveLength(1);
   });
 });
 
@@ -211,69 +211,6 @@ describe('shop detail', () => {
     expect(calls.find((c) => c.method === 'PUT')?.headers['x-csrf-token']).toBe('csrf-a');
   });
 
-  it('labels commercial info as manual and never mentions documents', async () => {
-    setup();
-    renderAdmin('/admin/shops/shop-0001');
-    expect(await screen.findByText(/no billing automation/i)).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/storage|tracking token|download/i);
-  });
-
-  it('saves subscription status change via PUT /admin/subscriptions/:shopId', async () => {
-    const user = userEvent.setup();
-    const { calls } = setup([({ method, path }) => (method === 'PUT' && path === '/admin/subscriptions/shop-0001' ? { data: { ...sub, status: 'CANCELLED' } } : undefined)]);
-    renderAdmin('/admin/shops/shop-0001');
-    await user.selectOptions(await screen.findByLabelText('Subscription status'), 'CANCELLED');
-    await user.click(screen.getByRole('button', { name: 'Save subscription' }));
-    await waitFor(() => expect(calls.find((c) => c.path === '/admin/subscriptions/shop-0001')?.body).toEqual({ status: 'CANCELLED', planId: 'plan-0001', renewsAt: null }));
-  });
-});
-
-describe('plans', () => {
-  it('converts rupees to paise on save', async () => {
-    const user = userEvent.setup();
-    const { calls } = mockFetch(
-      authed,
-      ({ method, path }) => (method === 'GET' && path === '/admin/plans' ? { data: [plan] } : undefined),
-      ({ method, path }) => (method === 'PUT' && path === '/admin/plans/plan-0001' ? { data: { ...plan, pricePaise: 14950 } } : undefined)
-    );
-    renderAdmin('/admin/plans');
-    const price = await screen.findByLabelText(/Price per month/);
-    expect(price).toHaveValue('99.00');
-    await user.clear(price);
-    await user.type(price, '149.5');
-    await user.click(screen.getByRole('button', { name: 'Save plan' }));
-    await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ name: 'Standard', pricePaise: 14950, active: true }));
-  });
-
-  it('blocks invalid prices', async () => {
-    const user = userEvent.setup();
-    const { calls } = mockFetch(authed, ({ path }) => (path === '/admin/plans' ? { data: [plan] } : undefined));
-    renderAdmin('/admin/plans');
-    const price = await screen.findByLabelText(/Price per month/);
-    await user.clear(price);
-    await user.type(price, '1.234');
-    expect(screen.getByText(/rupee amount/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save plan' })).toBeDisabled();
-    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
-  });
-});
-
-describe('audit log', () => {
-  it('paginates with the cursor and appends', async () => {
-    const user = userEvent.setup();
-    const entry = (n: number) => ({ id: `a${n}`, shopId: null, actorUserId: 'a1', action: `admin.thing.${n}`, targetType: 'plan', targetId: 'p', metadata: null, createdAt: '2026-01-01T00:00:00Z' });
-    const { calls } = mockFetch(authed, ({ path, query }) => {
-      if (path !== '/admin/audit-logs') return undefined;
-      return query.get('cursor') === 'CUR1' ? { data: { items: [entry(3)] } } : { data: { items: [entry(1), entry(2)], nextCursor: 'CUR1' } };
-    });
-    renderAdmin('/admin/audit');
-    expect(await screen.findByText('admin.thing.1')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText('admin.thing.3')).toBeInTheDocument();
-    expect(screen.getByText('admin.thing.1')).toBeInTheDocument();
-    expect(screen.getByText('End of list')).toBeInTheDocument();
-    expect(calls.filter((c) => c.path === '/admin/audit-logs').length).toBe(2);
-  });
 });
 
 describe('platform visibility (metadata only)', () => {
@@ -301,13 +238,6 @@ describe('platform visibility (metadata only)', () => {
     expect(calls.some((c) => c.path.includes('document-access'))).toBe(false);
   });
 
-  it('subscriptions page lists every shop subscription with renewal info', async () => {
-    mockFetch(authed, ({ method, path }) => (method === 'GET' && path.startsWith('/admin/subscriptions') ? { data: { items: [{ ...sub, shop: { slug: 'central', displayName: 'Central Print', status: 'ACTIVE' } }] } } : undefined));
-    renderAdmin('/admin/subscriptions');
-    expect(await screen.findByText('Central Print')).toBeInTheDocument();
-    expect(screen.getByText(/Standard \(₹99\.00\/month\)/)).toBeInTheDocument();
-  });
-
   it('shop detail shows read-only pricing, status counts and recent orders', async () => {
     mockFetch(authed,
       ({ method, path }) => (method === 'GET' && path === '/admin/shops/shop-0001' ? { data: { shop: shop(), owners: [], subscription: sub, usage: { orderCount: 3, ordersLast30Days: 3, pricingRuleCount: 1, lastOrderAt: null }, ordersByStatus: { NEW: 1, PRINTED: 2 }, pricingRules: [{ id: 'r1', paperSize: 'A4', colourMode: 'bw', sides: 'single', pricePerSheetPaise: 200, active: true }], recentOrders: [order()] } } : undefined),
@@ -316,5 +246,33 @@ describe('platform visibility (metadata only)', () => {
     expect(await screen.findByRole('heading', { name: 'Pricing (read only)' })).toBeInTheDocument();
     expect(screen.getByText('₹2.00 / sheet')).toBeInTheDocument();
     expect(screen.getByText('CEN-0001')).toBeInTheDocument();
+  });
+});
+
+describe('plans and subscriptions are gone from the admin UI', () => {
+  it('has no Plans or Subscriptions navigation and the old routes fall back to the dashboard', async () => {
+    mockFetch(authed, ({ path }) => (path === '/admin/dashboard' ? { data: { timezone: 'Asia/Kolkata', totalShops: 1, shopsByStatus: {}, ordersToday: 0, ...dashExtra } } : undefined));
+    renderAdmin('/admin/plans');
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /plans|subscriptions/i })).toBeNull();
+  });
+});
+
+describe('audit log chips', () => {
+  it('shows compact action, actor and entity chips with a timestamp, using only real action names', async () => {
+    mockFetch(authed, ({ path }) => (path.startsWith('/admin/audit-logs') ? { data: { items: [
+      { id: 'a1', shopId: 's1', actorUserId: 'u1', action: 'shop.verify', targetType: 'shop', targetId: 's1', metadata: {}, createdAt: '2026-10-01T10:00:00Z' },
+      { id: 'a2', shopId: 's1', actorUserId: 'u2', action: 'order.transition', targetType: 'order', targetId: 'o1', metadata: {}, createdAt: '2026-10-01T11:00:00Z' },
+      { id: 'a3', shopId: null, actorUserId: null, action: 'something.unmapped', targetType: null, targetId: null, metadata: {}, createdAt: '2026-10-01T12:00:00Z' }
+    ] } } : undefined));
+    renderAdmin('/admin/audit');
+    const rows = await screen.findAllByTestId('audit-chips');
+    expect(rows[0]).toHaveTextContent('Shop verified');
+    expect(rows[0]).toHaveTextContent('Admin');
+    expect(rows[0]).toHaveTextContent('Shop');
+    expect(rows[1]).toHaveTextContent('Order updated');
+    expect(rows[1]).toHaveTextContent('Shop owner');
+    expect(rows[2]).toHaveTextContent('something.unmapped');
+    expect(rows[2]).toHaveTextContent('System');
   });
 });

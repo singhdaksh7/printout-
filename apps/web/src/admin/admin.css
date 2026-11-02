@@ -48,3 +48,5 @@
 .ad-actions--split { justify-content: space-between; }
 @media (max-width: 479px) { .ad-codes { grid-template-columns: 1fr; } .ad-actions--split { flex-direction: column; align-items: stretch; } }
 @media print { .ad-actions, .ad-form button { display: none; } }
+
+.ad-chips { display: flex; flex-wrap: wrap; gap: var(--pb-space-2); }
