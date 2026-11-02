@@ -131,7 +131,7 @@ describe('legacy owner recovery (POST /auth/google/recover)', () => {
 describe('legacy owner recovery throttling', () => {
   let h: Harness;
   beforeAll(async () => {
-    h = await startHarness({ GOOGLE_LOGIN_ENABLED: 'true' });
+    h = await startHarness({ GOOGLE_LOGIN_ENABLED: 'true', LOGIN_FAIL_MAX: '5' });
   });
   afterAll(async () => h.close());
   it('throttles repeated wrong passwords, even for the correct password afterwards, and links nothing', async () => {
