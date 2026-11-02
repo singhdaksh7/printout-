@@ -1,5 +1,6 @@
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
+import { isPdfRequest, toPdfError } from './contract/facade.js';
 
 export type ErrorCode =
   | 'INVALID_FILE_TYPE'
@@ -73,6 +74,7 @@ export type ErrorCode =
   | 'GOOGLE_TOKEN_INVALID'
   | 'GOOGLE_LOGIN_UNAVAILABLE'
   | 'GOOGLE_IDENTITY_UNAVAILABLE'
+  | 'GOOGLE_ALREADY_LINKED'
   | 'GOOGLE_NOT_LINKED'
   | 'LAST_SIGNIN_METHOD'
   | 'REAUTH_FAILED'
@@ -174,6 +176,12 @@ export function registerErrorHandlers(app: FastifyInstance): void {
     if (statusCode >= 500) request.log.error({ err: safeError(error), requestId: request.id }, 'request failed');
     else request.log.info({ code: body.error.code, requestId: request.id, statusCode }, 'request rejected');
     if (reply.sent) return;
+    // PDF-contract requests get `{ code, message, details }` (docs/flutter); everything else keeps the app envelope.
+    if (isPdfRequest(request)) {
+      const pdf = toPdfError(statusCode, body.error);
+      void reply.status(pdf.statusCode).send(pdf.body);
+      return;
+    }
     void reply.status(statusCode).send(body);
   });
   app.setNotFoundHandler((request, reply) => {

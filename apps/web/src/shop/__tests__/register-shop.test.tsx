@@ -23,6 +23,12 @@ describe('RegisterShopPage', () => {
     vi.mocked(shopApi.fetchSession).mockRejectedValue(new ApiError(401, 'UNAUTHORIZED', 'Not authenticated'));
   });
 
+  const fillDetails = () => {
+    fireEvent.change(screen.getByLabelText(/Shop Phone/i), { target: { value: '98765 43210' } });
+    fireEvent.change(screen.getByLabelText(/^City/i), { target: { value: 'Delhi' } });
+    fireEvent.change(screen.getByLabelText(/^State/i), { target: { value: 'Delhi' } });
+  };
+
   const renderPage = (initialEntries = ['/shop/register']) => {
     return render(
       <MemoryRouter initialEntries={initialEntries}>
@@ -157,6 +163,9 @@ describe('RegisterShopPage', () => {
       expect(screen.getByText('Shop name is required.')).toBeInTheDocument();
       expect(screen.getByText('Shop address is required.')).toBeInTheDocument();
       expect(screen.getByText('PIN code is required.')).toBeInTheDocument();
+      expect(screen.getByText('Shop phone number is required.')).toBeInTheDocument();
+      expect(screen.getByText('City is required.')).toBeInTheDocument();
+      expect(screen.getByText('State is required.')).toBeInTheDocument();
     });
 
     expect(shopApi.onboardShop).not.toHaveBeenCalled();
@@ -194,6 +203,7 @@ describe('RegisterShopPage', () => {
     fireEvent.change(screen.getByLabelText(/Shop Name/i), { target: { value: 'Test Prints' } });
     fireEvent.change(screen.getByLabelText(/Shop Address/i), { target: { value: '123 Market Street' } });
     fireEvent.change(screen.getByLabelText(/PIN Code/i), { target: { value: '012345' } }); // Starts with 0
+    fillDetails();
 
     fireEvent.click(screen.getByRole('button', { name: 'Register Shop' }));
 
@@ -241,6 +251,7 @@ describe('RegisterShopPage', () => {
     fireEvent.change(screen.getByLabelText(/Shop Name/i), { target: { value: 'Rajesh Copies' } });
     fireEvent.change(screen.getByLabelText(/Shop Address/i), { target: { value: 'Station Road, Shop 5' } });
     fireEvent.change(screen.getByLabelText(/PIN Code/i), { target: { value: '110001' } });
+    fillDetails();
 
     fireEvent.click(screen.getByRole('button', { name: 'Register Shop' }));
 
@@ -250,6 +261,9 @@ describe('RegisterShopPage', () => {
         shopName: 'Rajesh Copies',
         address: 'Station Road, Shop 5',
         pincode: '110001',
+        phoneNumber: '+919876543210',
+        city: 'Delhi',
+        state: 'Delhi',
         email: 'rajesh@gmail.com'
       });
       expect(screen.getByTestId('shop-setup')).toBeInTheDocument();
@@ -292,6 +306,7 @@ describe('RegisterShopPage', () => {
     fireEvent.change(screen.getByLabelText(/Shop Name/i), { target: { value: 'Colliding Prints' } });
     fireEvent.change(screen.getByLabelText(/Shop Address/i), { target: { value: '123 Test Street' } });
     fireEvent.change(screen.getByLabelText(/PIN Code/i), { target: { value: '110001' } });
+    fillDetails();
 
     fireEvent.click(screen.getByRole('button', { name: 'Register Shop' }));
 

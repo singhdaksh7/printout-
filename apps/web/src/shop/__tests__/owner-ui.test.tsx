@@ -49,6 +49,11 @@ describe('shop status at the top of the dashboard', () => {
   });
 });
 
+const statusRatesNext: Handler = ({ method, path }) => (method === 'GET' && path === '/shop/setup-status' ? { data: {
+  shopId: 's1', shopStatus: 'ACTIVE', isOpen: true, isVerified: false, nextStep: 'rates', complete: false,
+  sections: { profile: { complete: true, missing: [] }, rates: { complete: false, activeCount: 0, configured: [] }, paper: { complete: false, optionCount: 0 }, payments: { complete: false, methods: ['cash'], upiId: null } }
+} } : undefined);
+
 describe('rates onboarding', () => {
   it('prompts an existing shop with no active rates and links to setup', async () => {
     mockFetch(authedSession, orders, settings(), rules([]));
@@ -66,7 +71,7 @@ describe('rates onboarding', () => {
 
   it('setup page shows Not configured for every combination and saves through the pricing API', async () => {
     const user = userEvent.setup();
-    const { calls } = mockFetch(authedSession, orders, settings(), rules([]), ({ method, path, body }) =>
+    const { calls } = mockFetch(authedSession, orders, settings(), rules([]), statusRatesNext, ({ method, path, body }) =>
       method === 'POST' && path === '/shop/pricing-rules' ? { status: 201, data: { id: 'r1', ...body } } : undefined);
     renderShop('/shop/setup');
     expect(await screen.findByRole('heading', { name: 'Set your printing rates' })).toBeInTheDocument();
