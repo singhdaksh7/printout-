@@ -32,7 +32,10 @@ export const contractConstraint = {
   deriveConstraint(request: { headers: Record<string, string | string[] | undefined> }) {
     return request.headers[CONTRACT_HEADER] === PDF_CONTRACT ? PDF_CONTRACT : undefined;
   },
-  mustMatchWhenDerived: false
+  mustMatchWhenDerived: false,
+  validate(value: unknown) {
+    if (value !== PDF_CONTRACT) throw new Error(`Unsupported contract constraint: ${String(value)}`);
+  }
 };
 
 /** Route options for a PDF twin of an existing path (selected by the header). */
