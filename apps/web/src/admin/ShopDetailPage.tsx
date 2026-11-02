@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  SUB_STATUSES, fmtDate, getShop, inr, listPlans, updateShop, updateSubscription,
+  SUB_STATUSES, deleteShop, fmtDate, getShop, inr, listPlans, updateShop, updateSubscription,
   type ShopDetail, type ShopStatus, type SubStatus
 } from '../lib/admin-api';
-import { Banner, Button, Card, CardHeader, KeyValueList, Modal, Select, ShopStatusChip, TextField, buttonClass, useToast } from '../ui';
+import { ApiError } from '../lib/api';
+import { Banner, Button, Card, CardHeader, Checkbox, KeyValueList, Modal, Select, ShopStatusChip, TextField, buttonClass, useToast } from '../ui';
 import { AuditList } from './AuditPage';
 import { AdminOrderRows } from './OrdersPage';
 import { LoadError, Loading, MANUAL_NOTE, adminError, useLoad } from './ui';
@@ -52,6 +53,86 @@ function StatusCard({ d, onChanged }: { d: ShopDetail; onChanged: (msg: string) 
             <p>The shop will stop accepting new customer orders and every signed-in session of its staff is ended immediately. Existing data is kept. You can activate it again at any time.</p>
           ) : (
             <p>The shop will be able to sign in and accept customer orders again.</p>
+          )}
+          {err && <Banner tone="err">{err}</Banner>}
+        </Modal>
+      )}
+    </Card>
+  );
+}
+
+const IN_PROGRESS = ['NEW', 'ACCEPTED', 'PRINTING'] as const;
+
+export function DangerZone({ d }: { d: ShopDetail }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [slug, setSlug] = useState('');
+  const [password, setPassword] = useState('');
+  const [force, setForce] = useState(false);
+  const [serverBlocked, setServerBlocked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const inProgress = IN_PROGRESS.reduce((n, k) => n + (d.ordersByStatus[k] ?? 0), 0);
+  const needsForce = inProgress > 0 || serverBlocked;
+  const ready = slug === d.shop.slug && password.length > 0 && (!needsForce || force);
+
+  function close() {
+    if (busy) return;
+    setOpen(false); setSlug(''); setPassword(''); setForce(false); setErr(null);
+  }
+  async function submit() {
+    if (!ready || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await deleteShop(d.shop.id, { confirmSlug: slug, currentPassword: password, ...(force ? { force: true } : {}) });
+      navigate('/admin/shops', { state: { toast: `Deleted ${d.shop.displayName}` } });
+      return;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'SHOP_HAS_ACTIVE_WORK') {
+        setServerBlocked(true);
+        setErr('This shop has orders or print jobs in progress. Tick the box below to delete it anyway.');
+      } else if (e instanceof ApiError && e.code === 'INVALID_CURRENT_PASSWORD') {
+        setErr('Your admin password is incorrect.');
+      } else if (e instanceof ApiError && e.code === 'SHOP_SLUG_MISMATCH') {
+        setErr('The typed slug does not match this shop.');
+      } else {
+        setErr(adminError(e));
+      }
+    }
+    setBusy(false);
+  }
+  return (
+    <Card as="section" aria-labelledby="dz-h">
+      <CardHeader id="dz-h" title="Danger zone" />
+      <p>Permanently deletes this shop, its orders, files, devices and the owner login. This cannot be undone.</p>
+      <div className="ad-actions">
+        <Button variant="danger" onClick={() => setOpen(true)}>Delete shop…</Button>
+      </div>
+      {open && (
+        <Modal
+          title={`Delete ${d.shop.displayName}?`}
+          tone="danger"
+          onClose={close}
+          busy={busy}
+          footer={<>
+            <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
+            <Button variant="danger" onClick={submit} disabled={!ready || busy} loading={busy}>
+              {busy ? 'Deleting…' : 'Delete permanently'}
+            </Button>
+          </>}
+        >
+          <p>All orders, uploaded files, devices, settings and the owner account of this shop will be removed. Customer accounts are kept.</p>
+          <TextField label={`Type the shop slug (${d.shop.slug}) to confirm`} value={slug} onChange={(e) => setSlug(e.target.value)} autoComplete="off" disabled={busy} />
+          <TextField label="Your admin password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" disabled={busy} />
+          {needsForce && (
+            <Checkbox
+              label="Also delete shop with active orders"
+              hint={inProgress > 0 ? `${inProgress} order${inProgress === 1 ? ' is' : 's are'} still new, accepted or printing.` : 'Print jobs are still in progress.'}
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+              disabled={busy}
+            />
           )}
           {err && <Banner tone="err">{err}</Banner>}
         </Modal>
@@ -120,6 +201,7 @@ export default function ShopDetailPage() {
             <CardHeader id="aud-h" title="Recent audit entries" />
             <AuditList shopId={data.shop.id} pageSize={10} />
           </Card>
+          <DangerZone d={data} />
         </>
       )}
       {toast.node}

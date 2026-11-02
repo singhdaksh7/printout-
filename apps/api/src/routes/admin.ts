@@ -2,6 +2,7 @@ import { OrderStatus, Role, ShopStatus, SubscriptionStatus, type Document, type 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { hashPassword } from '../auth.js';
+import { deleteShopCompletely } from '../domain/shop-delete.js';
 import { startOfIstDay, endOfIstDay } from '../domain/time.js';
 import { AppError, notFound } from '../errors.js';
 import { getLimiters } from '../rate-limits.js';
@@ -17,6 +18,7 @@ import {
   json,
   type AppContext
 } from './context.js';
+import { reauthenticateAdmin } from './admin-reauth.js';
 
 const RESERVED_SLUGS = new Set(['admin', 'api', 'www', 'shop', 'app', 'static', 'assets', 'health', 'ready', 'login', 'p', 't']);
 
@@ -56,6 +58,17 @@ const updateShopBody = z
   .partial()
   .strict()
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
+
+const deleteShopBody = z
+  .object({
+    /** Typed confirmation: must equal the shop slug. */
+    confirmSlug: z.string().min(1).max(120),
+    /** Delete even while orders are NEW/ACCEPTED/PRINTING or a print job is in flight. */
+    force: z.boolean().optional(),
+    /** Step-up: the admin's current password (same check as the other sensitive admin actions). */
+    currentPassword: z.string().min(1).max(256)
+  })
+  .strict();
 
 const planBody = z.object({
   name: z.string().trim().min(1).max(100),
@@ -369,6 +382,27 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       return updated;
     });
     return json({ shop: shopView(shop) });
+  });
+
+  /**
+   * Permanently deletes a shop and everything it owns (see domain/shop-delete.ts). Typed slug confirmation + password step-up
+   * (2FA state is unaffected); 409 SHOP_HAS_ACTIVE_WORK unless `force`; 502 STORAGE_DELETE_FAILED before any row is touched.
+   */
+  app.delete('/admin/shops/:id', { preHandler: limits.adminMutation }, async (request) => {
+    const auth = authOf(request);
+    const { id } = idParam.parse(request.params);
+    const body = deleteShopBody.parse(request.body);
+    const shop = await prisma.shop.findUnique({ where: { id }, select: { slug: true } });
+    if (!shop) throw notFound('Shop not found');
+    if (body.confirmSlug !== shop.slug) throw new AppError(400, 'SHOP_SLUG_MISMATCH', 'The typed shop slug does not match.');
+    await reauthenticateAdmin(ctx, request, body.currentPassword, 'shop_delete');
+    const result = await deleteShopCompletely(ctx, id, {
+      actor: { type: 'PLATFORM_ADMIN', userId: auth.userId },
+      force: body.force === true,
+      via: 'admin_api',
+      log: request.log
+    });
+    return json({ deleted: true, shopId: result.shopId, slug: result.slug, counts: result.counts, storageObjects: result.storageObjects, owners: result.owners });
   });
 
   /** Discovery verification (schema-v2). Distinct from suspension and from any subscription; audited with before/after. */
