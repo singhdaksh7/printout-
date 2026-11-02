@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { ApiError, setCsrfToken } from '../lib/api';
 import {
   cancelSecondFactor as apiCancelSecondFactor, fetchSession, isTwoFactorRequired, login as apiLogin, logout as apiLogout, setUnauthorizedHandler,
-  phoneSession as apiPhoneSession, googleSession as apiGoogleSession, verifySecondFactor as apiVerifySecondFactor,
+  phoneSession as apiPhoneSession, googleSession as apiGoogleSession, recoverWithGoogle as apiRecoverWithGoogle, verifySecondFactor as apiVerifySecondFactor,
   onboardShop as apiOnboardShop, type GoogleSessionResponse, type LoginResult, type OnboardShopInput, type SecondFactorMethod, type SessionData
 } from '../lib/shop-api';
 import { Button } from '../ui';
@@ -23,6 +23,8 @@ interface AuthApi {
   phoneLogin(idToken: string): Promise<SessionData>;
   /** Signs in with a Firebase Google ID token (returns normal shop session or restricted onboarding session). */
   googleLogin(idToken: string): Promise<GoogleSessionResponse>;
+  /** One-time legacy owner recovery (old email+password plus a Google ID token); signs in on success. */
+  recoverWithGoogle(email: string, password: string, idToken: string): Promise<SessionData>;
   /** Completes registration of a new shop for a restricted onboarding session. */
   onboard(input: OnboardShopInput): Promise<SessionData>;
   /** Completes a pending admin sign-in with an authenticator or recovery code. */
@@ -103,6 +105,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return s;
   }, []);
+  const recoverWithGoogle = useCallback(async (email: string, password: string, idToken: string) => {
+    const s = await apiRecoverWithGoogle(email, password, idToken);
+    setCsrfToken(s.csrfToken);
+    setState({ status: 'authed', session: s });
+    return s;
+  }, []);
   const onboard = useCallback(async (input: OnboardShopInput) => {
     const res = await apiOnboardShop(input);
     const session: SessionData = {
@@ -143,8 +151,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   const value = useMemo(
-    () => ({ state, login, phoneLogin, googleLogin, onboard, completeSecondFactor, cancelSecondFactor, logout, endSession, retry }),
-    [state, login, phoneLogin, googleLogin, onboard, completeSecondFactor, cancelSecondFactor, logout, endSession, retry]
+    () => ({ state, login, phoneLogin, googleLogin, recoverWithGoogle, onboard, completeSecondFactor, cancelSecondFactor, logout, endSession, retry }),
+    [state, login, phoneLogin, googleLogin, recoverWithGoogle, onboard, completeSecondFactor, cancelSecondFactor, logout, endSession, retry]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

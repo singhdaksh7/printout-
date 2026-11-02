@@ -5,6 +5,7 @@ import { ShopErrorBoundary } from './components';
 import { RealtimeProvider } from './realtime';
 import Shell from './Shell';
 import LoginPage from './LoginPage';
+import RecoverAccessPage from './RecoverAccessPage';
 import RegisterShopPage from './RegisterShopPage';
 import QueuePage from './QueuePage';
 import OrderDetailPage from './OrderDetailPage';
@@ -28,6 +29,7 @@ export default function ShopRoutes() {
       <AuthProvider>
         <Routes>
           <Route path="login" element={<LoginPage />} />
+          <Route path="recover" element={<RecoverAccessPage />} />
           <Route path="register" element={<RegisterShopPage />} />
           <Route element={<RequireAuth><RealtimeProvider><Shell /></RealtimeProvider></RequireAuth>}>
             <Route index element={<QueuePage />} />
