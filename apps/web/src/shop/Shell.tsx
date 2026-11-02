@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { listOrders } from '../lib/shop-api';
 import { useAuth } from './auth';
-import { AppShell, Banner, BottomNav, BrandLogo, Button, Chip, Sidebar, TopBar, type ChipTone, type NavItem } from '../ui';
+import { AppShell, Banner, BottomNav, BrandLogo, Button, Sidebar, TopBar, type NavItem } from '../ui';
 import { ShopErrorBoundary, UnsavedContext, UNSAVED_PROMPT } from './components';
-import { useAutoRefresh, useDebounced } from './hooks';
-import { useRealtime, useRealtimeRefresh } from './realtime';
+import { ShopStatusBar } from './ShopStatusBar';
+import { ORDERS_REFRESHED } from './QueuePage';
 import { NotificationBell } from './NotificationBell';
 import { NotificationsProvider } from './notifications';
 
@@ -24,19 +24,16 @@ const NAV_ITEMS: NavItem[] = [
 /** Phone tab bar: five destinations stay visible; the rest (QR & standee, Settings) live under "More", so nothing is hidden or reachable only by a side link. */
 const PHONE_PATHS = ['/shop', '/shop/history', '/shop/analytics', '/shop/devices', '/shop/pricing'];
 
-const CONN_LABEL = { live: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', offline: 'Offline' } as const;
-// Never red: a lost live connection is recoverable and the queue keeps working (it refreshes on focus and every 45s).
-const CONN_TONE: Record<keyof typeof CONN_LABEL, ChipTone> = { live: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'warn' };
-
 function useNewOrderBadge() {
   const [count, setCount] = useState(0);
   const load = useCallback(() => {
     listOrders({ status: 'NEW' }).then((p) => setCount(p.items.length)).catch(() => { /* badge is best effort */ });
   }, []);
   useEffect(load, [load]);
-  const debounced = useDebounced(load, 400);
-  useRealtimeRefresh(debounced);
-  useAutoRefresh(load, 60_000);
+  useEffect(() => {
+    window.addEventListener(ORDERS_REFRESHED, load);
+    return () => window.removeEventListener(ORDERS_REFRESHED, load);
+  }, [load]);
   useEffect(() => {
     document.title = count > 0 ? `(${count}) Printout` : 'Printout';
     return () => { document.title = 'Printout'; };
@@ -46,7 +43,6 @@ function useNewOrderBadge() {
 
 export default function Shell() {
   const { state, logout } = useAuth();
-  const { state: conn } = useRealtime();
   const navigate = useNavigate();
   const newCount = useNewOrderBadge();
   const dirty = useRef(new Set<string>());
@@ -82,20 +78,20 @@ export default function Shell() {
     <UnsavedContext.Provider value={guard}>
       <NotificationsProvider>
       <AppShell
-        notice={(!online || conn === 'offline') ? <Banner tone="warn" layout="bar">You are offline. Orders may be out of date until the connection returns.</Banner> : undefined}
+        notice={!online ? <Banner tone="warn" layout="bar">You are offline. Press Refresh once you are back online.</Banner> : undefined}
         sidebar={<Sidebar label="Shop sections" brand={<BrandLogo onDark />} items={items} onNavigate={onNavClick} />}
         topbar={
           <TopBar
             start={<span className="pb-shopname" title={shopName}>{shopName}</span>}
             end={<>
               <NotificationBell />
-              <Chip tone={CONN_TONE[conn]} className="shop-conn" role="status" aria-live="polite" aria-label={`Connection: ${CONN_LABEL[conn]}`}>{CONN_LABEL[conn]}</Chip>
               <Button variant="outline" size="sm" iconStart="log-out" onClick={doLogout} disabled={leaving}>Log out</Button>
             </>}
           />
         }
         bottomNav={<BottomNav label="Shop sections, phone" items={phoneItems} moreItems={moreItems} onNavigate={onNavClick} />}
       >
+        <ShopStatusBar shopName={shopName} />
         <ShopErrorBoundary><Outlet /></ShopErrorBoundary>
       </AppShell>
       </NotificationsProvider>

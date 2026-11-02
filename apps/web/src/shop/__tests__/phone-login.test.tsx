@@ -36,16 +36,15 @@ function api(googleExchange?: Handler, loginExchange?: Handler) {
 }
 
 describe('simplified shop login screen (Google + Email/Password only)', () => {
-  it('renders Email & Password by default, with Continue with Google clearly visible', async () => {
+  it('renders only Continue with Google', async () => {
     api();
     renderShop('/shop/login');
     expect(await screen.findByRole('heading', { name: /shop sign in/i })).toBeInTheDocument();
-    expect(screen.getByText('Printout for print shops')).toBeInTheDocument();
-    expect(screen.getByText('Printout Buddy is currently free to use.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Email')).toBeInTheDocument();
-    expect(screen.getByLabelText('Password')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Email')).toBeNull();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+    expect(screen.queryByTestId('free-platform-notice')).toBeNull();
   });
 
   it('Phone OTP login is completely absent from the website UI', async () => {
@@ -65,23 +64,6 @@ describe('simplified shop login screen (Google + Email/Password only)', () => {
     expect(screen.queryByRole('button', { name: /sign in with email and password instead/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /sign in with mobile number instead/i })).toBeNull();
     expect(screen.queryByRole('tab', { name: /phone/i })).toBeNull();
-  });
-
-  it('signs in with email and password successfully', async () => {
-    const user = userEvent.setup();
-    const { calls } = api();
-    renderShop('/shop/login');
-    await screen.findByRole('heading', { name: /shop sign in/i });
-
-    await user.type(screen.getByLabelText('Email'), 'owner@central.test');
-    await user.type(screen.getByLabelText('Password'), 'password123');
-    await user.click(screen.getByRole('button', { name: 'Sign in' }));
-
-    expect(await screen.findByRole('heading', { name: 'Print queue' })).toBeInTheDocument();
-    expect(calls.find((c) => c.path === '/auth/login')?.body).toEqual({
-      email: 'owner@central.test',
-      password: 'password123'
-    });
   });
 
   it('Continue with Google: exchanges ID token and lands in the shop', async () => {
@@ -150,7 +132,7 @@ describe('simplified shop login screen (Google + Email/Password only)', () => {
 
     renderShop('/shop/login');
     await user.click(await screen.findByRole('button', { name: 'Continue with Google' }));
-    expect(await screen.findByText(/This Google account isn't linked to a shop account\. Sign in with email and password, then link it in Settings\./i)).toBeInTheDocument();
+    expect(await screen.findByText(/This Google account isn't linked to a shop account yet\./i)).toBeInTheDocument();
   });
 
   it('Continue with Google: shows clear guidance when popup was blocked by browser', async () => {

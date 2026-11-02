@@ -43,6 +43,8 @@ export interface OrderDetail {
 export interface PricingRule { id: string; paperSize: 'A4'; colourMode: 'bw' | 'colour'; sides: 'single' | 'duplex'; pricePerSheetPaise: number; active: boolean }
 export interface ShopSettings {
   displayName?: string | null; address?: string | null; publicContact?: string | null; brandColor?: string | null; acceptsOrders?: boolean;
+  /** Read-only, set by administrators. Absent on older APIs. */
+  shopStatus?: 'ACTIVE' | 'SUSPENDED' | 'PILOT' | 'PAST_DUE' | 'CANCELLED'; isVerified?: boolean;
 }
 export interface QrInfo { publicUrl: string; slug: string; shopName?: string }
 

@@ -140,3 +140,7 @@
 .pb-queue-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .pb-queue-sort select { min-height: 40px; padding: 0 10px; border: 1px solid var(--pb-n300, #d4d4d8); border-radius: 8px; background: var(--pb-surface, #fff); color: inherit; font: inherit; }
 .pb-queue-sort select:focus-visible { outline: 2px solid var(--pb-orange, #f97316); outline-offset: 2px; }
+
+.pb-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-3); padding: var(--pb-space-2) var(--pb-space-4); background: var(--pb-paper); border-bottom: 1px solid var(--pb-n200); }
+.pb-statusbar__err { color: var(--pb-err); font-size: 0.8125rem; }
+.pb-refreshbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pb-space-3); }
