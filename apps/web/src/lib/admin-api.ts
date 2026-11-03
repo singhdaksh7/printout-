@@ -8,6 +8,7 @@ export interface PlanRef { id: string; name: string; pricePaise: number }
 export interface Subscription { id: string; shopId: string; status: SubStatus; renewsAt: string | null; updatedAt: string; plan: PlanRef }
 export interface AdminShop {
   id: string; slug: string; displayName: string; address: string | null; status: ShopStatus; acceptsOrders: boolean;
+  isVerified?: boolean; verifiedAt?: string | null;
   createdAt: string; updatedAt: string; subscription?: Subscription | null;
   owner?: { displayName: string; email: string } | null; orderCount?: number; lastOrderAt?: string | null;
 }
@@ -25,6 +26,12 @@ export interface Dashboard {
   subscriptionsByStatus: Record<string, number>; ordersToday: number;
   totalOrders: number; ordersByStatus: Record<string, number>; totalPages: number;
   recentShops: AdminShop[]; recentOrders: AdminOrder[];
+  /** Shops whose owner is waiting for the admin to verify them (all of them counted, the oldest few listed). */
+  pendingVerification: number; awaitingVerification: AdminShop[];
+  /** Active shops currently taking orders. */
+  openShops: number;
+  /** One entry per day for the last 7 days, today last; days are Asia/Kolkata calendar days. */
+  ordersLast7Days: { date: string; count: number }[];
 }
 export interface ShopDetail {
   shop: AdminShop;
@@ -53,8 +60,11 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 };
 
 export const getDashboard = (signal?: AbortSignal) => shopRequest<Dashboard>('/admin/dashboard', { signal: signal as AbortSignal });
-export const listShops = (p: { status?: ShopStatus | ''; q?: string; cursor?: string; limit?: number } = {}, signal?: AbortSignal) =>
+export const listShops = (p: { status?: ShopStatus | ''; q?: string; isVerified?: 'true' | 'false' | ''; cursor?: string; limit?: number } = {}, signal?: AbortSignal) =>
   shopRequest<Page<AdminShop>>(`/admin/shops${qs(p)}`, { signal: signal as AbortSignal });
+/** Verifying a shop is what lets its owner open it and customers find it; unverifying takes both back. */
+export const verifyShop = (id: string, isVerified: boolean) =>
+  shopRequest<{ id: string; isVerified: boolean; verifiedAt: string | null }>(`/admin/shops/${encodeURIComponent(id)}/verify`, { method: 'PATCH', body: { isVerified } });
 export const createShop = (body: CreateShopInput) =>
   shopRequest<{ shop: AdminShop; owner: { id: string; email: string; displayName: string } }>('/admin/shops', { method: 'POST', body });
 export const getShop = (id: string, signal?: AbortSignal) => shopRequest<ShopDetail>(`/admin/shops/${encodeURIComponent(id)}`, { signal: signal as AbortSignal });

@@ -75,7 +75,7 @@ test('links inside the shop and admin areas read as links (orange-ink, underline
   await page.setViewportSize(VIEWPORTS.desktop);
   await page.goto('/admin/login');
   await page.getByLabel('Email').fill('admin@printout.test');
-  await page.getByLabel('Password').fill(SEED_PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(SEED_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
   const link = page.getByRole('link', { name: 'All orders' });
@@ -155,7 +155,7 @@ test('admin phone: More offers Account; the header stays on one row', async ({ b
   await page.goto('/admin/login');
   await expect(page.getByRole('img', { name: 'PrintoutBuddy' }).first()).toBeVisible();
   await page.getByLabel('Email').fill('admin@printout.test');
-  await page.getByLabel('Password').fill(SEED_PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(SEED_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
   const header = await page.locator('.pb-topbar').boundingBox();

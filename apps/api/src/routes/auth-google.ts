@@ -24,7 +24,9 @@ const pdfLoginBody = z
   .object({
     idToken: z.string().min(20).max(4096),
     fcmToken: z.object({ token: z.string().min(20).max(4096).regex(/^\S+$/), platform: z.enum(['android', 'ios', 'web']) }).strict().optional(),
-    referralCode: z.string().trim().min(1).max(80).optional()
+    referralCode: z.string().trim().min(1).max(80).optional(),
+    /** Which app is signing in. Omitted = 'customer' (the original behaviour of this adapter); the Shop app sends 'shop'. */
+    audience: z.enum(['shop', 'customer']).default('customer')
   })
   .strict();
 
@@ -221,8 +223,8 @@ export async function pdfFirebaseLogin(ctx: AppContext, request: FastifyRequest,
     // The selected verifier will return the canonical invalid-token response.
   }
   const result = provider === 'phone' || provider === 'password'
-    ? await firebaseSignIn(ctx, request, reply, { idToken: body.idToken, client: 'mobile', deviceId: installationId, auditAction: 'auth.login', audience: 'customer' })
-    : await googleSignIn(ctx, request, reply, { idToken: body.idToken, deviceId: installationId, auditAction: 'auth.login', audience: 'customer' });
+    ? await firebaseSignIn(ctx, request, reply, { idToken: body.idToken, client: 'mobile', deviceId: installationId, auditAction: 'auth.login', audience: body.audience })
+    : await googleSignIn(ctx, request, reply, { idToken: body.idToken, deviceId: installationId, auditAction: 'auth.login', audience: body.audience });
 
   if (body.fcmToken && result.principal) {
     try {
@@ -236,7 +238,7 @@ export async function pdfFirebaseLogin(ctx: AppContext, request: FastifyRequest,
       await audit(ctx.prisma, {
         shopId: result.principal.shopId,
         actorUserId: result.principal.userId,
-        actorType: 'CUSTOMER',
+        actorType: body.audience === 'shop' ? 'SHOP_OWNER' : 'CUSTOMER',
         action: 'user.fcm_token.registered',
         targetType: 'user',
         targetId: result.principal.userId,
@@ -261,7 +263,8 @@ export async function pdfFirebaseLogin(ctx: AppContext, request: FastifyRequest,
     user: {
       id: customer.id,
       firebaseUid,
-      roles: ['customer'],
+      // A signed-in account has the role of the app that asked; an identity with no account yet (isNewUser) has none.
+      roles: body.audience === 'shop' ? (result.principal ? ['shopOwner'] : []) : ['customer'],
       name: customer.name,
       phoneNumber: customer.phoneNumber,
       isActive: customer.id !== null
