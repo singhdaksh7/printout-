@@ -145,7 +145,7 @@ test('WCAG AA contrast: customer, shop and admin screens and states', async ({ b
   await page.goto('/admin/login'); await settle();
   await auditText(page, 'admin login');
   await page.getByLabel('Email').fill('admin@printout.test');
-  await page.getByLabel('Password').fill(SEED_PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(SEED_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/admin$/); await settle();
   await auditText(page, 'admin dashboard');

@@ -122,7 +122,7 @@ test.describe('visual QA', () => {
       await page.goto('/admin/login');
       await capture(page, 'admin-0-login', w, logs);
       await page.getByLabel('Email').fill('admin@printout.test');
-      await page.getByLabel('Password').fill(SEED_PASSWORD);
+      await page.getByLabel('Password', { exact: true }).fill(SEED_PASSWORD);
       await page.getByRole('button', { name: 'Sign in' }).click();
       await expect(page).toHaveURL(/\/admin$/);
       await page.waitForTimeout(900);
