@@ -78,7 +78,9 @@ test('desktop 1440: admin dashboard, shops, shop detail', async ({ page }) => {
   await shot(page, '47-admin-shops');
   await page.getByRole('link', { name: 'Central Print' }).click();
   await expect(page.getByRole('heading', { name: 'Central Print' })).toBeVisible();
-  await expect(page.getByText('Usage')).toBeVisible();
+  const activity = page.getByRole('region', { name: 'Shop activity' });
+  await expect(activity).toBeVisible();
+  for (const label of ['Total orders', 'Last 30 days', 'Pricing rules', 'Last order']) await expect(activity).toContainText(label);
   await shot(page, '48-admin-shop-detail');
   await expectNoOverflow(page, 'admin shop detail');
   // admin must never see documents

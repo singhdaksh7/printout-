@@ -11,6 +11,7 @@ import { createOrderFromQuote } from '../domain/order-create.js';
 import { apiPaymentMethod, apiPaymentStatus, dbPaymentMethod, UPI_REF } from '../domain/payments.js';
 import { issueDocumentAccess } from '../domain/print-service.js';
 import { loadProfile } from '../domain/profile.js';
+import { qrReadiness } from '../domain/onboarding.js';
 import { listOwnedShops } from '../domain/shop-access.js';
 import { AppError, orderNotFound } from '../errors.js';
 import { getLimiters } from '../rate-limits.js';
@@ -331,25 +332,33 @@ export async function pdfCustomerRoutes(app: FastifyInstance, ctx: AppContext): 
     return paginated(items, q.page, q.limit, total);
   });
 
-  async function visibleShop(shopId: string): Promise<string> {
+  /** Customers see only verified, active shops. A shop's own owner also sees it while it is still pending (PILOT) or unverified. */
+  async function visibleShop(shopId: string, viewerUserId?: string): Promise<string> {
     const shop = await prisma.shop.findFirst({ where: { id: shopId, isVerified: true, status: 'ACTIVE' }, select: { id: true } });
-    if (!shop) throw pdfErr(404, 'SHOP_NOT_FOUND', 'Shop not found');
-    return shop.id;
+    if (shop) return shop.id;
+    if (viewerUserId && (await listOwnedShops(prisma, viewerUserId)).some((s) => s.id === shopId)) return shopId;
+    throw pdfErr(404, 'SHOP_NOT_FOUND', 'Shop not found');
   }
 
   // Twin of the owner's GET /shops/:shopId: only requests with `X-API-Contract: pdf` reach this handler.
   app.get('/shops/:shopId', { ...pdfTwin, preHandler: [anyGuard, limits.shopRead] }, async (request) => {
     const { shopId } = shopParam.parse(request.params);
-    const id = await visibleShop(shopId);
+    const viewer = authOf(request);
+    const id = await visibleShop(shopId, viewer.userId);
     const c = (await shopCards(prisma, [id], { includeLocation: true })).get(id);
     if (!c) throw pdfErr(404, 'SHOP_NOT_FOUND', 'Shop not found');
     const base = (config.PUBLIC_API_BASE ?? '').replace(/\/$/, '');
+    // The shop's public page is the QR's destination; only its owner is shown it, and only once the shop is live.
+    const owned = viewer.role === 'SHOP_OWNER' && viewer.shopId !== null && (await listOwnedShops(prisma, viewer.userId)).some((s) => s.id === id);
+    const qr = owned ? qrReadiness(await prisma.shop.findUniqueOrThrow({ where: { id }, select: { slug: true, status: true } }), config.WEB_ORIGIN) : null;
     return {
       id: c.id,
       shopName: c.shopName,
       phoneNumber: c.phoneNumber,
       addressLine1: c.addressLine1,
+      addressLine2: c.addressLine2,
       city: c.city,
+      state: c.state,
       pincode: c.pincode,
       location: c.location ?? null,
       isOpen: c.isOpen,
@@ -357,8 +366,8 @@ export async function pdfCustomerRoutes(app: FastifyInstance, ctx: AppContext): 
       ratingCount: c.ratingCount,
       upiId: c.upiId,
       acceptedPaymentMethods: c.acceptedPaymentMethods,
-      showQr: false,
-      qrCodeUrl: null,
+      showQr: qr?.ready ?? false,
+      qrCodeUrl: qr?.publicUrl ?? null,
       rates: pdfRates(c.rates),
       paperSizes: c.paperSizes,
       paperTypes: c.paperTypes,
@@ -369,7 +378,7 @@ export async function pdfCustomerRoutes(app: FastifyInstance, ctx: AppContext): 
   // Twin of the owner's GET /shops/:shopId/reviews (customer-visible shops only; plain rows, no aggregates).
   app.get('/shops/:shopId/reviews', { ...pdfTwin, preHandler: [anyGuard, limits.shopRead] }, async (request) => {
     const { shopId } = shopParam.parse(request.params);
-    const id = await visibleShop(shopId);
+    const id = await visibleShop(shopId, authOf(request).userId);
     const q = pageQuery.parse(request.query);
     const where = { shopId: id };
     const [rows, total] = await Promise.all([

@@ -50,3 +50,14 @@
 @media print { .ad-actions, .ad-form button { display: none; } }
 
 .ad-chips { display: flex; flex-wrap: wrap; gap: var(--pb-space-2); }
+
+/* Shop detail: the hero card at the top of the page. */
+.ad-hero { display: flex; flex-direction: column; gap: var(--pb-space-4); }
+.ad-hero__main { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--pb-space-3) var(--pb-space-4); }
+.ad-hero__chips { display: flex; flex-wrap: wrap; gap: var(--pb-space-2); }
+.ad-hero__facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--pb-space-3) var(--pb-space-5); }
+.ad-hero__facts dt { font: 600 var(--pb-text-label)/1.4 var(--pb-font-body); color: var(--pb-n500); text-transform: uppercase; letter-spacing: .04em; }
+.ad-hero__facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.ad-hero__cta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pb-space-3); padding-top: var(--pb-space-3); border-top: 1px solid var(--pb-n100); }
+.ad-hero__cta p { margin: 0; flex: 1 1 18rem; }
+.ad-manage { margin: var(--pb-space-4) 0 0; }

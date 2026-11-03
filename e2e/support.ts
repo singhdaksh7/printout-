@@ -87,7 +87,7 @@ export async function uiLogin(page: Page, email: string, loginPath = '/shop/logi
   }
   await page.goto(loginPath);
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(SEED_PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(SEED_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
 }
 

@@ -176,7 +176,8 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
 
   app.get('/admin/dashboard', { preHandler: limits.adminRead }, async () => {
     const todayStart = startOfIstDay();
-    const [shopGroups, subGroups, ordersToday, totalShops, totalOrders, orderGroups, pageRows, recentShops, recentOrders] = await Promise.all([
+    const weekStart = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const [shopGroups, subGroups, ordersToday, totalShops, totalOrders, orderGroups, pageRows, recentShops, recentOrders, pendingVerification, awaitingVerification, openShops, dayRows] = await Promise.all([
       prisma.shop.groupBy({ by: ['status'], _count: { _all: true } }),
       prisma.subscription.groupBy({ by: ['status'], _count: { _all: true } }),
       prisma.order.count({ where: { createdAt: { gte: todayStart, lt: endOfIstDay() } } }),
@@ -192,8 +193,27 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 5,
         include: { document: true, shop: { select: { slug: true, displayName: true } } }
-      })
+      }),
+      // What the admin has to act on: shops whose owner is waiting to be verified, oldest request first.
+      prisma.shop.count({ where: { isVerified: false } }),
+      prisma.shop.findMany({
+        where: { isVerified: false },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 5,
+        include: { users: { where: { role: Role.SHOP_OWNER }, select: { displayName: true, email: true }, orderBy: { createdAt: 'asc' }, take: 1 } }
+      }),
+      prisma.shop.count({ where: { status: 'ACTIVE', acceptsOrders: true } }),
+      prisma.$queryRaw<Array<{ day: string; count: number }>>`
+        SELECT to_char(("createdAt" AT TIME ZONE 'Asia/Kolkata')::date, 'YYYY-MM-DD') AS day, COUNT(*)::int AS count
+        FROM "Order" WHERE "createdAt" >= ${weekStart} GROUP BY 1`
     ]);
+    // One entry per day for the last 7 days (today last), zero where nothing was ordered, so the chart never has gaps.
+    const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' });
+    const perDay = new Map(dayRows.map((r) => [r.day, Number(r.count)]));
+    const ordersLast7Days = Array.from({ length: 7 }, (_, i) => {
+      const date = dayFmt.format(new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000));
+      return { date, count: perDay.get(date) ?? 0 };
+    });
     const ordersByStatus = Object.fromEntries(Object.values(OrderStatus).map((s) => [s, 0])) as Record<string, number>;
     for (const g of orderGroups) ordersByStatus[g.status] = g._count._all;
     const shopsByStatus = Object.fromEntries(Object.values(ShopStatus).map((s) => [s, 0])) as Record<string, number>;
@@ -210,6 +230,10 @@ export async function adminRoutes(app: FastifyInstance, ctx: AppContext): Promis
       totalOrders,
       ordersByStatus,
       totalPages: Number(pageRows[0]?.pages ?? 0),
+      pendingVerification,
+      awaitingVerification: awaitingVerification.map((s) => ({ ...shopView(s), owner: s.users[0] ?? null })),
+      openShops,
+      ordersLast7Days,
       recentShops: recentShops.map((s) => ({ ...shopView(s), subscription: subscriptionView(s.subscription) })),
       recentOrders: recentOrders.map(adminOrderView)
     });

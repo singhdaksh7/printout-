@@ -42,7 +42,9 @@ const order = (over: object = {}) => ({
 });
 const dashExtra = {
   totalOrders: 123, ordersByStatus: { NEW: 1, PRINTED: 2 }, totalPages: 456,
-  recentShops: [shop()], recentOrders: [order()]
+  recentShops: [shop()], recentOrders: [order()],
+  pendingVerification: 2, awaitingVerification: [shop({ id: 'shop-new', displayName: 'Waiting Prints', isVerified: false })], openShops: 3,
+  ordersLast7Days: [0, 1, 0, 2, 0, 3, 4].map((count, i) => ({ date: `2026-01-0${i + 1}`, count }))
 };
 
 describe('pure helpers', () => {
@@ -115,7 +117,9 @@ describe('dashboard', () => {
     const totals = screen.getByLabelText('Platform totals');
     expect(within(totals).getByText('5')).toBeInTheDocument();
     expect(within(totals).queryByText(/subscription/i)).toBeNull();
-    expect(screen.getAllByText('Suspended')).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Shops by status' })).toBeNull();
+    expect(within(screen.getByRole('region', { name: 'Orders by status' })).getByText(/New/)).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Orders by status' })).queryByText(/Accepted/)).toBeNull();
   });
 });
 
@@ -221,6 +225,16 @@ describe('platform visibility (metadata only)', () => {
     expect(screen.getByText('456')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Recent shops' })).toBeInTheDocument();
     expect(screen.getByText('CEN-0001')).toBeInTheDocument();
+  });
+
+  it('dashboard puts shops waiting for verification first, with a link to review them', async () => {
+    mockFetch(authed, ({ path }) => (path === '/admin/dashboard' ? { data: { timezone: 'Asia/Kolkata', totalShops: 5, shopsByStatus: { ACTIVE: 4, SUSPENDED: 1 }, ordersToday: 42, ...dashExtra } } : undefined));
+    renderAdmin('/admin');
+    const attention = await screen.findByRole('region', { name: 'Needs your attention' });
+    expect(within(attention).getByText(/waiting to be verified/i)).toBeInTheDocument();
+    expect(within(attention).getByRole('link', { name: 'Waiting Prints' })).toHaveAttribute('href', '/admin/shops/shop-new');
+    expect(within(attention).getByRole('link', { name: 'See all unverified' })).toHaveAttribute('href', '/admin/shops?verified=false');
+    expect(screen.getByRole('heading', { name: 'Orders in the last 7 days' })).toBeInTheDocument();
   });
 
   it('orders page lists safe order metadata and offers no document access', async () => {
